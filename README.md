@@ -17,7 +17,7 @@ sudo apt install python3-distutils
 ### Download BSP
 **Notice: Root permission is not necessery for download or extract.**
 ```shell
-git clone https://github.com/aodzip/buildroot-tiny200
+git clone https://github.com/mangopi-sbc/buildroot-mangopi-r
 ```
 
 ## Make the first build
@@ -28,7 +28,7 @@ git clone https://github.com/aodzip/buildroot-tiny200
 
 **Generally, you only need to apply it once.**
 ```shell
-cd buildroot-tiny200
+cd buildroot-mangopi-r
 make widora_mangopi_r3_defconfig
 ```
 
