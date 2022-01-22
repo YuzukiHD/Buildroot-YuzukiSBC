@@ -10,7 +10,7 @@ Check this file to view current driver support progress for V3/V3s/S3/S3L: [PROG
 
 ### Install necessary packages
 ``` shell
-sudo apt install wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev
+sudo apt install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev
 sudo apt install python3-distutils
 ```
 
