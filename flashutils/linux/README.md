@@ -24,3 +24,10 @@ ATTR{idProduct}=="1010", ATTR{idVendor}=="1f3a", MODE="666"
 LABEL="rules_end"
 ```
 Save file as /etc/udev/rules.d/99-allwinnerdl.rules
+
+Reload rules as root:
+
+```
+udevadm control --reload-rules
+```
+
