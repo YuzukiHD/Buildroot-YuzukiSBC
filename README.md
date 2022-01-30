@@ -37,15 +37,30 @@ make widora_mangopi_r3_defconfig
 make
 ```
 
+### If changed DTS or kenrel build
+```shell
+./rebuild-kernel.sh
+```
+
+### If changed Uboot, build
+```shell
+./rebuild-uboot.sh
+```
+
 ## Speed up build progress
 
-### Download speed
+### Download dl
 Buildroot will download sourcecode when compiling the firmware. You can grab a **TRUSTWORTHY** archive of 'dl' folder for speed up.
+https://pan.baidu.com/s/1-5CiMwXMQWjZxsFhsyRC5Q?pwd=1111 
+
+```shell
+.make source
+```
 
 ### Compile speed
 If you have a multicore CPU, you can try
 ```
-make -j ${YOUR_CPU_COUNT}
+make -j8
 ```
 or buy a powerful PC for yourself.
 
