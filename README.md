@@ -1,9 +1,13 @@
 # Buildroot Package for Allwinner SIPs For YuzukiHD Devices
 Open Source development package for Allwinner F1C100s & F1C200s
 
+[Documentation]() &mdash;
+[Releases](https://github.com/YuzukiHD/Buildroot-YuzukiSBC/releases)
+
 ## Notice
 This Buildroot development package is a fork of https://github.com/mangopi-sbc/buildroot-mangopi-r
 
+```
 Buildroot is a simple, efficient and easy-to-use tool to generate embedded
 Linux systems through cross-compilation.
 
@@ -30,3 +34,4 @@ You can also find us on #buildroot on Freenode IRC.
 
 If you would like to contribute patches, please read
 https://buildroot.org/manual.html#submitting-patches
+```
