@@ -23,6 +23,8 @@ git clone https://github.com/YuzukiHD/Buildroot-YuzukiSBC
 ## Make the first build
 **Notice: Root permission is not necessery for build firmware.**
 
+Do not use `sudo`
+
 ### Apply defconfig
 **Caution: Apply defconfig will reset all buildroot configurations to default values.**
 
