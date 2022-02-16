@@ -4,7 +4,7 @@
 #include "suniv-f1c100s.dtsi"
 
 / {
-	model = "Widora MangoPi R3";
+	model = "YuzukiHD YuzukiRuler";
 	compatible = "allwinner,suniv-f1c200s",
 			 "allwinner,suniv-f1c100s";
 
@@ -13,9 +13,9 @@
 		#size-cells = <1>;
 		ranges;
 		//for NAND or Nor
-		//bootargs = "console=ttyS0,115200 rootwait init=/preinit root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
+		bootargs = "console=ttyS0,115200 rootwait init=/preinit root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
 		//for sd-card
-		bootargs = "console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mmcblk0p3";
+		//bootargs = "console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mmcblk0p3";
 		simplefb_lcd: framebuffer-lcd0 {
 			compatible = "allwinner,simple-framebuffer",
 				     "simple-framebuffer";
@@ -26,23 +26,6 @@
 			status = "disabled";
 		};
 	};
-
-	// panel: panel {
-	// 	compatible = "bananapi,s070wv20-ct16", "simple-panel";
-	// 	#address-cells = <1>;
-	// 	#size-cells = <0>;
-
-	// 	port@0 {
-	// 		reg = <0>;
-	// 		#address-cells = <1>;
-	// 		#size-cells = <0>;
-
-	// 		panel_input: endpoint@0 {
-	// 			reg = <0>;
-	// 			remote-endpoint = <&tcon0_out_lcd>;
-	// 		};
-	// 	};
-	// };
 };
 
 &spi0 {
