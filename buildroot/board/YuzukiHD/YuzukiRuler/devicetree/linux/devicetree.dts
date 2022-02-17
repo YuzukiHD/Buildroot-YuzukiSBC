@@ -5,8 +5,7 @@
 
 / {
 	model = "YuzukiHD YuzukiRuler";
-	compatible = "allwinner,suniv-f1c200s",
-			 "allwinner,suniv-f1c100s";
+	compatible = "allwinner,suniv-f1c200s", "allwinner,suniv-f1c100s";
 
 	chosen {
 		#address-cells = <1>;
@@ -21,8 +20,8 @@
 				     "simple-framebuffer";
 			allwinner,pipeline = "de_be0-lcd0";
 			clocks = <&ccu CLK_BUS_DE_BE>, <&ccu CLK_DE_BE>,
-				 <&ccu CLK_DRAM_DE_BE>, <&ccu CLK_BUS_LCD>,
-				 <&ccu CLK_TCON>;
+				     <&ccu CLK_DRAM_DE_BE>, <&ccu CLK_BUS_LCD>,
+				     <&ccu CLK_TCON>;
 			status = "disabled";
 		};
 	};
@@ -127,11 +126,11 @@
         dc-gpios = <&pio 4 10 GPIO_ACTIVE_LOW>;
         debug = <0>;
     };
-}
+};
 
-&uart1 {
+&uart0 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&uart1_pa_pins>;
+	pinctrl-0 = <&uart0_pe_pins>;
 	status = "okay";
 };
 
@@ -187,15 +186,6 @@
 		ti,x-plate-ohms = <660>;
 		wakeup-source;
 		status = "disabled";
-	};
-
-	ctp@5d {
-		compatible = "goodix,gt911";
-		reg = <0x5d>;
-		interrupt-parent = <&pio>;
-		interrupts = <4 12 IRQ_TYPE_EDGE_FALLING>; // PE12
-		irq-gpios = <&pio 4 12 GPIO_ACTIVE_HIGH>; // PE12
-		reset-gpios = <&pio 0 0 GPIO_ACTIVE_HIGH>; // PA0
 	};
 
 	ov2640: camera@30 {

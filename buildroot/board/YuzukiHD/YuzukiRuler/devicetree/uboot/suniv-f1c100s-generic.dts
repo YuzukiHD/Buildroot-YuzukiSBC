@@ -6,12 +6,11 @@
 #include <dt-bindings/gpio/gpio.h>
 
 / {
-	model = "Allwinner F1C100s Generic Device";
-	compatible = "allwinner,suniv-f1c100s",
-		     "allwinner,suniv";
+	model = "YuzukiHD YuzukiRuler";
+	compatible = "allwinner,suniv-f1c100s", "allwinner,suniv";
 
 	aliases {
-		serial0 = &uart1;
+		serial0 = &uart0;
 		spi0 = &spi0;
 	};
 
