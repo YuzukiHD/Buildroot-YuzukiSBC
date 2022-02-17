@@ -30,7 +30,6 @@
 
 &spi0 {
 	status = "okay";
-
 	spi-nor@0 {
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -111,6 +110,25 @@
 	};
 };
 
+&spi1 {
+	status = "okay";
+	st7789v@0 {
+        status = "okay";
+        compatible = "sitronix,st7789v";
+        reg = <0>;
+        spi-max-frequency = <32000000>;
+        rotate = <0>;
+        spi-cpol;
+        spi-cpha;
+        rgb;
+        fps = <30>;
+        buswidth = <8>;
+        reset-gpios = <&pio 4 7 GPIO_ACTIVE_LOW>;
+        dc-gpios = <&pio 4 10 GPIO_ACTIVE_LOW>;
+        debug = <0>;
+    };
+}
+
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart1_pa_pins>;
@@ -143,35 +161,6 @@
 	status = "okay";
 };
 
-// &de {
-// 	status = "okay";
-// };
-
-// &fe0 {
-// 	status = "okay";
-// };
-
-// &be0 {
-// 	status = "okay";
-// };
-
-// &tve0 {
-// 	status = "okay";
-// };
-
-// &tcon0 {
-// 	pinctrl-names = "default";
-// 	pinctrl-0 = <&lcd_rgb565_pins>;
-// 	status = "okay";
-// };
-
-// &tcon0_out {
-// 	tcon0_out_lcd: endpoint@0 {
-// 		reg = <0>;
-// 		remote-endpoint = <&panel_input>;
-// 	};
-// };
-
 &codec {
 	allwinner,audio-routing =
 		"Headphone", "HP",
@@ -186,7 +175,7 @@
 &i2c0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_pd_pins>;
-	status = "okay";
+	status = "disabled";
 
 	rtp@48 {
 		compatible = "ti,tsc2007";
@@ -257,7 +246,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&csi0_pins>;
 	packed-format;
-	status = "okay";
+	status = "disabled";
 
 	port {
 		csi0_ep: endpoint {
