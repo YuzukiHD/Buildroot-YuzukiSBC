@@ -16,8 +16,7 @@
 		//for sd-card
 		//bootargs = "console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mmcblk0p3";
 		simplefb_lcd: framebuffer-lcd0 {
-			compatible = "allwinner,simple-framebuffer",
-				     "simple-framebuffer";
+			compatible = "allwinner,simple-framebuffer", "simple-framebuffer";
 			allwinner,pipeline = "de_be0-lcd0";
 			clocks = <&ccu CLK_BUS_DE_BE>, <&ccu CLK_DE_BE>,
 				     <&ccu CLK_DRAM_DE_BE>, <&ccu CLK_BUS_LCD>,
