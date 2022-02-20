@@ -57,6 +57,10 @@ ifeq ($(BR2_LINUX_KERNEL)$(BR2_LINUX_KERNEL_LATEST_VERSION),y)
 BR_NO_CHECK_HASH_FOR += $(LINUX_SOURCE)
 endif
 
+ifeq ($(BR2_LINUX_KERNEL_CUSTOM_LOCAL),y)
+BR_NO_CHECK_HASH_FOR += $(LINUX_SOURCE_DIR)
+endif
+
 LINUX_PATCHES = $(call qstrip,$(BR2_LINUX_KERNEL_PATCH))
 
 # We have no way to know the hashes for user-supplied patches.

@@ -1,3 +1,0 @@
-[submodule "buildroot/linux/linux-5.4.99"]
-	path = buildroot/linux/linux-5.4.99
-	url = https://github.com/YuzukiHD/linux-5.4.99
