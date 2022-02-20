@@ -7,10 +7,6 @@
 	model = "YuzukiHD YuzukiRuler";
 	compatible = "allwinner,suniv-f1c200s", "allwinner,suniv-f1c100s";
 
-	aliases {
-		serial0 = &uart0;
-	};
-
 	chosen {
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -19,6 +15,14 @@
 		bootargs = "console=ttyS0,115200 rootwait init=/preinit root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
 		//for sd-card
 		//bootargs = "console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mmcblk0p3";
+		simplefb_lcd: framebuffer-lcd0 {
+			compatible = "allwinner,simple-framebuffer", "simple-framebuffer";
+			allwinner,pipeline = "de_be0-lcd0";
+			clocks = <&ccu CLK_BUS_DE_BE>, <&ccu CLK_DE_BE>,
+				     <&ccu CLK_DRAM_DE_BE>, <&ccu CLK_BUS_LCD>,
+				     <&ccu CLK_TCON>;
+			status = "disabled";
+		};
 	};
 };
 

@@ -1,18 +1,91 @@
-From 1b60568adb073e0b76b8bb7cb59419aa11feb7cb Mon Sep 17 00:00:00 2001
+From b4e3e02dffa9a7d8a62db82372af00b9d6b32d95 Mon Sep 17 00:00:00 2001
 From: YuzukiTsuru <gloomyghost@gloomyghost.com>
-Date: Sun, 20 Feb 2022 16:40:40 +0800
-Subject: [PATCH] fbtft: support kernel 5.4 add st7789v
+Date: Sun, 20 Feb 2022 15:39:48 +0800
+Subject: [PATCH] fix fbtft for st7789 and kernel 5.4
 
 ---
- drivers/staging/fbtft/fb_st7789v.c |  4 +-
- drivers/staging/fbtft/fbtft-core.c | 89 ++++++++++++++++++++----------
- 2 files changed, 63 insertions(+), 30 deletions(-)
+ drivers/staging/fbtft/fb_st7789v.c | 70 ++++++++++------------------
+ drivers/staging/fbtft/fbtft-core.c | 73 ++++++++++++++++++++----------
+ 2 files changed, 72 insertions(+), 71 deletions(-)
 
 diff --git a/drivers/staging/fbtft/fb_st7789v.c b/drivers/staging/fbtft/fb_st7789v.c
-index 3c3f38793..eb6f55600 100644
+index 3c3f38793..19efc3a22 100644
 --- a/drivers/staging/fbtft/fb_st7789v.c
 +++ b/drivers/staging/fbtft/fb_st7789v.c
-@@ -230,8 +230,8 @@ static int blank(struct fbtft_par *par, bool on)
+@@ -76,51 +76,27 @@ enum st7789v_command {
+  */
+ static int init_display(struct fbtft_par *par)
+ {
+-	/* turn off sleep mode */
+-	write_reg(par, MIPI_DCS_EXIT_SLEEP_MODE);
+-	mdelay(120);
+-
+-	/* set pixel format to RGB-565 */
+-	write_reg(par, MIPI_DCS_SET_PIXEL_FORMAT, MIPI_DCS_PIXEL_FMT_16BIT);
+-
+-	write_reg(par, PORCTRL, 0x08, 0x08, 0x00, 0x22, 0x22);
+-
+-	/*
+-	 * VGH = 13.26V
+-	 * VGL = -10.43V
+-	 */
+-	write_reg(par, GCTRL, 0x35);
+-
+-	/*
+-	 * VDV and VRH register values come from command write
+-	 * (instead of NVM)
+-	 */
+-	write_reg(par, VDVVRHEN, 0x01, 0xFF);
+-
+-	/*
+-	 * VAP =  4.1V + (VCOM + VCOM offset + 0.5 * VDV)
+-	 * VAN = -4.1V + (VCOM + VCOM offset + 0.5 * VDV)
+-	 */
+-	write_reg(par, VRHS, 0x0B);
+-
+-	/* VDV = 0V */
+-	write_reg(par, VDVS, 0x20);
+-
+-	/* VCOM = 0.9V */
+-	write_reg(par, VCOMS, 0x20);
+-
+-	/* VCOM offset = 0V */
+-	write_reg(par, VCMOFSET, 0x20);
+-
+-	/*
+-	 * AVDD = 6.8V
+-	 * AVCL = -4.8V
+-	 * VDS = 2.3V
+-	 */
+-	write_reg(par, PWCTRL1, 0xA4, 0xA1);
+-
+-	write_reg(par, MIPI_DCS_SET_DISPLAY_ON);
+-	return 0;
++    par->fbtftops.reset(par);
++    mdelay(50);
++    write_reg(par,0x36,0x00);
++    write_reg(par,0x3A,0x05);
++    write_reg(par,0xB2,0x0C,0x0C,0x00,0x33,0x33);
++    write_reg(par,0xB7,0x35);
++    write_reg(par,0xBB,0x19);
++    write_reg(par,0xC0,0x2C);
++    write_reg(par,0xC2,0x01);
++    write_reg(par,0xC3,0x12);
++    write_reg(par,0xC4,0x20);
++    write_reg(par,0xC6,0x0F);
++    write_reg(par,0xD0,0xA4,0xA1);
++    write_reg(par,0xE0,0xD0,0x04,0x0D,0x11,0x13,0x2B,0x3F,0x54,0x4C,0x18,0x0D,0x0B,0x1F,0x23);
++    write_reg(par,0xE1,0xD0,0x04,0x0C,0x11,0x13,0x2C,0x3F,0x44,0x51,0x2F,0x1F,0x1F,0x20,0x23);
++    write_reg(par,0x21);
++    write_reg(par,0x11);
++    mdelay(50);
++    write_reg(par,0x29);
++    mdelay(200);
++    return 0;
+ }
+ 
+ /**
+@@ -230,8 +206,8 @@ static int blank(struct fbtft_par *par, bool on)
  
  static struct fbtft_display display = {
  	.regwidth = 8,
@@ -24,20 +97,19 @@ index 3c3f38793..eb6f55600 100644
  	.gamma_len = 14,
  	.gamma = DEFAULT_GAMMA,
 diff --git a/drivers/staging/fbtft/fbtft-core.c b/drivers/staging/fbtft/fbtft-core.c
-index 771697508..f8e1bb369 100644
+index 61f0286fb..84930d34a 100644
 --- a/drivers/staging/fbtft/fbtft-core.c
 +++ b/drivers/staging/fbtft/fbtft-core.c
-@@ -26,6 +26,9 @@
+@@ -25,6 +25,8 @@
+ #include <linux/spinlock.h>
  #include <linux/of.h>
  #include <video/mipi_display.h>
- 
 +#include <linux/gpio.h>
 +#include <linux/of_gpio.h>
-+
+ 
  #include "fbtft.h"
  #include "internal.h"
- 
-@@ -71,24 +74,42 @@ EXPORT_SYMBOL(fbtft_dbg_hex);
+@@ -72,26 +74,47 @@ EXPORT_SYMBOL(fbtft_dbg_hex);
  
  #ifdef CONFIG_OF
  static int fbtft_request_one_gpio(struct fbtft_par *par,
@@ -50,7 +122,7 @@ index 771697508..f8e1bb369 100644
 -	int ret = 0;
 -
 -	*gpiop = devm_gpiod_get_index_optional(dev, name, index,
--					       GPIOD_OUT_LOW);
+-					       GPIOD_OUT_HIGH);
 -	if (IS_ERR(*gpiop)) {
 -		ret = PTR_ERR(*gpiop);
 -		dev_err(dev,
@@ -77,6 +149,8 @@ index 771697508..f8e1bb369 100644
 +                "failed to get '%s' from DT\n", name);
 +            return gpio;
 +        }
++
++         //active low translates to initially low 
 +        flags = (of_flags & OF_GPIO_ACTIVE_LOW) ? GPIOF_OUT_INIT_LOW :
 +                            GPIOF_OUT_INIT_HIGH;
 +        ret = devm_gpio_request_one(dev, gpio, flags,
@@ -96,43 +170,21 @@ index 771697508..f8e1bb369 100644
 +    return ret;
  }
  
- static int fbtft_request_gpios_dt(struct fbtft_par *par)
-@@ -211,6 +232,20 @@ EXPORT_SYMBOL(fbtft_register_backlight);
- static void fbtft_set_addr_win(struct fbtft_par *par, int xs, int ys, int xe,
- 			       int ye)
- {
-+	switch(par->info->var.rotate)
-+	{
-+		case   0: xs+=53;xe+=53;ys+=40;ye+=40;
-+				 break;
-+		case  90: xs+=40;xe+=40;ys+=53;ye+=53;
-+				 break;
-+		case 180: xs+=53;xe+=53;ys+=40;ye+=40;
-+				 break;
-+		case 270: xs+=40;xe+=40;ys+=53;ye+=53;
-+				 break;
-+		default :
-+				 break;
-+	}
 +
- 	write_reg(par, MIPI_DCS_SET_COLUMN_ADDRESS,
- 		  (xs >> 8) & 0xFF, xs & 0xFF, (xe >> 8) & 0xFF, xe & 0xFF);
- 
-@@ -222,17 +257,15 @@ static void fbtft_set_addr_win(struct fbtft_par *par, int xs, int ys, int xe,
+ static int fbtft_request_gpios_dt(struct fbtft_par *par)
+ {
+ 	int i;
+@@ -228,13 +251,15 @@ static void fbtft_set_addr_win(struct fbtft_par *par, int xs, int ys, int xe,
  
  static void fbtft_reset(struct fbtft_par *par)
  {
 -	if (!par->gpio.reset)
 -		return;
--
 -	fbtft_par_dbg(DEBUG_RESET, par, "%s()\n", __func__);
--
 -	gpiod_set_value_cansleep(par->gpio.reset, 1);
 -	usleep_range(20, 40);
 -	gpiod_set_value_cansleep(par->gpio.reset, 0);
 -	msleep(120);
--
--	gpiod_set_value_cansleep(par->gpio.cs, 1);  /* Activate chip */
 +    if (!par->gpio.reset)
 +        return;
 +    fbtft_par_dbg(DEBUG_RESET, par, "%s()\n", __func__);
@@ -147,4 +199,3 @@ index 771697508..f8e1bb369 100644
  static void fbtft_update_display(struct fbtft_par *par, unsigned int start_line,
 -- 
 2.17.1
-
