@@ -1,18 +1,57 @@
 <h1 align="center">Buildroot for YuzukiSBC</h1>
-<p align="center">Open Source development package for Allwinner F1C100s & F1C200s</p>
+<p align="center">Open Source development package for for YuzukiHD Boards</p>
 
-## Driver support
-Check this file to view current driver support progress for F1C100s/F1C200s: [PROGRESS-SUNIV.md](PROGRESS-SUNIV.md)
+# About
 
-## Install
 
-### Install necessary packages
+
+# Driver Support
+
+## Support Lists
+### Boot Device:
+- MMC 0
+- MMC 1
+- SPI NOR Flash
+- SPI NAND Flash
+
+### U-Boot Driver:
+- Basic LCD
+- GPIO Backlight
+- SF Devices
+- MTD Devices
+- USB Peripheral
+- UMS USB Mass Storage Drive Emulator
+- DFU Firmware Downloader
+  - MMC 0
+  - MMC 1
+  - SPI NOR
+  - SPI NAND
+- TFCard Firmware Downloader
+  - SPI NOR
+  - SPI NAND
+
+### Linux Driver:
+- Simple Peripheral: GPIO, SPI, UART, IIC, SDIO, PWM
+- DMA Controller
+- Audio Codec: Playback, Mic-IN
+- USB: OTG Mode, Peripheral Mode, Host Mode
+- DVP Camera: OV2640, OV5640
+- Display Engine: Frontend, Backend, TCON
+- Keypad ADC
+- AW9523B GPIO Expender
+- X-Powers AXP199 PMIC
+
+# Install
+
+The recommended operating system is `Ubuntu 18.04 WSL` and `Ubuntu 20.04 WSL`. If you want to use a virtual machine or a physical machine running linux, please troubleshoot the problem by yourself. There is no solution here.
+
+## Install necessary packages
 ``` shell
 sudo apt install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev
 sudo apt install python3-distutils
 ```
 
-### Download BSP
+## Download BSP
 **Notice: Root permission is not necessery for download or extract.**
 ```shell
 git clone https://github.com/YuzukiHD/Buildroot-YuzukiSBC
