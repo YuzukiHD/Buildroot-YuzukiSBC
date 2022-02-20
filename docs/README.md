@@ -47,8 +47,17 @@ make
 ```
 
 ## Flashing firmware to target
-You can flash a board by Linux (Recommended) or Windows system.
-### [Here is the manual.](flashutils/README.md)
+### Using XFEL
+
+Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
+
+```shell
+cd buildroot/output/images/                # To System img dir
+xfel.exe spinor                            # Checkout device connection
+xfel.exe spinor write 0 sysimage-nor.img   # Write System to devices
+```
+
+<script id="asciicast-470363" src="https://asciinema.org/a/470363.js" async></script>
 
 ## Helper Scripts
 - rebuild-uboot.sh: Recompile U-Boot when you direct edit U-Boot sourcecode.
