@@ -7,6 +7,11 @@
 	model = "YuzukiHD YuzukiRuler";
 	compatible = "allwinner,suniv-f1c200s", "allwinner,suniv-f1c100s";
 
+	aliases {
+		serial0 = &uart0;
+		spi0 = &spi0;
+	};
+
 	chosen {
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -23,6 +28,7 @@
 				     <&ccu CLK_TCON>;
 			status = "disabled";
 		};
+		stdout-path = "serial0:115200n8";
 	};
 };
 
