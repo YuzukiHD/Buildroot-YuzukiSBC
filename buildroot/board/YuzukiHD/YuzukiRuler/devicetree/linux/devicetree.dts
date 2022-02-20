@@ -12,7 +12,7 @@
 		#size-cells = <1>;
 		ranges;
 		//for NAND or Nor
-		bootargs = "console=ttyS0,115200 rootwait init=/preinit root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
+		bootargs = "panic=5 console=ttyS0,115200 earlyprintk rootdelay=3 init=/preinit root=/dev/mtdblock2 rootfstype=squashfs"; 
 		//for sd-card
 		//bootargs = "console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mmcblk0p3";
 		simplefb_lcd: framebuffer-lcd0 {
@@ -31,10 +31,10 @@
 	spi-nor@0 {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "winbond,w25q128", "jedec,spi-nor";
+		compatible = "winbond,w25q128jv", "jedec,spi-nor";
 		reg = <0>;
 		spi-max-frequency = <50000000>;
-		status = "disabled";
+		status = "okay";
 
 		partitions {
 			compatible = "fixed-partitions";
@@ -54,7 +54,7 @@
 			};
 
 			partition@2 {
-				label = "rom";
+				label = "rootfs";
 				reg = <0x600000 0x700000>;
 				read-only;
 			};
@@ -62,47 +62,6 @@
 			partition@3 {
 				label = "overlay";
 				reg = <0xd00000 0x300000>;
-			};
-		};
-	};
-
-	spi-nand@0 {
-		#address-cells = <1>;
-		#size-cells = <1>;
-		compatible = "spi-nand";
-		reg = <0>;
-		spi-max-frequency = <50000000>;
-		partitions {
-			compatible = "fixed-partitions";
-			#address-cells = <1>;
-			#size-cells = <1>;
-
-			partition@0 {
-				label = "u-boot";
-				reg = <0x000000 0x100000>;
-				read-only;
-			};
-
-			partition@1 {
-				label = "kernel";
-				reg = <0x100000 0x500000>;
-				read-only;
-			};
-
-			partition@2 {
-				label = "rom";
-				reg = <0x600000 0x2a00000>;
-				read-only;
-			};
-
-			partition@3 {
-				label = "vendor";
-				reg = <0x3000000 0x1000000>;
-			};
-
-			partition@4 {
-				label = "overlay";
-				reg = <0x4000000 0x3000000>;
 			};
 		};
 	};
@@ -196,6 +155,7 @@
 		clock-names = "xvclk";
 		assigned-clocks = <&clk_out>;
 		assigned-clock-rates = <24000000>;
+		status = "disabled";
 
 		port {
 			ov2640_ep: endpoint {
