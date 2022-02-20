@@ -121,8 +121,8 @@
         rgb;
         fps = <30>;
         buswidth = <8>;
-        reset-gpios = <&pio 4 7 GPIO_ACTIVE_LOW>;
-        dc-gpios = <&pio 4 10 GPIO_ACTIVE_LOW>;
+        reset = <&pio 4 7 GPIO_ACTIVE_LOW>;
+        dc = <&pio 4 10 GPIO_ACTIVE_LOW>;
         debug = <0>;
     };
 };

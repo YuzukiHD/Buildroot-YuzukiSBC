@@ -122,8 +122,7 @@
 		};
 
 		spi0: spi@1c05000 {
-			compatible = "allwinner,suniv-f1c100s-spi",
-					 "allwinner,sun8i-h3-spi";
+			compatible = "allwinner,suniv-f1c100s-spi", "allwinner,sun8i-h3-spi";
 			reg = <0x01c05000 0x1000>;
 			interrupts = <10>;
 			clocks = <&ccu CLK_BUS_SPI0>, <&ccu CLK_BUS_SPI0>;
@@ -136,18 +135,20 @@
 			#size-cells = <0>;
 		};
 
-		spi1: spi@1c06000 {
-			compatible = "allwinner,suniv-f1c100s-spi",
-					 "allwinner,sun8i-h3-spi";
-			reg = <0x01c06000 0x1000>;
-			interrupts = <11>;
-			clocks = <&ccu CLK_BUS_SPI1>, <&ccu CLK_BUS_SPI1>;
-			clock-names = "ahb", "mod";
-			resets = <&ccu RST_BUS_SPI1>;
-			status = "disabled";
-			#address-cells = <1>;
-			#size-cells = <0>;
-		};
+		spi1:spi@1c06000 {
+            compatible = "allwinner,suniv-f1c100s-spi", "allwinner,sun8i-h3-spi";
+            reg = <0x1c06000 0x1000>;
+            interrupts = <11>;
+            clocks = <&ccu CLK_BUS_SPI1>, <&ccu CLK_BUS_SPI1>;
+            clock-names = "ahb", "mod";
+            resets = <&ccu RST_BUS_SPI1>;
+            status = "disabled";
+            #address-cells = <1>;
+            #size-cells = <0>;
+            bias-pull-up;
+            pinctrl-names = "default";
+            pinctrl-0 = <&spi1_pins>;
+        };
 
 		tve0: tv-encoder@1c0a000 {
 			compatible = "allwinner,suniv-f1c100s-tv-encoder",
@@ -370,6 +371,11 @@
 				function = "spi0";
 				bias-pull-up;
 			};
+
+			spi1_pins: spi1-pins{
+                pins = "PA2", "PA0", "PA3", "PA1";
+                function = "spi1";
+            };
 
 			mmc0_pins: mmc0-pins {
 				pins = "PF0", "PF1", "PF2", "PF3", "PF4", "PF5";
