@@ -12,7 +12,7 @@
 		#size-cells = <1>;
 		ranges;
 		//for NAND or Nor
-		bootargs = "panic=5 console=ttyS0,115200 earlyprintk rootdelay=3 init=/preinit root=/dev/mtdblock2 rootfstype=squashfs"; 
+		bootargs = "panic=5 console=ttyS0,115200 rootwait root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
 		//for sd-card
 		//bootargs = "console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mmcblk0p3";
 		simplefb_lcd: framebuffer-lcd0 {
