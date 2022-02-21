@@ -1,0 +1,678 @@
+From 6b034170a1b551c450653cdb02d4437a74109a15 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Mon, 21 Feb 2022 22:02:45 +0800
+Subject: [PATCH] fix st7789v init_display para add new shift addr
+
+---
+ drivers/staging/fbtft/fbtft-core.c | 401 ++++++++++++++---------------
+ 1 file changed, 193 insertions(+), 208 deletions(-)
+
+diff --git a/drivers/staging/fbtft/fbtft-core.c b/drivers/staging/fbtft/fbtft-core.c
+index f8e1bb369..4e1e11109 100644
+--- a/drivers/staging/fbtft/fbtft-core.c
++++ b/drivers/staging/fbtft/fbtft-core.c
+@@ -44,14 +44,14 @@ int fbtft_write_buf_dc(struct fbtft_par *par, void *buf, size_t len, int dc)
+ 
+ 	ret = par->fbtftops.write(par, buf, len);
+ 	if (ret < 0)
+-		dev_err(par->info->device,
+-			"write() failed and returned %d\n", ret);
++		dev_err(par->info->device, "write() failed and returned %d\n",
++			ret);
+ 	return ret;
+ }
+ EXPORT_SYMBOL(fbtft_write_buf_dc);
+ 
+-void fbtft_dbg_hex(const struct device *dev, int groupsize,
+-		   void *buf, size_t len, const char *fmt, ...)
++void fbtft_dbg_hex(const struct device *dev, int groupsize, void *buf,
++		   size_t len, const char *fmt, ...)
+ {
+ 	va_list args;
+ 	static char textbuf[512];
+@@ -73,43 +73,41 @@ void fbtft_dbg_hex(const struct device *dev, int groupsize,
+ EXPORT_SYMBOL(fbtft_dbg_hex);
+ 
+ #ifdef CONFIG_OF
+-static int fbtft_request_one_gpio(struct fbtft_par *par,
+-                  const char *name, int index,
+-                  struct gpio_desc **gpiop)
++static int fbtft_request_one_gpio(struct fbtft_par *par, const char *name,
++				  int index, struct gpio_desc **gpiop)
+ {
+-    struct device *dev = par->info->device;
+-    struct device_node *node = dev->of_node;
+-    int gpio, flags, ret = 0;
+-    enum of_gpio_flags of_flags;
+-
+-    if (of_find_property(node, name, NULL)) {
+-        gpio = of_get_named_gpio_flags(node, name, index, &of_flags);
+-        if (gpio == -ENOENT)
+-            return 0;
+-        if (gpio == -EPROBE_DEFER)
+-            return gpio;
+-        if (gpio < 0) {
+-            dev_err(dev,
+-                "failed to get '%s' from DT\n", name);
+-            return gpio;
+-        }
+-        flags = (of_flags & OF_GPIO_ACTIVE_LOW) ? GPIOF_OUT_INIT_LOW :
+-                            GPIOF_OUT_INIT_HIGH;
+-        ret = devm_gpio_request_one(dev, gpio, flags,
+-                        dev->driver->name);
+-        if (ret) {
+-            dev_err(dev,
+-                "gpio_request_one('%s'=%d) failed with %d\n",
+-                name, gpio, ret);
+-            return ret;
+-        }
+-
+-        *gpiop = gpio_to_desc(gpio);
+-        fbtft_par_dbg(DEBUG_REQUEST_GPIOS, par, "%s: '%s' = GPIO%d\n",
+-                            __func__, name, gpio);
+-    }
+-
+-    return ret;
++	struct device *dev = par->info->device;
++	struct device_node *node = dev->of_node;
++	int gpio, flags, ret = 0;
++	enum of_gpio_flags of_flags;
++
++	if (of_find_property(node, name, NULL)) {
++		gpio = of_get_named_gpio_flags(node, name, index, &of_flags);
++		if (gpio == -ENOENT)
++			return 0;
++		if (gpio == -EPROBE_DEFER)
++			return gpio;
++		if (gpio < 0) {
++			dev_err(dev, "failed to get '%s' from DT\n", name);
++			return gpio;
++		}
++		flags = (of_flags & OF_GPIO_ACTIVE_LOW) ? GPIOF_OUT_INIT_LOW :
++							  GPIOF_OUT_INIT_HIGH;
++		ret = devm_gpio_request_one(dev, gpio, flags,
++					    dev->driver->name);
++		if (ret) {
++			dev_err(dev,
++				"gpio_request_one('%s'=%d) failed with %d\n",
++				name, gpio, ret);
++			return ret;
++		}
++
++		*gpiop = gpio_to_desc(gpio);
++		fbtft_par_dbg(DEBUG_REQUEST_GPIOS, par, "%s: '%s' = GPIO%d\n",
++			      __func__, name, gpio);
++	}
++
++	return ret;
+ }
+ 
+ static int fbtft_request_gpios_dt(struct fbtft_par *par)
+@@ -139,16 +137,13 @@ static int fbtft_request_gpios_dt(struct fbtft_par *par)
+ 	if (ret)
+ 		return ret;
+ 	for (i = 0; i < 16; i++) {
+-		ret = fbtft_request_one_gpio(par, "db", i,
+-					     &par->gpio.db[i]);
++		ret = fbtft_request_one_gpio(par, "db", i, &par->gpio.db[i]);
+ 		if (ret)
+ 			return ret;
+-		ret = fbtft_request_one_gpio(par, "led", i,
+-					     &par->gpio.led[i]);
++		ret = fbtft_request_one_gpio(par, "led", i, &par->gpio.led[i]);
+ 		if (ret)
+ 			return ret;
+-		ret = fbtft_request_one_gpio(par, "aux", i,
+-					     &par->gpio.aux[i]);
++		ret = fbtft_request_one_gpio(par, "aux", i, &par->gpio.aux[i]);
+ 		if (ret)
+ 			return ret;
+ 	}
+@@ -163,8 +158,8 @@ static int fbtft_backlight_update_status(struct backlight_device *bd)
+ 	bool polarity = par->polarity;
+ 
+ 	fbtft_par_dbg(DEBUG_BACKLIGHT, par,
+-		      "%s: polarity=%d, power=%d, fb_blank=%d\n",
+-		      __func__, polarity, bd->props.power, bd->props.fb_blank);
++		      "%s: polarity=%d, power=%d, fb_blank=%d\n", __func__,
++		      polarity, bd->props.power, bd->props.fb_blank);
+ 
+ 	if ((bd->props.power == FB_BLANK_UNBLANK) &&
+ 	    (bd->props.fb_blank == FB_BLANK_UNBLANK))
+@@ -192,14 +187,16 @@ void fbtft_unregister_backlight(struct fbtft_par *par)
+ EXPORT_SYMBOL(fbtft_unregister_backlight);
+ 
+ static const struct backlight_ops fbtft_bl_ops = {
+-	.get_brightness	= fbtft_backlight_get_brightness,
+-	.update_status	= fbtft_backlight_update_status,
++	.get_brightness = fbtft_backlight_get_brightness,
++	.update_status = fbtft_backlight_update_status,
+ };
+ 
+ void fbtft_register_backlight(struct fbtft_par *par)
+ {
+ 	struct backlight_device *bd;
+-	struct backlight_properties bl_props = { 0, };
++	struct backlight_properties bl_props = {
++		0,
++	};
+ 
+ 	if (!par->gpio.led[0]) {
+ 		fbtft_par_dbg(DEBUG_BACKLIGHT, par,
+@@ -214,8 +211,8 @@ void fbtft_register_backlight(struct fbtft_par *par)
+ 		par->polarity = true;
+ 
+ 	bd = backlight_device_register(dev_driver_string(par->info->device),
+-				       par->info->device, par,
+-				       &fbtft_bl_ops, &bl_props);
++				       par->info->device, par, &fbtft_bl_ops,
++				       &bl_props);
+ 	if (IS_ERR(bd)) {
+ 		dev_err(par->info->device,
+ 			"cannot register backlight device (%ld)\n",
+@@ -232,40 +229,37 @@ EXPORT_SYMBOL(fbtft_register_backlight);
+ static void fbtft_set_addr_win(struct fbtft_par *par, int xs, int ys, int xe,
+ 			       int ye)
+ {
+-	switch(par->info->var.rotate)
+-	{
+-		case   0: xs+=53;xe+=53;ys+=40;ye+=40;
+-				 break;
+-		case  90: xs+=40;xe+=40;ys+=53;ye+=53;
+-				 break;
+-		case 180: xs+=53;xe+=53;ys+=40;ye+=40;
+-				 break;
+-		case 270: xs+=40;xe+=40;ys+=53;ye+=53;
+-				 break;
+-		default :
+-				 break;
+-	}
++	if (par->info->var.rotate == 90) {
++		write_reg(par, MIPI_DCS_SET_COLUMN_ADDRESS, (xs + 40) >> 8,
++			  xs + 40, ((xe + 40) >> 8) & 0xFF, (xe + 40) & 0xFF);
++
++		write_reg(par, MIPI_DCS_SET_PAGE_ADDRESS,
++			  ((ys + 52) >> 8) & 0xFF, (ys + 52) & 0xFF,
++			  ((ye + 52) >> 8) & 0xFF, (ye + 52) & 0xFF);
+ 
+-	write_reg(par, MIPI_DCS_SET_COLUMN_ADDRESS,
+-		  (xs >> 8) & 0xFF, xs & 0xFF, (xe >> 8) & 0xFF, xe & 0xFF);
++		write_reg(par, MIPI_DCS_WRITE_MEMORY_START);
++	} else {
++		write_reg(par, MIPI_DCS_SET_COLUMN_ADDRESS, (xs >> 8) & 0xFF,
++			  xs & 0xFF, (xe >> 8) & 0xFF, xe & 0xFF);
+ 
+-	write_reg(par, MIPI_DCS_SET_PAGE_ADDRESS,
+-		  (ys >> 8) & 0xFF, ys & 0xFF, (ye >> 8) & 0xFF, ye & 0xFF);
++		write_reg(par, MIPI_DCS_SET_PAGE_ADDRESS, (ys >> 8) & 0xFF,
++			  ys & 0xFF, (ye >> 8) & 0xFF, ye & 0xFF);
+ 
+-	write_reg(par, MIPI_DCS_WRITE_MEMORY_START);
++		write_reg(par, MIPI_DCS_WRITE_MEMORY_START);
++	}
+ }
+ 
+ static void fbtft_reset(struct fbtft_par *par)
+ {
+-    if (!par->gpio.reset)
+-        return;
+-    fbtft_par_dbg(DEBUG_RESET, par, "%s()\n", __func__);
+-    gpiod_set_value_cansleep(par->gpio.reset, 1);
+-    msleep(10);
+-    gpiod_set_value_cansleep(par->gpio.reset, 0);
+-    msleep(200);
+-    gpiod_set_value_cansleep(par->gpio.reset, 1);
+-    msleep(10);
++	if (!par->gpio.reset)
++		return;
++	fbtft_par_dbg(DEBUG_RESET, par, "%s()\n", __func__);
++	gpiod_set_value_cansleep(par->gpio.reset, 1);
++	msleep(10);
++	gpiod_set_value_cansleep(par->gpio.reset, 0);
++	msleep(200);
++	gpiod_set_value_cansleep(par->gpio.reset, 1);
++	msleep(10);
+ }
+ 
+ static void fbtft_update_display(struct fbtft_par *par, unsigned int start_line,
+@@ -277,11 +271,11 @@ static void fbtft_update_display(struct fbtft_par *par, unsigned int start_line,
+ 	bool timeit = false;
+ 	int ret = 0;
+ 
+-	if (unlikely(par->debug & (DEBUG_TIME_FIRST_UPDATE |
+-			DEBUG_TIME_EACH_UPDATE))) {
++	if (unlikely(par->debug &
++		     (DEBUG_TIME_FIRST_UPDATE | DEBUG_TIME_EACH_UPDATE))) {
+ 		if ((par->debug & DEBUG_TIME_EACH_UPDATE) ||
+ 		    ((par->debug & DEBUG_TIME_FIRST_UPDATE) &&
+-		    !par->first_update_done)) {
++		     !par->first_update_done)) {
+ 			ts_start = ktime_get();
+ 			timeit = true;
+ 		}
+@@ -289,28 +283,31 @@ static void fbtft_update_display(struct fbtft_par *par, unsigned int start_line,
+ 
+ 	/* Sanity checks */
+ 	if (start_line > end_line) {
+-		dev_warn(par->info->device,
+-			 "%s: start_line=%u is larger than end_line=%u. Shouldn't happen, will do full display update\n",
+-			 __func__, start_line, end_line);
++		dev_warn(
++			par->info->device,
++			"%s: start_line=%u is larger than end_line=%u. Shouldn't happen, will do full display update\n",
++			__func__, start_line, end_line);
+ 		start_line = 0;
+ 		end_line = par->info->var.yres - 1;
+ 	}
+ 	if (start_line > par->info->var.yres - 1 ||
+ 	    end_line > par->info->var.yres - 1) {
+-		dev_warn(par->info->device,
+-			 "%s: start_line=%u or end_line=%u is larger than max=%d. Shouldn't happen, will do full display update\n",
+-			 __func__, start_line,
+-			 end_line, par->info->var.yres - 1);
++		dev_warn(
++			par->info->device,
++			"%s: start_line=%u or end_line=%u is larger than max=%d. Shouldn't happen, will do full display update\n",
++			__func__, start_line, end_line,
++			par->info->var.yres - 1);
+ 		start_line = 0;
+ 		end_line = par->info->var.yres - 1;
+ 	}
+ 
+-	fbtft_par_dbg(DEBUG_UPDATE_DISPLAY, par, "%s(start_line=%u, end_line=%u)\n",
+-		      __func__, start_line, end_line);
++	fbtft_par_dbg(DEBUG_UPDATE_DISPLAY, par,
++		      "%s(start_line=%u, end_line=%u)\n", __func__, start_line,
++		      end_line);
+ 
+ 	if (par->fbtftops.set_addr_win)
+ 		par->fbtftops.set_addr_win(par, 0, start_line,
+-				par->info->var.xres - 1, end_line);
++					   par->info->var.xres - 1, end_line);
+ 
+ 	offset = start_line * par->info->fix.line_length;
+ 	len = (end_line - start_line + 1) * par->info->fix.line_length;
+@@ -334,8 +331,8 @@ static void fbtft_update_display(struct fbtft_par *par, unsigned int start_line,
+ 		throughput = throughput * 1000 / 1024;
+ 
+ 		dev_info(par->info->device,
+-			 "Display update: %ld kB/s, fps=%ld\n",
+-			 throughput, fps);
++			 "Display update: %ld kB/s, fps=%ld\n", throughput,
++			 fps);
+ 		par->first_update_done = true;
+ 	}
+ }
+@@ -381,13 +378,12 @@ static void fbtft_deferred_io(struct fb_info *info, struct list_head *pagelist)
+ 	spin_unlock(&par->dirty_lock);
+ 
+ 	/* Mark display lines as dirty */
+-	list_for_each_entry(page, pagelist, lru) {
++	list_for_each_entry (page, pagelist, lru) {
+ 		count++;
+ 		index = page->index << PAGE_SHIFT;
+ 		y_low = index / info->fix.line_length;
+ 		y_high = (index + PAGE_SIZE - 1) / info->fix.line_length;
+-		dev_dbg(info->device,
+-			"page->index=%lu y_low=%d y_high=%d\n",
++		dev_dbg(info->device, "page->index=%lu y_low=%d y_high=%d\n",
+ 			page->index, y_low, y_high);
+ 		if (y_high > info->var.yres - 1)
+ 			y_high = info->var.yres - 1;
+@@ -397,8 +393,8 @@ static void fbtft_deferred_io(struct fb_info *info, struct list_head *pagelist)
+ 			dirty_lines_end = y_high;
+ 	}
+ 
+-	par->fbtftops.update_display(info->par,
+-					dirty_lines_start, dirty_lines_end);
++	par->fbtftops.update_display(info->par, dirty_lines_start,
++				     dirty_lines_end);
+ }
+ 
+ static void fbtft_fb_fillrect(struct fb_info *info,
+@@ -406,9 +402,8 @@ static void fbtft_fb_fillrect(struct fb_info *info,
+ {
+ 	struct fbtft_par *par = info->par;
+ 
+-	dev_dbg(info->dev,
+-		"%s: dx=%d, dy=%d, width=%d, height=%d\n",
+-		__func__, rect->dx, rect->dy, rect->width, rect->height);
++	dev_dbg(info->dev, "%s: dx=%d, dy=%d, width=%d, height=%d\n", __func__,
++		rect->dx, rect->dy, rect->width, rect->height);
+ 	sys_fillrect(info, rect);
+ 
+ 	par->fbtftops.mkdirty(info, rect->dy, rect->height);
+@@ -419,9 +414,8 @@ static void fbtft_fb_copyarea(struct fb_info *info,
+ {
+ 	struct fbtft_par *par = info->par;
+ 
+-	dev_dbg(info->dev,
+-		"%s: dx=%d, dy=%d, width=%d, height=%d\n",
+-		__func__,  area->dx, area->dy, area->width, area->height);
++	dev_dbg(info->dev, "%s: dx=%d, dy=%d, width=%d, height=%d\n", __func__,
++		area->dx, area->dy, area->width, area->height);
+ 	sys_copyarea(info, area);
+ 
+ 	par->fbtftops.mkdirty(info, area->dy, area->height);
+@@ -432,9 +426,8 @@ static void fbtft_fb_imageblit(struct fb_info *info,
+ {
+ 	struct fbtft_par *par = info->par;
+ 
+-	dev_dbg(info->dev,
+-		"%s: dx=%d, dy=%d, width=%d, height=%d\n",
+-		__func__,  image->dx, image->dy, image->width, image->height);
++	dev_dbg(info->dev, "%s: dx=%d, dy=%d, width=%d, height=%d\n", __func__,
++		image->dx, image->dy, image->width, image->height);
+ 	sys_imageblit(info, image);
+ 
+ 	par->fbtftops.mkdirty(info, image->dy, image->height);
+@@ -446,8 +439,8 @@ static ssize_t fbtft_fb_write(struct fb_info *info, const char __user *buf,
+ 	struct fbtft_par *par = info->par;
+ 	ssize_t res;
+ 
+-	dev_dbg(info->dev,
+-		"%s: count=%zd, ppos=%llu\n", __func__,  count, *ppos);
++	dev_dbg(info->dev, "%s: count=%zd, ppos=%llu\n", __func__, count,
++		*ppos);
+ 	res = fb_sys_write(info, buf, count, ppos);
+ 
+ 	/* TODO: only mark changed area update all for now */
+@@ -480,9 +473,9 @@ static int fbtft_fb_setcolreg(unsigned int regno, unsigned int red,
+ 		if (regno < 16) {
+ 			u32 *pal = info->pseudo_palette;
+ 
+-			val  = chan_to_field(red,   &info->var.red);
++			val = chan_to_field(red, &info->var.red);
+ 			val |= chan_to_field(green, &info->var.green);
+-			val |= chan_to_field(blue,  &info->var.blue);
++			val |= chan_to_field(blue, &info->var.blue);
+ 
+ 			pal[regno] = val;
+ 			ret = 0;
+@@ -497,8 +490,7 @@ static int fbtft_fb_blank(int blank, struct fb_info *info)
+ 	struct fbtft_par *par = info->par;
+ 	int ret = -EINVAL;
+ 
+-	dev_dbg(info->dev, "%s(blank=%d)\n",
+-		__func__, blank);
++	dev_dbg(info->dev, "%s(blank=%d)\n", __func__, blank);
+ 
+ 	if (!par->fbtftops.blank)
+ 		return ret;
+@@ -596,7 +588,7 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
+ 
+ 	/* sanity check */
+ 	if (display->gamma_num * display->gamma_len >
+-			FBTFT_GAMMA_MAX_VALUES_TOTAL) {
++	    FBTFT_GAMMA_MAX_VALUES_TOTAL) {
+ 		dev_err(dev, "FBTFT_GAMMA_MAX_VALUES_TOTAL=%d is exceeded\n",
+ 			FBTFT_GAMMA_MAX_VALUES_TOTAL);
+ 		return NULL;
+@@ -641,11 +633,11 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
+ 	switch (pdata->rotate) {
+ 	case 90:
+ 	case 270:
+-		width =  display->height;
++		width = display->height;
+ 		height = display->width;
+ 		break;
+ 	default:
+-		width =  display->width;
++		width = display->width;
+ 		height = display->height;
+ 	}
+ 
+@@ -667,11 +659,10 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
+ 		goto alloc_fail;
+ 
+ 	if (display->gamma_num && display->gamma_len) {
+-		gamma_curves = devm_kcalloc(dev,
+-					    display->gamma_num *
+-					    display->gamma_len,
+-					    sizeof(gamma_curves[0]),
+-					    GFP_KERNEL);
++		gamma_curves =
++			devm_kcalloc(dev,
++				     display->gamma_num * display->gamma_len,
++				     sizeof(gamma_curves[0]), GFP_KERNEL);
+ 		if (!gamma_curves)
+ 			goto alloc_fail;
+ 	}
+@@ -684,48 +675,48 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
+ 	info->fbops = fbops;
+ 	info->fbdefio = fbdefio;
+ 
+-	fbops->owner        =      dev->driver->owner;
+-	fbops->fb_read      =      fb_sys_read;
+-	fbops->fb_write     =      fbtft_fb_write;
+-	fbops->fb_fillrect  =      fbtft_fb_fillrect;
+-	fbops->fb_copyarea  =      fbtft_fb_copyarea;
+-	fbops->fb_imageblit =      fbtft_fb_imageblit;
+-	fbops->fb_setcolreg =      fbtft_fb_setcolreg;
+-	fbops->fb_blank     =      fbtft_fb_blank;
+-
+-	fbdefio->delay =           HZ / fps;
+-	fbdefio->deferred_io =     fbtft_deferred_io;
++	fbops->owner = dev->driver->owner;
++	fbops->fb_read = fb_sys_read;
++	fbops->fb_write = fbtft_fb_write;
++	fbops->fb_fillrect = fbtft_fb_fillrect;
++	fbops->fb_copyarea = fbtft_fb_copyarea;
++	fbops->fb_imageblit = fbtft_fb_imageblit;
++	fbops->fb_setcolreg = fbtft_fb_setcolreg;
++	fbops->fb_blank = fbtft_fb_blank;
++
++	fbdefio->delay = HZ / fps;
++	fbdefio->deferred_io = fbtft_deferred_io;
+ 	fb_deferred_io_init(info);
+ 
+ 	snprintf(info->fix.id, sizeof(info->fix.id), "%s", dev->driver->name);
+-	info->fix.type =           FB_TYPE_PACKED_PIXELS;
+-	info->fix.visual =         FB_VISUAL_TRUECOLOR;
+-	info->fix.xpanstep =	   0;
+-	info->fix.ypanstep =	   0;
+-	info->fix.ywrapstep =	   0;
+-	info->fix.line_length =    width * bpp / 8;
+-	info->fix.accel =          FB_ACCEL_NONE;
+-	info->fix.smem_len =       vmem_size;
+-
+-	info->var.rotate =         pdata->rotate;
+-	info->var.xres =           width;
+-	info->var.yres =           height;
+-	info->var.xres_virtual =   info->var.xres;
+-	info->var.yres_virtual =   info->var.yres;
++	info->fix.type = FB_TYPE_PACKED_PIXELS;
++	info->fix.visual = FB_VISUAL_TRUECOLOR;
++	info->fix.xpanstep = 0;
++	info->fix.ypanstep = 0;
++	info->fix.ywrapstep = 0;
++	info->fix.line_length = width * bpp / 8;
++	info->fix.accel = FB_ACCEL_NONE;
++	info->fix.smem_len = vmem_size;
++
++	info->var.rotate = pdata->rotate;
++	info->var.xres = width;
++	info->var.yres = height;
++	info->var.xres_virtual = info->var.xres;
++	info->var.yres_virtual = info->var.yres;
+ 	info->var.bits_per_pixel = bpp;
+-	info->var.nonstd =         1;
++	info->var.nonstd = 1;
+ 
+ 	/* RGB565 */
+-	info->var.red.offset =     11;
+-	info->var.red.length =     5;
+-	info->var.green.offset =   5;
+-	info->var.green.length =   6;
+-	info->var.blue.offset =    0;
+-	info->var.blue.length =    5;
+-	info->var.transp.offset =  0;
+-	info->var.transp.length =  0;
++	info->var.red.offset = 11;
++	info->var.red.length = 5;
++	info->var.green.offset = 5;
++	info->var.green.length = 6;
++	info->var.blue.offset = 0;
++	info->var.blue.length = 5;
++	info->var.transp.offset = 0;
++	info->var.transp.length = 0;
+ 
+-	info->flags =              FBINFO_FLAG_DEFAULT | FBINFO_VIRTFB;
++	info->flags = FBINFO_FLAG_DEFAULT | FBINFO_VIRTFB;
+ 
+ 	par = info->par;
+ 	par->info = info;
+@@ -972,23 +963,20 @@ static int fbtft_init_display_dt(struct fbtft_par *par)
+ 				fbtft_par_dbg(DEBUG_INIT_DISPLAY, par,
+ 					      "buf[%d] = %02X\n", j, buf[j]);
+ 
+-			par->fbtftops.write_register(par, i,
+-				buf[0], buf[1], buf[2], buf[3],
+-				buf[4], buf[5], buf[6], buf[7],
+-				buf[8], buf[9], buf[10], buf[11],
+-				buf[12], buf[13], buf[14], buf[15],
+-				buf[16], buf[17], buf[18], buf[19],
+-				buf[20], buf[21], buf[22], buf[23],
+-				buf[24], buf[25], buf[26], buf[27],
+-				buf[28], buf[29], buf[30], buf[31],
+-				buf[32], buf[33], buf[34], buf[35],
+-				buf[36], buf[37], buf[38], buf[39],
+-				buf[40], buf[41], buf[42], buf[43],
+-				buf[44], buf[45], buf[46], buf[47],
+-				buf[48], buf[49], buf[50], buf[51],
+-				buf[52], buf[53], buf[54], buf[55],
+-				buf[56], buf[57], buf[58], buf[59],
+-				buf[60], buf[61], buf[62], buf[63]);
++			par->fbtftops.write_register(
++				par, i, buf[0], buf[1], buf[2], buf[3], buf[4],
++				buf[5], buf[6], buf[7], buf[8], buf[9], buf[10],
++				buf[11], buf[12], buf[13], buf[14], buf[15],
++				buf[16], buf[17], buf[18], buf[19], buf[20],
++				buf[21], buf[22], buf[23], buf[24], buf[25],
++				buf[26], buf[27], buf[28], buf[29], buf[30],
++				buf[31], buf[32], buf[33], buf[34], buf[35],
++				buf[36], buf[37], buf[38], buf[39], buf[40],
++				buf[41], buf[42], buf[43], buf[44], buf[45],
++				buf[46], buf[47], buf[48], buf[49], buf[50],
++				buf[51], buf[52], buf[53], buf[54], buf[55],
++				buf[56], buf[57], buf[58], buf[59], buf[60],
++				buf[61], buf[62], buf[63]);
+ 		} else if (val & FBTFT_OF_INIT_DELAY) {
+ 			fbtft_par_dbg(DEBUG_INIT_DISPLAY, par,
+ 				      "init: msleep(%u)\n", val & 0xFFFF);
+@@ -1023,8 +1011,7 @@ int fbtft_init_display(struct fbtft_par *par)
+ 
+ 	/* sanity check */
+ 	if (!par->init_sequence) {
+-		dev_err(par->info->device,
+-			"error: init_sequence is not set\n");
++		dev_err(par->info->device, "error: init_sequence is not set\n");
+ 		return -EINVAL;
+ 	}
+ 
+@@ -1083,23 +1070,20 @@ int fbtft_init_display(struct fbtft_par *par)
+ 				}
+ 				buf[j++] = par->init_sequence[i++];
+ 			}
+-			par->fbtftops.write_register(par, j,
+-				buf[0], buf[1], buf[2], buf[3],
+-				buf[4], buf[5], buf[6], buf[7],
+-				buf[8], buf[9], buf[10], buf[11],
+-				buf[12], buf[13], buf[14], buf[15],
+-				buf[16], buf[17], buf[18], buf[19],
+-				buf[20], buf[21], buf[22], buf[23],
+-				buf[24], buf[25], buf[26], buf[27],
+-				buf[28], buf[29], buf[30], buf[31],
+-				buf[32], buf[33], buf[34], buf[35],
+-				buf[36], buf[37], buf[38], buf[39],
+-				buf[40], buf[41], buf[42], buf[43],
+-				buf[44], buf[45], buf[46], buf[47],
+-				buf[48], buf[49], buf[50], buf[51],
+-				buf[52], buf[53], buf[54], buf[55],
+-				buf[56], buf[57], buf[58], buf[59],
+-				buf[60], buf[61], buf[62], buf[63]);
++			par->fbtftops.write_register(
++				par, j, buf[0], buf[1], buf[2], buf[3], buf[4],
++				buf[5], buf[6], buf[7], buf[8], buf[9], buf[10],
++				buf[11], buf[12], buf[13], buf[14], buf[15],
++				buf[16], buf[17], buf[18], buf[19], buf[20],
++				buf[21], buf[22], buf[23], buf[24], buf[25],
++				buf[26], buf[27], buf[28], buf[29], buf[30],
++				buf[31], buf[32], buf[33], buf[34], buf[35],
++				buf[36], buf[37], buf[38], buf[39], buf[40],
++				buf[41], buf[42], buf[43], buf[44], buf[45],
++				buf[46], buf[47], buf[48], buf[49], buf[50],
++				buf[51], buf[52], buf[53], buf[54], buf[55],
++				buf[56], buf[57], buf[58], buf[59], buf[60],
++				buf[61], buf[62], buf[63]);
+ 			break;
+ 		case -2:
+ 			i++;
+@@ -1137,7 +1121,7 @@ static int fbtft_verify_gpios(struct fbtft_par *par)
+ 
+ 	fbtft_par_dbg(DEBUG_VERIFY_GPIOS, par, "%s()\n", __func__);
+ 
+-	if (pdata->display.buswidth != 9 &&  par->startbyte == 0 &&
++	if (pdata->display.buswidth != 9 && par->startbyte == 0 &&
+ 	    !par->gpio.dc) {
+ 		dev_err(par->info->device,
+ 			"Missing info about 'dc' gpio. Aborting.\n");
+@@ -1232,8 +1216,7 @@ static struct fbtft_platform_data *fbtft_probe_dt(struct device *dev)
+  *
+  * Return: 0 if successful, negative if error
+  */
+-int fbtft_probe_common(struct fbtft_display *display,
+-		       struct spi_device *sdev,
++int fbtft_probe_common(struct fbtft_display *display, struct spi_device *sdev,
+ 		       struct platform_device *pdev)
+ {
+ 	struct device *dev;
+@@ -1280,9 +1263,10 @@ int fbtft_probe_common(struct fbtft_display *display,
+ 	else if (display->regwidth == 16 && display->buswidth == 16)
+ 		par->fbtftops.write_register = fbtft_write_reg16_bus16;
+ 	else
+-		dev_warn(dev,
+-			 "no default functions for regwidth=%d and buswidth=%d\n",
+-			 display->regwidth, display->buswidth);
++		dev_warn(
++			dev,
++			"no default functions for regwidth=%d and buswidth=%d\n",
++			display->regwidth, display->buswidth);
+ 
+ 	/* write_vmem() functions */
+ 	if (display->buswidth == 8)
+@@ -1305,13 +1289,14 @@ int fbtft_probe_common(struct fbtft_display *display,
+ 		if (par->spi->master->bits_per_word_mask & SPI_BPW_MASK(9)) {
+ 			par->spi->bits_per_word = 9;
+ 		} else {
+-			dev_warn(&par->spi->dev,
+-				 "9-bit SPI not available, emulating using 8-bit.\n");
++			dev_warn(
++				&par->spi->dev,
++				"9-bit SPI not available, emulating using 8-bit.\n");
+ 			/* allocate buffer with room for dc bits */
+-			par->extra = devm_kzalloc(par->info->device,
+-						  par->txbuf.len +
+-						  (par->txbuf.len / 8) + 8,
+-						  GFP_KERNEL);
++			par->extra = devm_kzalloc(
++				par->info->device,
++				par->txbuf.len + (par->txbuf.len / 8) + 8,
++				GFP_KERNEL);
+ 			if (!par->extra) {
+ 				ret = -ENOMEM;
+ 				goto out_release;
+@@ -1363,8 +1348,8 @@ int fbtft_remove_common(struct device *dev, struct fb_info *info)
+ 		return -EINVAL;
+ 	par = info->par;
+ 	if (par)
+-		fbtft_par_dbg(DEBUG_DRIVER_INIT_FUNCTIONS, par,
+-			      "%s()\n", __func__);
++		fbtft_par_dbg(DEBUG_DRIVER_INIT_FUNCTIONS, par, "%s()\n",
++			      __func__);
+ 	fbtft_unregister_framebuffer(info);
+ 	fbtft_framebuffer_release(info);
+ 
+-- 
+2.17.1
+

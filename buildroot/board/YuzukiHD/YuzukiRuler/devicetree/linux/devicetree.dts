@@ -11,18 +11,7 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges;
-		//for NAND or Nor
-		bootargs = "panic=5 console=ttyS0,115200 rootwait root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
-		//for sd-card
-		//bootargs = "console=ttyS0,115200 earlyprintk rootwait init=/preinit root=/dev/mmcblk0p3";
-		simplefb_lcd: framebuffer-lcd0 {
-			compatible = "allwinner,simple-framebuffer", "simple-framebuffer";
-			allwinner,pipeline = "de_be0-lcd0";
-			clocks = <&ccu CLK_BUS_DE_BE>, <&ccu CLK_DE_BE>,
-				     <&ccu CLK_DRAM_DE_BE>, <&ccu CLK_BUS_LCD>,
-				     <&ccu CLK_TCON>;
-			status = "disabled";
-		};
+		bootargs = "panic=5 console=tty1 fbcon=rotate:90,font:MINI4x6 console=ttyS0,115200 rootwait root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
 	};
 };
 
@@ -69,6 +58,7 @@
 
 &spi1 {
 	status = "okay";
+	pinctrl-0 = <&spi1_pins>;
 	st7789v@0 {
         status = "okay";
         compatible = "sitronix,st7789v";
