@@ -1,0 +1,71 @@
+From 0f2e522faf31ebe14a42effdb989f0ea45cc76eb Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 20:47:01 +0800
+Subject: [PATCH 08/22] spl: add support for suniv
+
+---
+ common/spl/spl.c     | 19 ++++++++++++++++++-
+ common/spl/spl_mmc.c |  9 +++++++++
+ 2 files changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/common/spl/spl.c b/common/spl/spl.c
+index 0e96a8cd..3af8a89a 100644
+--- a/common/spl/spl.c
++++ b/common/spl/spl.c
+@@ -553,8 +553,25 @@ static int boot_from_devices(struct spl_image_info *spl_image,
+ 
+ 		loader = spl_ll_find_loader(spl_boot_list[i]);
+ #if defined(CONFIG_SPL_SERIAL_SUPPORT) && defined(CONFIG_SPL_LIBCOMMON_SUPPORT)
+-		if (loader)
++		if (loader) {
+ 			printf("Trying to boot from %s\n", loader->name);
++#ifdef CONFIG_MACH_SUNIV
++			switch (spl_boot_list[i]) {
++				case BOOT_DEVICE_MMC1:
++					writeb(0, CONFIG_SUNXI_SRAM_ADDRESS + 0x6fff);
++					break;
++				case BOOT_DEVICE_MMC2:
++					writeb(2, CONFIG_SUNXI_SRAM_ADDRESS + 0x6fff);
++					break;
++				case BOOT_DEVICE_SPI:
++					writeb(3, CONFIG_SUNXI_SRAM_ADDRESS + 0x6fff);
++					break;
++				default:
++					writeb(-1, CONFIG_SUNXI_SRAM_ADDRESS + 0x6fff);
++					break;
++			}
++#endif
++		}
+ 		else
+ 			puts(SPL_TPL_PROMPT "Unsupported Boot Device!\n");
+ #endif
+diff --git a/common/spl/spl_mmc.c b/common/spl/spl_mmc.c
+index add2785b..3f4746ab 100644
+--- a/common/spl/spl_mmc.c
++++ b/common/spl/spl_mmc.c
+@@ -16,6 +16,7 @@
+ #include <errno.h>
+ #include <mmc.h>
+ #include <image.h>
++#include <asm/arch/spl.h>
+ 
+ static int mmc_load_legacy(struct spl_image_info *spl_image, struct mmc *mmc,
+ 			   ulong sector, struct image_header *header)
+@@ -70,6 +71,14 @@ int mmc_load_image_raw_sector(struct spl_image_info *spl_image,
+ 	struct blk_desc *bd = mmc_get_blk_desc(mmc);
+ 	int ret = 0;
+ 
++#ifdef CONFIG_MACH_SUNIV
++	unsigned char *buffer = (unsigned char *)(CONFIG_SYS_TEXT_BASE);
++	count = blk_dread(bd, 16, 1, buffer);
++	if (!is_boot0_magic(buffer + 4)) {
++		return -1;
++	}
++#endif
++
+ 	header = spl_get_load_buffer(-sizeof(*header), bd->blksz);
+ 
+ 	/* read image header to find the image size & load address */
+-- 
+2.17.1
+

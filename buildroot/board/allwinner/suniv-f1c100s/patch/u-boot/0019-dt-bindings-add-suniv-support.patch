@@ -1,0 +1,134 @@
+From bea887b713655ad342cbb46bcfc77cf212655f63 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 22:53:28 +0800
+Subject: [PATCH 19/22] dt-bindings: add suniv support
+
+---
+ include/dt-bindings/clock/suniv-ccu.h | 69 +++++++++++++++++++++++++++
+ include/dt-bindings/reset/suniv-ccu.h | 38 +++++++++++++++
+ 2 files changed, 107 insertions(+)
+ create mode 100644 include/dt-bindings/clock/suniv-ccu.h
+ create mode 100644 include/dt-bindings/reset/suniv-ccu.h
+
+diff --git a/include/dt-bindings/clock/suniv-ccu.h b/include/dt-bindings/clock/suniv-ccu.h
+new file mode 100644
+index 00000000..5aafde25
+--- /dev/null
++++ b/include/dt-bindings/clock/suniv-ccu.h
+@@ -0,0 +1,69 @@
++/*
++ * Copyright (c) 2018 Icenowy Zheng <icenowy@aosc.xyz>
++ *
++ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUNIV_H_
++#define _DT_BINDINGS_CLK_SUNIV_H_
++
++#define CLK_CPU 11
++
++#define CLK_BUS_MMC0 14
++#define CLK_BUS_MMC1 15
++#define CLK_BUS_DRAM 16
++#define CLK_BUS_SPI0 17
++#define CLK_BUS_SPI1 18
++#define CLK_BUS_OTG 19
++#define CLK_BUS_VE 20
++#define CLK_BUS_LCD 21
++#define CLK_BUS_DEINTERLACE 22
++#define CLK_BUS_CSI 23
++#define CLK_BUS_TVD 24
++#define CLK_BUS_TVE 25
++#define CLK_BUS_DE_BE 26
++#define CLK_BUS_DE_FE 27
++#define CLK_BUS_CODEC 28
++#define CLK_BUS_SPDIF 29
++#define CLK_BUS_IR 30
++#define CLK_BUS_RSB 31
++#define CLK_BUS_I2S0 32
++#define CLK_BUS_I2C0 33
++#define CLK_BUS_I2C1 34
++#define CLK_BUS_I2C2 35
++#define CLK_BUS_PIO 36
++#define CLK_BUS_UART0 37
++#define CLK_BUS_UART1 38
++#define CLK_BUS_UART2 39
++
++#define CLK_MMC0 40
++#define CLK_MMC0_SAMPLE 41
++#define CLK_MMC0_OUTPUT 42
++#define CLK_MMC1 43
++#define CLK_MMC1_SAMPLE 44
++#define CLK_MMC1_OUTPUT 45
++#define CLK_I2S 46
++#define CLK_SPDIF 47
++
++#define CLK_USB_PHY0 48
++
++#define CLK_DRAM_VE 49
++#define CLK_DRAM_CSI 50
++#define CLK_DRAM_DEINTERLACE 51
++#define CLK_DRAM_TVD 52
++#define CLK_DRAM_DE_FE 53
++#define CLK_DRAM_DE_BE 54
++
++#define CLK_DE_BE 55
++#define CLK_DE_FE 56
++#define CLK_TCON 57
++#define CLK_DEINTERLACE 58
++#define CLK_TVE2_CLK 59
++#define CLK_TVE1_CLK 60
++#define CLK_TVD 61
++#define CLK_CSI 62
++#define CLK_VE 63
++#define CLK_CODEC 64
++#define CLK_AVS 65
++
++#endif // _DT_BINDINGS_CLK_SUNIV_H_
+diff --git a/include/dt-bindings/reset/suniv-ccu.h b/include/dt-bindings/reset/suniv-ccu.h
+new file mode 100644
+index 00000000..6db29e52
+--- /dev/null
++++ b/include/dt-bindings/reset/suniv-ccu.h
+@@ -0,0 +1,38 @@
++/*
++ * Copyright (C) 2018 Icenowy Zheng <icenowy@aosc.xyz>
++ *
++ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++ */
++
++#ifndef _DT_BINDINGS_RST_SUNIV_H_
++#define _DT_BINDINGS_RST_SUNIV_H_
++
++#define RST_USB_PHY0 0
++#define RST_BUS_DMA 1
++#define RST_BUS_MMC0 2
++#define RST_BUS_MMC1 3
++#define RST_BUS_DRAM 4
++#define RST_BUS_SPI0 5
++#define RST_BUS_SPI1 6
++#define RST_BUS_OTG 7
++#define RST_BUS_VE 8
++#define RST_BUS_LCD 9
++#define RST_BUS_DEINTERLACE 10
++#define RST_BUS_CSI 11
++#define RST_BUS_TVD 12
++#define RST_BUS_TVE 13
++#define RST_BUS_DE_BE 14
++#define RST_BUS_DE_FE 15
++#define RST_BUS_CODEC 16
++#define RST_BUS_SPDIF 17
++#define RST_BUS_IR 18
++#define RST_BUS_RSB 19
++#define RST_BUS_I2S0 20
++#define RST_BUS_I2C0 21
++#define RST_BUS_I2C1 22
++#define RST_BUS_I2C2 23
++#define RST_BUS_UART0 24
++#define RST_BUS_UART1 25
++#define RST_BUS_UART2 26
++
++#endif /* _DT_BINDINGS_RST_SUNIV_H_ */
+-- 
+2.17.1
+

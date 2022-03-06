@@ -11,7 +11,7 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges;
-		bootargs = "panic=5 console=tty1 fbcon=rotate:90,font:MINI4x6 console=ttyS0,115200 rootwait root=/dev/mtdblock2 rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
+		bootargs = "panic=5 console=tty1 fbcon=rotate:90,font:MINI4x6 console=ttyS0,115200 rootwait root=/dev/mtdblock2 rw rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
 	};
 };
 
@@ -45,7 +45,7 @@
 			partition@2 {
 				label = "rootfs";
 				reg = <0x600000 0x700000>;
-				read-only;
+				// read-only;
 			};
 
 			partition@3 {
@@ -92,7 +92,7 @@
 };
 
 &usb_otg {
-	dr_mode = "peripheral"; /* host peripheral */
+	dr_mode = "host"; /* host peripheral */
 	status = "okay";
 };
 

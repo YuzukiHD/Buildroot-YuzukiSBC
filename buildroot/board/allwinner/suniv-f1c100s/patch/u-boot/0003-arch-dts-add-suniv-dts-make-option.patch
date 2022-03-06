@@ -1,0 +1,27 @@
+From 5ebc7687ea034b6f741e64db9c91d10ec6f58e35 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 20:26:15 +0800
+Subject: [PATCH 03/22] arch dts: add suniv dts make option
+
+---
+ arch/arm/dts/Makefile | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 9900b442..4130af76 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -600,6 +600,10 @@ dtb-$(CONFIG_MACH_SUN9I) += \
+ 	sun9i-a80-cubieboard4.dtb \
+ 	sun9i-a80-cx-a99.dtb
+ 
++dtb-$(CONFIG_MACH_SUNIV) += \
++	suniv-f1c100s-generic.dtb \
++	suniv-f1c200s-generic.dtb
++
+ dtb-$(CONFIG_VF610) += vf500-colibri.dtb \
+ 	vf610-colibri.dtb \
+ 	vf610-twr.dtb \
+-- 
+2.17.1
+

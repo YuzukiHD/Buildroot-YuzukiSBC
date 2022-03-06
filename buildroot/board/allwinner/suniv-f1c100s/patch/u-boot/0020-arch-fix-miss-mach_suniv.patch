@@ -1,0 +1,71 @@
+From c446dbc880a47e5488ae4bb267d18dca72d978e0 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 23:07:06 +0800
+Subject: [PATCH 20/22] arch: fix miss mach_suniv
+
+---
+ arch/arm/mach-sunxi/Kconfig | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index 3e0c529c..015fd59a 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -151,6 +151,12 @@ choice
+ 	prompt "Sunxi SoC Variant"
+ 	optional
+ 
++config MACH_SUNIV
++	bool "suniv (Allwinner F1C100s/F1C200s/F1C600/R6)"
++	select CPU_ARM926EJS
++	select SUNXI_GEN_SUN6I
++	select SUPPORT_SPL
++
+ config MACH_SUN4I
+ 	bool "sun4i (Allwinner A10)"
+ 	select CPU_V7A
+@@ -535,6 +541,7 @@ config DRAM_ODT_CORRECTION
+ endif
+ 
+ config SYS_CLK_FREQ
++	default 408000000 if MACH_SUNIV
+ 	default 1008000000 if MACH_SUN4I
+ 	default 1008000000 if MACH_SUN5I
+ 	default 1008000000 if MACH_SUN6I
+@@ -545,6 +552,7 @@ config SYS_CLK_FREQ
+ 	default 888000000 if MACH_SUN50I_H6
+ 
+ config SYS_CONFIG_NAME
++	default "suniv" if MACH_SUNIV
+ 	default "sun4i" if MACH_SUN4I
+ 	default "sun5i" if MACH_SUN5I
+ 	default "sun6i" if MACH_SUN6I
+@@ -769,7 +777,7 @@ config VIDEO_SUNXI
+ 
+ config VIDEO_HDMI
+ 	bool "HDMI output support"
+-	depends on VIDEO_SUNXI && !MACH_SUN8I
++	depends on VIDEO_SUNXI && !MACH_SUN8I && !MACH_SUNIV
+ 	default y
+ 	---help---
+ 	Say Y here to add support for outputting video over HDMI.
+@@ -984,6 +992,7 @@ config GMAC_TX_DELAY
+ 	Set the GMAC Transmit Clock Delay Chain value.
+ 
+ config SPL_STACK_R_ADDR
++	default 0x81e00000 if MACH_SUNIV
+ 	default 0x4fe00000 if MACH_SUN4I
+ 	default 0x4fe00000 if MACH_SUN5I
+ 	default 0x4fe00000 if MACH_SUN6I
+@@ -995,7 +1004,7 @@ config SPL_STACK_R_ADDR
+ 
+ config SPL_SPI_SUNXI
+ 	bool "Support for SPI Flash on Allwinner SoCs in SPL"
+-	depends on MACH_SUN4I || MACH_SUN5I || MACH_SUN7I || MACH_SUNXI_H3_H5 || MACH_SUN50I || MACH_SUN8I_R40 || MACH_SUN50I_H6
++	depends on MACH_SUN4I || MACH_SUN5I || MACH_SUN7I || MACH_SUNXI_H3_H5 || MACH_SUN50I || MACH_SUN8I_R40 || MACH_SUN50I_H6 || MACH_SUNIV
+ 	help
+ 	  Enable support for SPI Flash. This option allows SPL to read from
+ 	  sunxi SPI Flash. It uses the same method as the boot ROM, so does
+-- 
+2.17.1
+
