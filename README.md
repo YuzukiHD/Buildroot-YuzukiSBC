@@ -1,7 +1,7 @@
 # Buildroot Package for Allwinner SIPs For YuzukiHD Devices
 Open Source development package for Allwinner F1C100s & F1C200s
 
-[![Sync To Gitee](https://github.com/YuzukiHD/Buildroot-YuzukiSBC/actions/workflows/main.yml/badge.svg)](https://github.com/YuzukiHD/Buildroot-YuzukiSBC/actions/workflows/main.yml)
+Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC | [![Sync To Gitee](https://github.com/YuzukiHD/Buildroot-YuzukiSBC/actions/workflows/main.yml/badge.svg)](https://github.com/YuzukiHD/Buildroot-YuzukiSBC/actions/workflows/main.yml)
 
 [![forthebadge](https://forthebadge.com/images/badges/contains-cat-gifs.svg)](https://forthebadge.com)
 [![forthebadge](https://forthebadge.com/images/badges/compatibility-betamax.svg)](https://forthebadge.com)
