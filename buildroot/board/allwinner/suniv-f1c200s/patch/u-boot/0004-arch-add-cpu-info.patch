@@ -1,0 +1,25 @@
+From 7da6ca7d240a8d057fda6d02c9fc683f09b067d9 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 20:35:19 +0800
+Subject: [PATCH 04/22] arch: add cpu info
+
+---
+ arch/arm/mach-sunxi/cpu_info.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm/mach-sunxi/cpu_info.c b/arch/arm/mach-sunxi/cpu_info.c
+index 875e5a1a..803b849f 100644
+--- a/arch/arm/mach-sunxi/cpu_info.c
++++ b/arch/arm/mach-sunxi/cpu_info.c
+@@ -57,6 +57,8 @@ int print_cpuinfo(void)
+ {
+ #ifdef CONFIG_MACH_SUN4I
+ 	puts("CPU:   Allwinner A10 (SUN4I)\n");
++#elif defined CONFIG_MACH_SUNIV
++	puts("CPU:   Allwinner F Series (SUNIV)\n");
+ #elif defined CONFIG_MACH_SUN5I
+ 	u32 val = readl(SUNXI_SID_BASE + 0x08);
+ 	switch ((val >> 12) & 0xf) {
+-- 
+2.17.1
+

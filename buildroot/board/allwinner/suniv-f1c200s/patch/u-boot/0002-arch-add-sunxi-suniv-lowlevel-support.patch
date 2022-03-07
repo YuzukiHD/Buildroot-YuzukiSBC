@@ -1,0 +1,373 @@
+From 6a8a07dfbd50b07557753e2ab6d63f9b3978842f Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 20:24:00 +0800
+Subject: [PATCH 02/22] arch: add sunxi suniv lowlevel support
+
+---
+ arch/arm/cpu/arm926ejs/sunxi/Makefile        |  16 +++
+ arch/arm/cpu/arm926ejs/sunxi/config.mk       |   6 +
+ arch/arm/cpu/arm926ejs/sunxi/fel_utils.S     |  38 +++++++
+ arch/arm/cpu/arm926ejs/sunxi/lowlevel_init.S |  68 +++++++++++
+ arch/arm/cpu/arm926ejs/sunxi/start.c         |   1 +
+ arch/arm/cpu/arm926ejs/sunxi/timer.c         | 113 +++++++++++++++++++
+ arch/arm/cpu/arm926ejs/sunxi/u-boot-spl.lds  |  64 +++++++++++
+ 7 files changed, 306 insertions(+)
+ create mode 100644 arch/arm/cpu/arm926ejs/sunxi/Makefile
+ create mode 100644 arch/arm/cpu/arm926ejs/sunxi/config.mk
+ create mode 100644 arch/arm/cpu/arm926ejs/sunxi/fel_utils.S
+ create mode 100644 arch/arm/cpu/arm926ejs/sunxi/lowlevel_init.S
+ create mode 100644 arch/arm/cpu/arm926ejs/sunxi/start.c
+ create mode 100644 arch/arm/cpu/arm926ejs/sunxi/timer.c
+ create mode 100644 arch/arm/cpu/arm926ejs/sunxi/u-boot-spl.lds
+
+diff --git a/arch/arm/cpu/arm926ejs/sunxi/Makefile b/arch/arm/cpu/arm926ejs/sunxi/Makefile
+new file mode 100644
+index 00000000..61b9864f
+--- /dev/null
++++ b/arch/arm/cpu/arm926ejs/sunxi/Makefile
+@@ -0,0 +1,16 @@
++#
++# (C) Copyright 2012 Henrik Nordstrom <henrik@henriknordstrom.net>
++#
++# Based on some other Makefile
++# (C) Copyright 2000-2003
++# Wolfgang Denk, DENX Software Engineering, wd@denx.de.
++#
++# SPDX-License-Identifier:	GPL-2.0+
++#
++obj-y	+= timer.o
++obj-y	+= lowlevel_init.o
++
++ifdef CONFIG_SPL_BUILD
++obj-y	+= fel_utils.o
++CFLAGS_fel_utils.o := -marm
++endif
+diff --git a/arch/arm/cpu/arm926ejs/sunxi/config.mk b/arch/arm/cpu/arm926ejs/sunxi/config.mk
+new file mode 100644
+index 00000000..76ffec9d
+--- /dev/null
++++ b/arch/arm/cpu/arm926ejs/sunxi/config.mk
+@@ -0,0 +1,6 @@
++# Build a combined spl + u-boot image
++ifdef CONFIG_SPL
++ifndef CONFIG_SPL_BUILD
++ALL-y += u-boot-sunxi-with-spl.bin
++endif
++endif
+diff --git a/arch/arm/cpu/arm926ejs/sunxi/fel_utils.S b/arch/arm/cpu/arm926ejs/sunxi/fel_utils.S
+new file mode 100644
+index 00000000..ca913770
+--- /dev/null
++++ b/arch/arm/cpu/arm926ejs/sunxi/fel_utils.S
+@@ -0,0 +1,38 @@
++/*
++ * Utility functions for FEL mode.
++ *
++ * Copyright (c) 2015 Google, Inc
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <asm-offsets.h>
++#include <config.h>
++#include <asm/system.h>
++#include <linux/linkage.h>
++
++ENTRY(save_boot_params)
++	ldr	r0, =fel_stash
++	str	sp, [r0, #0]
++	str	lr, [r0, #4]
++	mrs	lr, cpsr		@ Read CPSR
++	str	lr, [r0, #8]
++	mrc	p15, 0, lr, c1, c0, 0	@ Read CP15 SCTLR Register
++	str	lr, [r0, #12]
++	mrc	p15, 0, lr, c1, c0, 0	@ Read CP15 Control Register
++	str	lr, [r0, #16]
++	b	save_boot_params_ret
++ENDPROC(save_boot_params)
++
++ENTRY(return_to_fel)
++	mov	sp, r0
++	mov	lr, r1
++	ldr	r0, =fel_stash
++	ldr	r1, [r0, #16]
++	mcr	p15, 0, r1, c1, c0, 0	@ Write CP15 Control Register
++	ldr	r1, [r0, #12]
++	mcr	p15, 0, r1, c1, c0, 0	@ Write CP15 SCTLR Register
++	ldr	r1, [r0, #8]
++	msr	cpsr, r1		@ Write CPSR
++	bx	lr
++ENDPROC(return_to_fel)
+diff --git a/arch/arm/cpu/arm926ejs/sunxi/lowlevel_init.S b/arch/arm/cpu/arm926ejs/sunxi/lowlevel_init.S
+new file mode 100644
+index 00000000..2bfd9070
+--- /dev/null
++++ b/arch/arm/cpu/arm926ejs/sunxi/lowlevel_init.S
+@@ -0,0 +1,68 @@
++/*
++ * A lowlevel_init function that sets up the stack to call a C function to
++ * perform further init.
++ *
++ * Based on lowlevel_init.S in armv7 directory, which is:
++ *   (C) Copyright 2010 Texas Instruments, <www.ti.com>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <asm-offsets.h>
++#include <config.h>
++#include <linux/linkage.h>
++
++.pushsection .text.s_init, "ax"
++WEAK(s_init)
++	bx	lr
++ENDPROC(s_init)
++.popsection
++
++.pushsection .text.lowlevel_init, "ax"
++WEAK(lowlevel_init)
++	/*
++	 * Setup a temporary stack. Global data is not available yet.
++	 */
++#if defined(CONFIG_SPL_BUILD) && defined(CONFIG_SPL_STACK)
++	ldr	sp, =CONFIG_SPL_STACK
++#else
++	ldr	sp, =CONFIG_SYS_INIT_SP_ADDR
++#endif
++	bic	sp, sp, #7 /* 8-byte alignment for ABI compliance */
++#ifdef CONFIG_SPL_DM
++	mov	r9, #0
++#else
++	/*
++	 * Set up global data for boards that still need it. This will be
++	 * removed soon.
++	 */
++#ifdef CONFIG_SPL_BUILD
++	ldr	r9, =gdata
++#else
++	sub	sp, sp, #GD_SIZE
++	bic	sp, sp, #7
++	mov	r9, sp
++#endif
++#endif
++	/*
++	 * Save the old lr(passed in ip) and the current lr to stack
++	 */
++	push	{ip, lr}
++
++	/*
++	 * Call the very early init function. This should do only the
++	 * absolute bare minimum to get started. It should not:
++	 *
++	 * - set up DRAM
++	 * - use global_data
++	 * - clear BSS
++	 * - try to start a console
++	 *
++	 * For boards with SPL this should be empty since SPL can do all of
++	 * this init in the SPL board_init_f() function which is called
++	 * immediately after this.
++	 */
++	bl	s_init
++	pop	{ip, pc}
++ENDPROC(lowlevel_init)
++.popsection
+diff --git a/arch/arm/cpu/arm926ejs/sunxi/start.c b/arch/arm/cpu/arm926ejs/sunxi/start.c
+new file mode 100644
+index 00000000..6b392fa8
+--- /dev/null
++++ b/arch/arm/cpu/arm926ejs/sunxi/start.c
+@@ -0,0 +1 @@
++/* Intentionally empty. Only needed to get FEL SPL link line right */
+diff --git a/arch/arm/cpu/arm926ejs/sunxi/timer.c b/arch/arm/cpu/arm926ejs/sunxi/timer.c
+new file mode 100644
+index 00000000..6375285f
+--- /dev/null
++++ b/arch/arm/cpu/arm926ejs/sunxi/timer.c
+@@ -0,0 +1,113 @@
++/*
++ * (C) Copyright 2007-2011
++ * Allwinner Technology Co., Ltd. <www.allwinnertech.com>
++ * Tom Cubie <tangliang@allwinnertech.com>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <asm/io.h>
++#include <asm/arch/timer.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++#define TIMER_MODE   (0x0 << 7)	/* continuous mode */
++#define TIMER_DIV    (0x0 << 4)	/* pre scale 1 */
++#define TIMER_SRC    (0x1 << 2)	/* osc24m */
++#define TIMER_RELOAD (0x1 << 1)	/* reload internal value */
++#define TIMER_EN     (0x1 << 0)	/* enable timer */
++
++#define TIMER_CLOCK		(24 * 1000 * 1000)
++#define COUNT_TO_USEC(x)	((x) / 24)
++#define USEC_TO_COUNT(x)	((x) * 24)
++#define TICKS_PER_HZ		(TIMER_CLOCK / CONFIG_SYS_HZ)
++#define TICKS_TO_HZ(x)		((x) / TICKS_PER_HZ)
++
++#define TIMER_LOAD_VAL		0xffffffff
++
++#define TIMER_NUM		0	/* we use timer 0 */
++
++/* read the 32-bit timer */
++static ulong read_timer(void)
++{
++	struct sunxi_timer_reg *timers =
++		(struct sunxi_timer_reg *)SUNXI_TIMER_BASE;
++	struct sunxi_timer *timer = &timers->timer[TIMER_NUM];
++
++	/*
++	 * The hardware timer counts down, therefore we invert to
++	 * produce an incrementing timer.
++	 */
++	return ~readl(&timer->val);
++}
++
++/* init timer register */
++int timer_init(void)
++{
++	struct sunxi_timer_reg *timers =
++		(struct sunxi_timer_reg *)SUNXI_TIMER_BASE;
++	struct sunxi_timer *timer = &timers->timer[TIMER_NUM];
++	writel(TIMER_LOAD_VAL, &timer->inter);
++	writel(TIMER_MODE | TIMER_DIV | TIMER_SRC | TIMER_RELOAD | TIMER_EN,
++	       &timer->ctl);
++
++	return 0;
++}
++
++ulong get_timer_masked(void)
++{
++	/* current tick value */
++	ulong now = TICKS_TO_HZ(read_timer());
++
++	if (now >= gd->arch.lastinc)	/* normal (non rollover) */
++		gd->arch.tbl += (now - gd->arch.lastinc);
++	else {
++		/* rollover */
++		gd->arch.tbl += (TICKS_TO_HZ(TIMER_LOAD_VAL)
++				- gd->arch.lastinc) + now;
++	}
++	gd->arch.lastinc = now;
++
++	return gd->arch.tbl;
++}
++
++/* timer without interrupts */
++ulong get_timer(ulong base)
++{
++	return get_timer_masked() - base;
++}
++
++/* delay x useconds */
++void __udelay(unsigned long usec)
++{
++	long tmo = USEC_TO_COUNT(usec);
++	ulong now, last = read_timer();
++
++	while (tmo > 0) {
++		now = read_timer();
++		if (now > last)	/* normal (non rollover) */
++			tmo -= now - last;
++		else		/* rollover */
++			tmo -= TIMER_LOAD_VAL - last + now;
++		last = now;
++	}
++}
++
++/*
++ * This function is derived from PowerPC code (read timebase as long long).
++ * On ARM it just returns the timer value.
++ */
++unsigned long long get_ticks(void)
++{
++	return get_timer(0);
++}
++
++/*
++ * This function is derived from PowerPC code (timebase clock frequency).
++ * On ARM it returns the number of timer ticks per second.
++ */
++ulong get_tbclk(void)
++{
++	return CONFIG_SYS_HZ;
++}
+diff --git a/arch/arm/cpu/arm926ejs/sunxi/u-boot-spl.lds b/arch/arm/cpu/arm926ejs/sunxi/u-boot-spl.lds
+new file mode 100644
+index 00000000..f17bac52
+--- /dev/null
++++ b/arch/arm/cpu/arm926ejs/sunxi/u-boot-spl.lds
+@@ -0,0 +1,64 @@
++/*
++ * (C) Copyright 2018
++ * Icenowy Zheng <icenowy@aosc.io>
++ *
++ * Based on arch/arm/cpu/armv7/sunxi/u-boot-spl.lds:
++ *
++ * (C) Copyright 2012
++ * Allwinner Technology Co., Ltd. <www.allwinnertech.com>
++ * Tom Cubie <tangliang@allwinnertech.com>
++ *
++ * Based on omap-common/u-boot-spl.lds:
++ *
++ * (C) Copyright 2002
++ * Gary Jennejohn, DENX Software Engineering, <garyj@denx.de>
++ *
++ * (C) Copyright 2010
++ * Texas Instruments, <www.ti.com>
++ *	Aneesh V <aneesh@ti.com>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++MEMORY { .sram : ORIGIN = CONFIG_SPL_TEXT_BASE,\
++		LENGTH = CONFIG_SPL_MAX_SIZE }
++MEMORY { .sdram : ORIGIN = CONFIG_SPL_BSS_START_ADDR, \
++		LENGTH = CONFIG_SPL_BSS_MAX_SIZE }
++
++OUTPUT_FORMAT("elf32-littlearm", "elf32-littlearm", "elf32-littlearm")
++OUTPUT_ARCH(arm)
++ENTRY(_start)
++SECTIONS
++{
++	.text      :
++	{
++		__start = .;
++		*(.vectors)
++		arch/arm/cpu/arm926ejs/start.o	(.text)
++		*(.text*)
++	} > .sram
++
++	. = ALIGN(4);
++	.rodata : { *(SORT_BY_ALIGNMENT(.rodata*)) } >.sram
++
++	. = ALIGN(4);
++	.data : { *(SORT_BY_ALIGNMENT(.data*)) } >.sram
++
++	. = ALIGN(4);
++	.u_boot_list : {
++		KEEP(*(SORT(.u_boot_list*)));
++	} > .sram
++
++	. = ALIGN(4);
++	__image_copy_end = .;
++	_end = .;
++
++	.bss :
++	{
++		. = ALIGN(4);
++		__bss_start = .;
++		*(.bss*)
++		. = ALIGN(4);
++		__bss_end = .;
++	} > .sdram
++}
+-- 
+2.17.1
+

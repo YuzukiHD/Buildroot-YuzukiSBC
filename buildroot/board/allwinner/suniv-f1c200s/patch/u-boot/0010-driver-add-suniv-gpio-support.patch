@@ -1,0 +1,24 @@
+From 03767c9276a5ec548ce923adae532209a63a355a Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 22:41:16 +0800
+Subject: [PATCH 10/22] driver: add suniv gpio support
+
+---
+ drivers/gpio/sunxi_gpio.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/gpio/sunxi_gpio.c b/drivers/gpio/sunxi_gpio.c
+index 9c3a4428..68418aa5 100644
+--- a/drivers/gpio/sunxi_gpio.c
++++ b/drivers/gpio/sunxi_gpio.c
+@@ -362,6 +362,7 @@ static const struct udevice_id sunxi_gpio_ids[] = {
+ 	ID("allwinner,sun9i-a80-r-pinctrl",	l_3),
+ 	ID("allwinner,sun50i-a64-r-pinctrl",	l_1),
+ 	ID("allwinner,sun50i-h6-r-pinctrl",	l_2),
++	ID("allwinner,suniv-pinctrl",	a_all),
+ 	{ }
+ };
+ 
+-- 
+2.17.1
+

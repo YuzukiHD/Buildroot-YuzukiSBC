@@ -1,0 +1,32 @@
+From 72699a743d9f8dac760be0815ef429b0c883fa6b Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 20:42:23 +0800
+Subject: [PATCH 07/22] common spl: address of u-boot payload in SPI NAND flash
+
+---
+ common/spl/Kconfig | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/common/spl/Kconfig b/common/spl/Kconfig
+index 8ece9057..d0555024 100644
+--- a/common/spl/Kconfig
++++ b/common/spl/Kconfig
+@@ -1093,6 +1093,15 @@ config SYS_SPI_U_BOOT_OFFS
+ 	 Address within SPI-Flash from where the u-boot payload is fetched
+ 	 from.
+ 
++config SYS_SPI_NAND_U_BOOT_OFFS
++	hex "address of u-boot payload in SPI NAND flash"
++	default 0xd000 if ARCH_SUNXI
++	default 0x0
++	depends on SPL_SPI_LOAD || SPL_SPI_SUNXI
++	help
++	 Address within SPI-NAND Flash from where the u-boot payload is fetched
++	 from.
++
+ config SPL_THERMAL
+ 	bool "Driver support for thermal devices"
+ 	help
+-- 
+2.17.1
+

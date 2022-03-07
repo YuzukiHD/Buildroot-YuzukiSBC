@@ -1,0 +1,59 @@
+From ebe2cf125bfb7bf76efa1b8d838c26f075bd69b1 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 22:45:12 +0800
+Subject: [PATCH 12/22] driver: mtd nand fix bad eccinfo
+
+---
+ drivers/mtd/nand/spi/core.c | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/mtd/nand/spi/core.c b/drivers/mtd/nand/spi/core.c
+index 93371fdd..a3a5daa1 100644
+--- a/drivers/mtd/nand/spi/core.c
++++ b/drivers/mtd/nand/spi/core.c
+@@ -654,6 +654,8 @@ static int spinand_mtd_write(struct mtd_info *mtd, loff_t to,
+ 
+ static bool spinand_isbad(struct nand_device *nand, const struct nand_pos *pos)
+ {
++	struct mtd_oob_region region;
++	int i;
+ 	struct spinand_device *spinand = nand_to_spinand(nand);
+ 	struct nand_page_io_req req = {
+ 		.pos = *pos,
+@@ -673,8 +675,12 @@ static bool spinand_isbad(struct nand_device *nand, const struct nand_pos *pos)
+ 	if (ret)
+ 		return ret;
+ 
+-	if (spinand->oobbuf[0] != 0xff || spinand->oobbuf[1] != 0xff)
+-		return true;
++	spinand->eccinfo.ooblayout->rfree(spinand->base.mtd, 0, &region);
++
++	for(i = 0 ; i < req.ooblen && i < region.offset; i++){
++		if (spinand->oobbuf[i] != 0xff)
++			return true;
++	}
+ 
+ 	return false;
+ }
+@@ -709,6 +715,7 @@ static int spinand_markbad(struct nand_device *nand, const struct nand_pos *pos)
+ 		.oobbuf.out = spinand->oobbuf,
+ 	};
+ 	int ret;
++	struct mtd_oob_region region;
+ 
+ 	/* Erase block before marking it bad. */
+ 	ret = spinand_select_target(spinand, pos->target);
+@@ -724,6 +731,10 @@ static int spinand_markbad(struct nand_device *nand, const struct nand_pos *pos)
+ 		return ret;
+ 
+ 	memset(spinand->oobbuf, 0, 2);
++
++	spinand->eccinfo.ooblayout->rfree(spinand->base.mtd, 0, &region);
++	req.ooblen = region.offset < req.ooblen ? region.offset : req.ooblen;
++
+ 	return spinand_write_page(spinand, &req);
+ }
+ 
+-- 
+2.17.1
+

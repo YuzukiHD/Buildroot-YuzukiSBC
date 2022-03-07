@@ -1,0 +1,50 @@
+From 7e0c8c304b4e05b631a1e6c6ddc6cd56c5e84919 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 6 Mar 2022 22:43:47 +0800
+Subject: [PATCH 11/22] driver: add mmc support for suniv
+
+---
+ drivers/mmc/Kconfig     | 2 +-
+ drivers/mmc/sunxi_mmc.c | 6 +++++-
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/mmc/Kconfig b/drivers/mmc/Kconfig
+index 8f56572c..97ecaff8 100644
+--- a/drivers/mmc/Kconfig
++++ b/drivers/mmc/Kconfig
+@@ -665,7 +665,7 @@ config ZYNQ_HISPD_BROKEN
+ 
+ config MMC_SUNXI
+ 	bool "Allwinner sunxi SD/MMC Host Controller support"
+-	depends on ARCH_SUNXI && !UART0_PORT_F
++	depends on ARCH_SUNXI
+ 	default y
+ 	help
+ 	  This selects support for the SD/MMC Host Controller on
+diff --git a/drivers/mmc/sunxi_mmc.c b/drivers/mmc/sunxi_mmc.c
+index 0e03b07c..39a12c73 100644
+--- a/drivers/mmc/sunxi_mmc.c
++++ b/drivers/mmc/sunxi_mmc.c
+@@ -630,7 +630,7 @@ static int sunxi_mmc_probe(struct udevice *dev)
+ 	cfg->b_max = CONFIG_SYS_MMC_MAX_BLK_COUNT;
+ 
+ 	cfg->f_min = 400000;
+-	cfg->f_max = 52000000;
++	cfg->f_max = dev_read_u32_default(dev, "max-speed", 52000000);
+ 
+ 	priv->reg = (void *)dev_read_addr(dev);
+ 	priv->variant =
+@@ -700,6 +700,10 @@ static const struct sunxi_mmc_variant sun50i_h6_variant = {
+ };
+ 
+ static const struct udevice_id sunxi_mmc_ids[] = {
++	{
++	  .compatible = "allwinner,suniv-f1c100s-mmc",
++	  .data = (ulong)&sun4i_a10_variant,
++	},
+ 	{
+ 	  .compatible = "allwinner,sun4i-a10-mmc",
+ 	  .data = (ulong)&sun4i_a10_variant,
+-- 
+2.17.1
+
