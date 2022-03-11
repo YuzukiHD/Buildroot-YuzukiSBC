@@ -26,7 +26,7 @@
   - MMC 1
   - SPI NOR
   - SPI NAND
-- TFCard Firmware Downloader
+- TFCard Firmware Downloaderu
   - SPI NOR
   - SPI NAND
 
@@ -75,7 +75,7 @@ make YuzukiHD_YuzukiRuler_defconfig
 make
 ```
 
-### If changed DTS or kenrel build
+### If changed DTS or kernel build
 ```shell
 ./rebuild-kernel.sh
 ```
