@@ -14,6 +14,9 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
   - YuzukiRuler
   - YuzukiCore F1
 
+- AWOL
+  - Nezha
+
 - Sipeed
   - Lichee Nano
 
