@@ -1,9 +1,9 @@
 BR2_riscv=y
-BR2_GLOBAL_PATCH_DIR="board/nezha/patches"
+BR2_GLOBAL_PATCH_DIR="board/aw-ol/nezha/patch"
 BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_5_14=y
 BR2_ROOTFS_OVERLAY="board/nezha/overlay"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="support/scripts/genimage.sh"
-BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/nezha/genimage.cfg"
+BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/aw-ol/nezha/genimage.cfg"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
 BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="$(call github,smaeul,linux,012f5a3d01be6d44e32c74bb3637ec281790b297)/linux-012f5a3d01be6d44e32c74bb3637ec281790b297.tar.gz"
