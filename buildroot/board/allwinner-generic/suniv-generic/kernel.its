@@ -22,7 +22,7 @@
 
         fdt@0 {
             description = "Flattened Device Tree blob";
-            data = /incbin/("suniv-f1c200s-linux.dtb");
+            data = /incbin/("suniv-linux.dtb");
             type = "flat_dt";
             arch = "arm";
             compression = "none";

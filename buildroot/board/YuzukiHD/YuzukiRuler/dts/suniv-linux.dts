@@ -106,12 +106,12 @@
         status = "okay";
         compatible = "sitronix,st7789v";
         reg = <0>;
-        spi-max-frequency = <32000000>;
+        spi-max-frequency = <50000000>;
         rotate = <90>;
         spi-cpol;
         spi-cpha;
         rgb;
-        fps = <30>;
+        fps = <60>;
         buswidth = <8>;
         reset = <&pio 4 7 GPIO_ACTIVE_LOW>;
         dc = <&pio 4 10 GPIO_ACTIVE_LOW>;
