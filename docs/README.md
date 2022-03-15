@@ -1,45 +1,13 @@
 <h1 align="center">Buildroot for YuzukiSBC</h1>
-<p align="center">Open Source development package for for YuzukiHD Boards</p>
+<p align="center">Open Source development package for for YuzukiHD Boards and more boards</p>
 
-# About
+# Support Lists
+| Provider | Device      | Chip    | U-Boot  | Linux   |
+| -------- | ----------- | ------- | ------- | ------- |
+| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 |
+| Sipeed   | lichee-nano | F1C100s | 2020.07 | 5.4.180 |
 
 
-
-# Driver Support
-
-## Support Lists
-### Boot Device:
-- MMC 0
-- MMC 1
-- SPI NOR Flash
-- SPI NAND Flash
-
-### U-Boot Driver:
-- Basic LCD
-- GPIO Backlight
-- SF Devices
-- MTD Devices
-- USB Peripheral
-- UMS USB Mass Storage Drive Emulator
-- DFU Firmware Downloader
-  - MMC 0
-  - MMC 1
-  - SPI NOR
-  - SPI NAND
-- TFCard Firmware Downloaderu
-  - SPI NOR
-  - SPI NAND
-
-### Linux Driver:
-- Simple Peripheral: GPIO, SPI, UART, IIC, SDIO, PWM
-- DMA Controller
-- Audio Codec: Playback, Mic-IN
-- USB: OTG Mode, Peripheral Mode, Host Mode
-- DVP Camera: OV2640, OV5640
-- Display Engine: Frontend, Backend, TCON
-- Keypad ADC
-- AW9523B GPIO Expender
-- X-Powers AXP199 PMIC
 
 # Install
 
