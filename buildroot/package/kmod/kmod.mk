@@ -4,18 +4,18 @@
 #
 ################################################################################
 
-KMOD_VERSION = 26
+KMOD_VERSION = 29
 KMOD_SOURCE = kmod-$(KMOD_VERSION).tar.xz
 KMOD_SITE = $(BR2_KERNEL_MIRROR)/linux/utils/kernel/kmod
 KMOD_INSTALL_STAGING = YES
-# 0002-Do-not-check-for-undefined-symbols-when-building-the.patch
-KMOD_AUTORECONF = YES
 KMOD_DEPENDENCIES = host-pkgconf
 HOST_KMOD_DEPENDENCIES = host-pkgconf
 
 # license info for libkmod only, conditionally add more below
 KMOD_LICENSE = LGPL-2.1+ (library)
 KMOD_LICENSE_FILES = libkmod/COPYING
+
+KMOD_CPE_ID_VENDOR = kernel
 
 # --gc-sections triggers binutils ld segfault
 # https://sourceware.org/bugzilla/show_bug.cgi?id=21180
@@ -37,15 +37,33 @@ endif
 ifeq ($(BR2_PACKAGE_ZLIB),y)
 KMOD_DEPENDENCIES += zlib
 KMOD_CONF_OPTS += --with-zlib
+else
+KMOD_CONF_OPTS += --without-zlib
+endif
+
+ifeq ($(BR2_PACKAGE_ZSTD),y)
+KMOD_DEPENDENCIES += zstd
+KMOD_CONF_OPTS += --with-zstd
+else
+KMOD_CONF_OPTS += --without-zstd
 endif
 
 ifeq ($(BR2_PACKAGE_XZ),y)
 KMOD_DEPENDENCIES += xz
 KMOD_CONF_OPTS += --with-xz
+else
+KMOD_CONF_OPTS += --without-xz
 endif
 
-ifeq ($(BR2_PACKAGE_PYTHON)$(BR2_PACKAGE_PYTHON3),y)
-KMOD_DEPENDENCIES += $(if $(BR2_PACKAGE_PYTHON),python,python3)
+ifeq ($(BR2_PACKAGE_OPENSSL),y)
+KMOD_DEPENDENCIES += openssl
+KMOD_CONF_OPTS += --with-openssl
+else
+KMOD_CONF_OPTS += --without-openssl
+endif
+
+ifeq ($(BR2_PACKAGE_PYTHON3),y)
+KMOD_DEPENDENCIES += python3
 KMOD_CONF_OPTS += --enable-python
 endif
 
@@ -71,6 +89,27 @@ endef
 KMOD_POST_INSTALL_TARGET_HOOKS += KMOD_INSTALL_TOOLS
 else
 KMOD_CONF_OPTS += --disable-tools
+endif
+
+ifeq ($(BR2_PACKAGE_HOST_KMOD_GZ),y)
+HOST_KMOD_DEPENDENCIES += host-zlib
+HOST_KMOD_CONF_OPTS += --with-zlib
+else
+HOST_KMOD_CONF_OPTS += --without-zlib
+endif
+
+ifeq ($(BR2_PACKAGE_HOST_KMOD_ZSTD),y)
+HOST_KMOD_DEPENDENCIES += host-zstd
+HOST_KMOD_CONF_OPTS += --with-zstd
+else
+HOST_KMOD_CONF_OPTS += --without-zstd
+endif
+
+ifeq ($(BR2_PACKAGE_HOST_KMOD_XZ),y)
+HOST_KMOD_DEPENDENCIES += host-xz
+HOST_KMOD_CONF_OPTS += --with-xz
+else
+HOST_KMOD_CONF_OPTS += --without-xz
 endif
 
 # We only install depmod, since that's the only tool used for the

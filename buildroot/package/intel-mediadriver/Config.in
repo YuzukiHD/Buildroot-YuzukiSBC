@@ -6,12 +6,10 @@ config BR2_PACKAGE_INTEL_MEDIADRIVER
 	depends on BR2_TOOLCHAIN_HAS_SYNC_1 # mesa3d
 	depends on BR2_TOOLCHAIN_HAS_THREADS # libva
 	depends on BR2_TOOLCHAIN_HAS_THREADS_NPTL # mesa3d
-	depends on BR2_PACKAGE_XORG7
 	select BR2_PACKAGE_INTEL_GMMLIB
 	select BR2_PACKAGE_LIBPCIACCESS
 	select BR2_PACKAGE_LIBVA
 	select BR2_PACKAGE_MESA3D
-	select BR2_PACKAGE_XLIB_LIBX11
 	help
 	  The Intel(R) Media Driver for VAAPI is a new VA-API (Video
 	  Acceleration API) user mode driver supporting hardware
@@ -20,9 +18,15 @@ config BR2_PACKAGE_INTEL_MEDIADRIVER
 
 	  https://github.com/intel/media-driver
 
-comment "intel-mediadriver needs X.org"
-	depends on BR2_x86_64 && BR2_TOOLCHAIN_HAS_SYNC_1
-	depends on !BR2_PACKAGE_XORG7
+if BR2_PACKAGE_INTEL_MEDIADRIVER
+
+config BR2_PACKAGE_INTEL_MEDIADRIVER_GEN8
+	bool "Gen8 support"
+	default y
+	help
+	  Enable support for Gen8 GPUs (Coffee Lake)
+
+endif # BR2_PACKAGE_INTEL_MEDIADRIVER
 
 comment "intel-mediadriver needs a toolchain w/ dynamic library, C++, NPTL"
 	depends on BR2_x86_64 && BR2_TOOLCHAIN_HAS_SYNC_1

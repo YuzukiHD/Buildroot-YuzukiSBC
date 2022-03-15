@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-PCM_TOOLS_VERSION = 201812
+PCM_TOOLS_VERSION = 202110
 PCM_TOOLS_SITE = $(call github,opcm,pcm,$(PCM_TOOLS_VERSION))
 PCM_TOOLS_LICENSE = BSD-3-Clause
 PCM_TOOLS_LICENSE_FILES = LICENSE
@@ -16,8 +16,9 @@ PCM_TOOLS_EXE_FILES = \
 define PCM_TOOLS_BUILD_CMDS
 	touch $(@D)/daemon-binaries
 	$(TARGET_MAKE_ENV) $(MAKE) $(TARGET_CONFIGURE_OPTS) -C $(@D) \
-		CXXFLAGS="$(TARGET_CXXFLAGS) -std=c++11" \
-		UNAME=Linux HOST=_LINUX
+		CXXFLAGS="$(TARGET_CXXFLAGS) -std=c++11 -fPIC" \
+		UNAME=Linux HOST=_LINUX \
+		$(foreach f,$(PCM_TOOLS_EXE_FILES),$(f).x)
 endef
 
 ifeq ($(BR2_PACKAGE_PCM_TOOLS_PMU_QUERY),y)
@@ -31,6 +32,10 @@ define PCM_TOOLS_INSTALL_TARGET_CMDS
 		$(INSTALL) -D -m 755 $(@D)/$(f).x $(TARGET_DIR)/usr/bin/$(f)
 	)
 	$(PCM_TOOLS_INSTALL_PMU_QUERY)
+endef
+
+define PCM_TOOLS_LINUX_CONFIG_FIXUPS
+	$(call KCONFIG_ENABLE_OPT,CONFIG_X86_MSR)
 endef
 
 $(eval $(generic-package))

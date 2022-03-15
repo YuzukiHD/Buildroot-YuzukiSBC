@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-LIBNSS_VERSION = 3.50
+LIBNSS_VERSION = 3.75
 LIBNSS_SOURCE = nss-$(LIBNSS_VERSION).tar.gz
 LIBNSS_SITE = https://ftp.mozilla.org/pub/mozilla.org/security/nss/releases/NSS_$(subst .,_,$(LIBNSS_VERSION))_RTM/src
 LIBNSS_DISTDIR = dist
@@ -12,6 +12,15 @@ LIBNSS_INSTALL_STAGING = YES
 LIBNSS_DEPENDENCIES = libnspr sqlite zlib
 LIBNSS_LICENSE = MPL-2.0
 LIBNSS_LICENSE_FILES = nss/COPYING
+LIBNSS_CPE_ID_VENDOR = mozilla
+LIBNSS_CPE_ID_PRODUCT = nss
+
+# Don't parallel build if make version = 4.3
+ifneq ($(filter $(RUNNING_MAKE_VERSION),4.3),)
+LIBNSS_MAKE = $(MAKE1)
+else
+LIBNSS_MAKE = $(MAKE)
+endif
 
 LIBNSS_CFLAGS = $(TARGET_CFLAGS)
 
@@ -55,6 +64,11 @@ ifeq ($(BR2_POWERPC_CPU_HAS_ALTIVEC),)
 LIBNSS_BUILD_VARS += NSS_DISABLE_ALTIVEC=1
 endif
 
+ifeq ($(BR2_ARM_CPU_HAS_NEON),)
+# Disable arm32-neon if neon is not supported
+LIBNSS_BUILD_VARS += NSS_DISABLE_ARM32_NEON=1
+endif
+
 ifeq ($(BR2_ARCH_IS_64),y)
 # MIPS64 n32 is treated as a 32-bit architecture by libnss.
 # See: https://bugzilla.mozilla.org/show_bug.cgi?id=1010730
@@ -64,12 +78,12 @@ endif
 endif
 
 define LIBNSS_BUILD_CMDS
-	$(TARGET_CONFIGURE_OPTS) $(MAKE1) -C $(@D)/nss coreconf \
+	$(TARGET_CONFIGURE_OPTS) $(LIBNSS_MAKE) -C $(@D)/nss coreconf \
 		SOURCE_MD_DIR=$(@D)/$(LIBNSS_DISTDIR) \
 		DIST=$(@D)/$(LIBNSS_DISTDIR) \
 		CHECKLOC= \
 		$(LIBNSS_BUILD_VARS)
-	$(TARGET_CONFIGURE_OPTS) $(MAKE1) -C $(@D)/nss lib/dbm all \
+	$(TARGET_CONFIGURE_OPTS) $(LIBNSS_MAKE) -C $(@D)/nss lib/dbm all \
 		SOURCE_MD_DIR=$(@D)/$(LIBNSS_DISTDIR) \
 		DIST=$(@D)/$(LIBNSS_DISTDIR) \
 		CHECKLOC= \
@@ -100,6 +114,8 @@ define LIBNSS_INSTALL_TARGET_CMDS
 		$(@D)/$(LIBNSS_DISTDIR)/lib/*.a
 	$(INSTALL) -D -m 0644 $(TOPDIR)/package/libnss/nss.pc.in \
 		$(TARGET_DIR)/usr/lib/pkgconfig/nss.pc
+	$(INSTALL) -D -m 755 $(@D)/$(LIBNSS_DISTDIR)/bin/certutil \
+		$(TARGET_DIR)/usr/bin/certutil
 	$(SED) 's/@VERSION@/$(LIBNSS_VERSION)/g;' \
 		$(TARGET_DIR)/usr/lib/pkgconfig/nss.pc
 endef
@@ -122,12 +138,12 @@ HOST_LIBNSS_BUILD_VARS += USE_64=1
 endif
 
 define HOST_LIBNSS_BUILD_CMDS
-	$(HOST_CONFIGURE_OPTS) $(MAKE1) -C $(@D)/nss coreconf \
+	$(HOST_CONFIGURE_OPTS) $(LIBNSS_MAKE) -C $(@D)/nss coreconf \
 		SOURCE_MD_DIR=$(@D)/$(LIBNSS_DISTDIR) \
 		DIST=$(@D)/$(LIBNSS_DISTDIR) \
 		CHECKLOC= \
 		$(HOST_LIBNSS_BUILD_VARS)
-	$(HOST_CONFIGURE_OPTS) $(MAKE1) -C $(@D)/nss lib/dbm all \
+	$(HOST_CONFIGURE_OPTS) $(LIBNSS_MAKE) -C $(@D)/nss lib/dbm all \
 		SOURCE_MD_DIR=$(@D)/$(LIBNSS_DISTDIR) \
 		DIST=$(@D)/$(LIBNSS_DISTDIR) \
 		CHECKLOC= \

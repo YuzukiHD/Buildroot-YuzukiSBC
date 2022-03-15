@@ -4,23 +4,21 @@
 #
 ################################################################################
 
-BOOST_VERSION = 1.72.0
+BOOST_VERSION = 1.78.0
 BOOST_SOURCE = boost_$(subst .,_,$(BOOST_VERSION)).tar.bz2
-BOOST_SITE = https://dl.bintray.com/boostorg/release/$(BOOST_VERSION)/source
+BOOST_SITE = https://boostorg.jfrog.io/artifactory/main/release/$(BOOST_VERSION)/source
 BOOST_INSTALL_STAGING = YES
 BOOST_LICENSE = BSL-1.0
 BOOST_LICENSE_FILES = LICENSE_1_0.txt
-
-# CVE-2009-3654 is misclassified (by our CVE tracker) as affecting to boost,
-# while in fact it affects Drupal (a module called boost in there).
-BOOST_IGNORE_CVES += CVE-2009-3654
+BOOST_CPE_ID_VENDOR = boost
 
 # keep host variant as minimal as possible
 HOST_BOOST_FLAGS = --without-icu --with-toolset=gcc \
 	--without-libraries=$(subst $(space),$(comma),atomic chrono context \
-	contract coroutine date_time exception filesystem graph graph_parallel \
-	iostreams locale log math mpi program_options python random regex \
-	serialization system test thread timer type_erasure wave)
+	contract container coroutine date_time exception fiber filesystem graph \
+	graph_parallel iostreams json locale log math mpi nowide program_options \
+	python random serialization stacktrace test thread timer \
+	type_erasure wave)
 
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_ATOMIC),,atomic)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_CHRONO),,chrono)
@@ -35,10 +33,12 @@ BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_FILESYSTEM),,filesystem)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_GRAPH),,graph)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_GRAPH_PARALLEL),,graph_parallel)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_IOSTREAMS),,iostreams)
+BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_JSON),,json)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_LOCALE),,locale)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_LOG),,log)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_MATH),,math)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_MPI),,mpi)
+BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_NOWIDE),,nowide)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_PROGRAM_OPTIONS),,program_options)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_PYTHON),,python)
 BOOST_WITHOUT_FLAGS += $(if $(BR2_PACKAGE_BOOST_RANDOM),,random)
@@ -68,16 +68,11 @@ BOOST_DEPENDENCIES += bzip2 zlib
 endif
 
 ifeq ($(BR2_PACKAGE_BOOST_PYTHON),y)
-BOOST_FLAGS += --with-python-root=$(HOST_DIR)
-ifeq ($(BR2_PACKAGE_PYTHON3),y)
-BOOST_FLAGS += --with-python=$(HOST_DIR)/bin/python$(PYTHON3_VERSION_MAJOR)
+BOOST_FLAGS += \
+	--with-python-root=$(HOST_DIR) \
+	--with-python=$(HOST_DIR)/bin/python$(PYTHON3_VERSION_MAJOR)
 BOOST_TARGET_CXXFLAGS += -I$(STAGING_DIR)/usr/include/python$(PYTHON3_VERSION_MAJOR)
 BOOST_DEPENDENCIES += python3
-else
-BOOST_FLAGS += --with-python=$(HOST_DIR)/bin/python$(PYTHON_VERSION_MAJOR)
-BOOST_TARGET_CXXFLAGS += -I$(STAGING_DIR)/usr/include/python$(PYTHON_VERSION_MAJOR)
-BOOST_DEPENDENCIES += python
-endif
 endif
 
 HOST_BOOST_OPTS += --no-cmake-config toolset=gcc threading=multi \
@@ -85,17 +80,17 @@ HOST_BOOST_OPTS += --no-cmake-config toolset=gcc threading=multi \
 
 ifeq ($(BR2_MIPS_OABI32),y)
 BOOST_ABI = o32
-else ifeq ($(BR2_arm),y)
+else ifeq ($(BR2_arm)$(BR2_armeb)$(BR2_aarch64)$(BR2_aarch64_be),y)
 BOOST_ABI = aapcs
 else
 BOOST_ABI = sysv
 endif
 
 BOOST_OPTS += --no-cmake-config \
-	     toolset=gcc \
-	     threading=multi \
-	     abi=$(BOOST_ABI) \
-	     variant=$(if $(BR2_ENABLE_DEBUG),debug,release)
+	toolset=gcc \
+	threading=multi \
+	abi=$(BOOST_ABI) \
+	variant=$(if $(BR2_ENABLE_RUNTIME_DEBUG),debug,release)
 
 ifeq ($(BR2_sparc64),y)
 BOOST_OPTS += architecture=sparc instruction-set=ultrasparc

@@ -19,14 +19,6 @@ PYTHON_PYQT5_MODULES = \
 	$(if $(BR2_PACKAGE_QT5BASE_PRINTSUPPORT),QtPrintSupport) \
 	$(if $(BR2_PACKAGE_QT5BASE_XML),QtXml)
 
-ifeq ($(BR2_PACKAGE_PYTHON),y)
-PYTHON_PYQT5_PYTHON_DIR = python$(PYTHON_VERSION_MAJOR)
-PYTHON_PYQT5_RM_PORT_BASE = port_v3
-else ifeq ($(BR2_PACKAGE_PYTHON3),y)
-PYTHON_PYQT5_PYTHON_DIR = python$(PYTHON3_VERSION_MAJOR)
-PYTHON_PYQT5_RM_PORT_BASE = port_v2
-endif
-
 ifeq ($(BR2_PACKAGE_QT5BASE_WIDGETS),y)
 PYTHON_PYQT5_MODULES += QtWidgets
 
@@ -38,6 +30,12 @@ endif
 # QtTest needs QtWidgets
 ifeq ($(BR2_PACKAGE_QT5BASE_TEST),y)
 PYTHON_PYQT5_MODULES += QtTest
+endif
+
+# QtSvg needs QtWidgets
+ifeq ($(BR2_PACKAGE_QT5SVG),y)
+PYTHON_PYQT5_DEPENDENCIES += qt5svg
+PYTHON_PYQT5_MODULES += QtSvg
 endif
 endif
 
@@ -88,11 +86,6 @@ PYTHON_PYQT5_DEPENDENCIES += qt5serialport
 PYTHON_PYQT5_MODULES += QtSerialPort
 endif
 
-ifeq ($(BR2_PACKAGE_QT5SVG),y)
-PYTHON_PYQT5_DEPENDENCIES += qt5svg
-PYTHON_PYQT5_MODULES += QtSvg
-endif
-
 ifeq ($(BR2_PACKAGE_QT5WEBCHANNEL),y)
 PYTHON_PYQT5_DEPENDENCIES += qt5webchannel
 PYTHON_PYQT5_MODULES += QtWebChannel
@@ -134,7 +127,7 @@ PYTHON_PYQT5_QTDETAIL_TYPE = shared
 # Turn off features that aren't available in current qt configuration
 PYTHON_PYQT5_QTDETAIL_DISABLE_FEATURES += $(if $(BR2_PACKAGE_QT5BASE_OPENGL),,PyQt_OpenGL)
 PYTHON_PYQT5_QTDETAIL_DISABLE_FEATURES += $(if $(BR2_PACKAGE_QT5BASE_OPENGL_DESKTOP),,PyQt_Desktop_OpenGL)
-PYTHON_PYQT5_QTDETAIL_DISABLE_FEATURES += $(if $(BR2_PACKAGE_QT5BASE_OPENSSL),,PyQt_SSL)
+PYTHON_PYQT5_QTDETAIL_DISABLE_FEATURES += $(if $(BR2_PACKAGE_OPENSSL),,PyQt_SSL)
 
 define PYTHON_PYQT5_QTDETAIL
 	echo $(1) >> $(2)/qtdetail.out
@@ -151,9 +144,14 @@ define PYTHON_PYQT5_GENERATE_QTDETAIL
 	)
 endef
 
+# The file "qt.conf" can be used to override the hard-coded paths that are
+# compiled into the Qt library. We need it to make "qmake" relocatable and
+# tweak the per-package install pathes
+PYTHON_PYQT5_PRE_CONFIGURE_HOOKS += QT5_QT_CONF_FIXUP
+
 PYTHON_PYQT5_CONF_OPTS = \
 	--bindir $(TARGET_DIR)/usr/bin \
-	--destdir $(TARGET_DIR)/usr/lib/$(PYTHON_PYQT5_PYTHON_DIR)/site-packages \
+	--destdir $(TARGET_DIR)/usr/lib/python$(PYTHON3_VERSION_MAJOR)/site-packages \
 	--qmake $(HOST_DIR)/bin/qmake \
 	--sysroot $(STAGING_DIR)/usr \
 	-w --confirm-license \
@@ -180,8 +178,8 @@ endef
 # __init__.pyc is needed if BR2_PACKAGE_PYTHON_PYC_ONLY is set
 define PYTHON_PYQT5_INSTALL_TARGET_CMDS
 	$(TARGET_MAKE_ENV) $(TARGET_CONFIGURE_OPTS) $(MAKE) -C $(@D) install
-	touch $(TARGET_DIR)/usr/lib/$(PYTHON_PYQT5_PYTHON_DIR)/site-packages/PyQt5/__init__.py
-	$(RM) -rf $(TARGET_DIR)/usr/lib/$(PYTHON_PYQT5_PYTHON_DIR)/site-packages/PyQt5/uic/$(PYTHON_PYQT5_RM_PORT_BASE)
+	touch $(TARGET_DIR)/usr/lib/python$(PYTHON3_VERSION_MAJOR)/site-packages/PyQt5/__init__.py
+	$(RM) -rf $(TARGET_DIR)/usr/lib/python$(PYTHON3_VERSION_MAJOR)/site-packages/PyQt5/uic/port_v2
 endef
 
 $(eval $(generic-package))

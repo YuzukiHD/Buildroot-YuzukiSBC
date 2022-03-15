@@ -4,11 +4,13 @@
 #
 ################################################################################
 
-SQLITE_VERSION = 3320300
-SQLITE_SOURCE = sqlite-autoconf-$(SQLITE_VERSION).tar.gz
-SQLITE_SITE = https://www.sqlite.org/2020
+SQLITE_VERSION = 3.37.2
+SQLITE_TAR_VERSION = 3370200
+SQLITE_SOURCE = sqlite-autoconf-$(SQLITE_TAR_VERSION).tar.gz
+SQLITE_SITE = https://www.sqlite.org/2022
 SQLITE_LICENSE = Public domain
 SQLITE_LICENSE_FILES = tea/license.terms
+SQLITE_CPE_ID_VENDOR = sqlite
 SQLITE_INSTALL_STAGING = YES
 
 ifeq ($(BR2_PACKAGE_SQLITE_STAT4),y)

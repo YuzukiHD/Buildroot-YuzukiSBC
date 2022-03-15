@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-SUNXI_TOOLS_VERSION = 1.4.1
+SUNXI_TOOLS_VERSION = 1.4.2
 SUNXI_TOOLS_SITE = $(call github,linux-sunxi,sunxi-tools,v$(SUNXI_TOOLS_VERSION))
 SUNXI_TOOLS_LICENSE = GPL-2.0+
 SUNXI_TOOLS_LICENSE_FILES = LICENSE.md
@@ -38,7 +38,7 @@ endef
 define HOST_SUNXI_TOOLS_INSTALL_CMDS
 	$(HOST_MAKE_ENV) $(MAKE) CROSS_COMPILE="" CC="$(HOSTCC)" \
 		PREFIX=$(HOST_DIR) EXTRA_CFLAGS="$(HOST_CFLAGS)" \
-		LDFLAGS="$(HOST_LDFLAGS)"  -C $(@D) install-tools install-misc
+		LDFLAGS="$(HOST_LDFLAGS)" -C $(@D) install-tools install-misc
 endef
 
 define SUNXI_TOOLS_BUILD_CMDS

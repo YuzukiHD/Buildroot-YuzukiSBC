@@ -4,19 +4,28 @@
 #
 ################################################################################
 
-DOMOTICZ_VERSION = 0f411f781ae4fb4a82f592d38a3f40578c149533
-DOMOTICZ_SITE = $(call github,domoticz,domoticz,$(DOMOTICZ_VERSION))
+DOMOTICZ_VERSION = 2022.1
+DOMOTICZ_SITE = https://github.com/domoticz/domoticz
+DOMOTICZ_SITE_METHOD = git
+DOMOTICZ_GIT_SUBMODULES = YES
 DOMOTICZ_LICENSE = GPL-3.0
 DOMOTICZ_LICENSE_FILES = License.txt
+DOMOTICZ_CPE_ID_VENDOR = domoticz
 DOMOTICZ_DEPENDENCIES = \
 	boost \
+	cereal \
+	fmt \
 	host-pkgconf \
+	jsoncpp \
 	libcurl \
 	lua \
 	mosquitto \
 	openssl \
 	sqlite \
 	zlib
+
+# Disable precompiled header as it needs cmake >= 3.16
+DOMOTICZ_CONF_OPTS = -DUSE_PRECOMPILED_HEADER=OFF
 
 # Due to the dependency on mosquitto, domoticz depends on
 # !BR2_STATIC_LIBS so set USE_STATIC_BOOST and USE_OPENSSL_STATIC to OFF
@@ -25,11 +34,17 @@ DOMOTICZ_CONF_OPTS += \
 	-DUSE_OPENSSL_STATIC=OFF
 
 # Do not use any built-in libraries which are enabled by default for
-# lua, sqlite and mqtt
+# jsoncpp, fmt, sqlite and mqtt
 DOMOTICZ_CONF_OPTS += \
-	-DUSE_BUILTIN_LUA=OFF \
+	-DUSE_BUILTIN_JSONCPP=OFF \
+	-DUSE_BUILTIN_LIBFMT=OFF \
 	-DUSE_BUILTIN_SQLITE=OFF \
 	-DUSE_BUILTIN_MQTT=OFF
+
+ifeq ($(BR2_PACKAGE_LIBEXECINFO),y)
+DOMOTICZ_DEPENDENCIES += libexecinfo
+DOMOTICZ_CONF_OPTS += -DEXECINFO_LIBRARIES=-lexecinfo
+endif
 
 ifeq ($(BR2_PACKAGE_LIBUSB),y)
 DOMOTICZ_DEPENDENCIES += libusb

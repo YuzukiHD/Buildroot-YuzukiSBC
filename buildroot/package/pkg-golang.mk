@@ -23,22 +23,6 @@
 
 GO_BIN = $(HOST_DIR)/bin/go
 
-# We pass an empty GOBIN, otherwise "go install: cannot install
-# cross-compiled binaries when GOBIN is set"
-GO_COMMON_ENV = \
-	PATH=$(BR_PATH) \
-	GOBIN= \
-	CGO_ENABLED=$(HOST_GO_CGO_ENABLED)
-
-GO_TARGET_ENV = \
-	$(HOST_GO_TARGET_ENV) \
-	$(GO_COMMON_ENV)
-
-GO_HOST_ENV = \
-	CGO_CFLAGS="$(HOST_CFLAGS)" \
-	CGO_LDFLAGS="$(HOST_LDFLAGS)" \
-	$(GO_COMMON_ENV)
-
 ################################################################################
 # inner-golang-package -- defines how the configuration, compilation and
 # installation of a Go package should be done, implements a few hooks to tune
@@ -56,15 +40,16 @@ GO_HOST_ENV = \
 
 define inner-golang-package
 
-$(2)_WORKSPACE ?= _gopath
-
 $(2)_BUILD_OPTS += \
 	-ldflags "$$($(2)_LDFLAGS)" \
+	-modcacherw \
 	-tags "$$($(2)_TAGS)" \
 	-trimpath \
-	-p $(PARALLEL_JOBS)
+	-p $$(PARALLEL_JOBS)
 
-# Target packages need the Go compiler on the host.
+# Target packages need the Go compiler on the host at download time (for
+# vendoring), and at build and install time.
+$(2)_DOWNLOAD_DEPENDENCIES += host-go
 $(2)_DEPENDENCIES += host-go
 
 $(2)_BUILD_TARGETS ?= .
@@ -74,30 +59,39 @@ $(2)_BUILD_TARGETS ?= .
 # been specified, we assume that the binaries to be produced are named
 # after each build target building them (below in <pkg>_BUILD_CMDS).
 ifeq ($$($(2)_BUILD_TARGETS),.)
-$(2)_BIN_NAME ?= $(1)
+$(2)_BIN_NAME ?= $$($(2)_RAWNAME)
 endif
 
-$(2)_INSTALL_BINS ?= $(1)
+$(2)_INSTALL_BINS ?= $$($(2)_RAWNAME)
 
-# Source files in Go should be extracted in a precise folder in the hierarchy
-# of GOPATH. It usually resolves around domain/vendor/software. By default, we
-# derive domain/vendor/software from the upstream URL of the project, but we
-# allow $(2)_SRC_SUBDIR to be overridden if needed.
+# Source files in Go usually use an import path resolved around
+# domain/vendor/software. We infer domain/vendor/software from the upstream URL
+# of the project.
 $(2)_SRC_DOMAIN = $$(call domain,$$($(2)_SITE))
 $(2)_SRC_VENDOR = $$(word 1,$$(subst /, ,$$(call notdomain,$$($(2)_SITE))))
 $(2)_SRC_SOFTWARE = $$(word 2,$$(subst /, ,$$(call notdomain,$$($(2)_SITE))))
 
-$(2)_SRC_SUBDIR ?= $$($(2)_SRC_DOMAIN)/$$($(2)_SRC_VENDOR)/$$($(2)_SRC_SOFTWARE)
-$(2)_SRC_PATH = $$(@D)/$$($(2)_WORKSPACE)/src/$$($(2)_SRC_SUBDIR)
+# $(2)_GOMOD is the root Go module path for the project, inferred if not set.
+# If the go.mod file does not exist, one is written with this root path.
+$(2)_GOMOD ?= $$($(2)_SRC_DOMAIN)/$$($(2)_SRC_VENDOR)/$$($(2)_SRC_SOFTWARE)
 
-# Configure step. Only define it if not already defined by the package .mk
-# file.
-ifndef $(2)_CONFIGURE_CMDS
-define $(2)_CONFIGURE_CMDS
-	mkdir -p $$(dir $$($(2)_SRC_PATH))
-	ln -sf $$(@D) $$($(2)_SRC_PATH)
+# Generate a go.mod file if it doesn't exist. Note: Go is configured
+# to use the "vendor" dir and not make network calls.
+define $(2)_GEN_GOMOD
+	if [ ! -f $$(@D)/go.mod ]; then \
+		printf "module $$($(2)_GOMOD)\n" > $$(@D)/go.mod; \
+	fi
 endef
-endif
+$(2)_POST_PATCH_HOOKS += $(2)_GEN_GOMOD
+
+$(2)_DOWNLOAD_POST_PROCESS = go
+$(2)_DL_ENV += \
+	$$(HOST_GO_COMMON_ENV) \
+	GOPROXY=direct
+
+# Due to vendoring, it is pretty likely that not all licenses are
+# listed in <pkg>_LICENSE.
+$(2)_LICENSE += , vendored dependencies licenses probably not listed
 
 # Build step. Only define it if not already defined by the package .mk
 # file.
@@ -111,26 +105,24 @@ endif
 # Build package for target
 define $(2)_BUILD_CMDS
 	$$(foreach d,$$($(2)_BUILD_TARGETS),\
-		cd $$($(2)_SRC_PATH); \
-		$$(GO_TARGET_ENV) \
-			GOPATH="$$(@D)/$$($(2)_WORKSPACE)" \
+		cd $$(@D); \
+		$$(HOST_GO_TARGET_ENV) \
 			$$($(2)_GO_ENV) \
 			$$(GO_BIN) build -v $$($(2)_BUILD_OPTS) \
 			-o $$(@D)/bin/$$(or $$($(2)_BIN_NAME),$$(notdir $$(d))) \
-			./$$(d)
+			$$($(2)_GOMOD)/$$(d)
 	)
 endef
 else
 # Build package for host
 define $(2)_BUILD_CMDS
 	$$(foreach d,$$($(2)_BUILD_TARGETS),\
-		cd $$($(2)_SRC_PATH); \
-		$$(GO_HOST_ENV) \
-			GOPATH="$$(@D)/$$($(2)_WORKSPACE)" \
+		cd $$(@D); \
+		$$(HOST_GO_HOST_ENV) \
 			$$($(2)_GO_ENV) \
 			$$(GO_BIN) build -v $$($(2)_BUILD_OPTS) \
 			-o $$(@D)/bin/$$(or $$($(2)_BIN_NAME),$$(notdir $$(d))) \
-			./$$(d)
+			$$($(2)_GOMOD)/$$(d)
 	)
 endef
 endif
@@ -141,7 +133,7 @@ endif
 ifndef $(2)_INSTALL_TARGET_CMDS
 define $(2)_INSTALL_TARGET_CMDS
 	$$(foreach d,$$($(2)_INSTALL_BINS),\
-		$(INSTALL) -D -m 0755 $$(@D)/bin/$$(d) $(TARGET_DIR)/usr/bin/$$(d)
+		$$(INSTALL) -D -m 0755 $$(@D)/bin/$$(d) $$(TARGET_DIR)/usr/bin/$$(d)
 	)
 endef
 endif
@@ -150,7 +142,7 @@ endif
 ifndef $(2)_INSTALL_CMDS
 define $(2)_INSTALL_CMDS
 	$$(foreach d,$$($(2)_INSTALL_BINS),\
-		$(INSTALL) -D -m 0755 $$(@D)/bin/$$(d) $(HOST_DIR)/bin/$$(d)
+		$$(INSTALL) -D -m 0755 $$(@D)/bin/$$(d) $$(HOST_DIR)/bin/$$(d)
 	)
 endef
 endif

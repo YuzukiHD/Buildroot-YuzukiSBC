@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-UPMPDCLI_VERSION = 1.4.5
+UPMPDCLI_VERSION = 1.5.12
 UPMPDCLI_SITE = http://www.lesbonscomptes.com/upmpdcli/downloads
 UPMPDCLI_LICENSE = LGPL-2.1+
 UPMPDCLI_LICENSE_FILES = COPYING
@@ -12,7 +12,7 @@ UPMPDCLI_DEPENDENCIES = host-pkgconf libmpdclient libupnpp libmicrohttpd jsoncpp
 
 # Disable spotify plugin which requires dlfcn.h
 ifeq ($(BR2_STATIC_LIBS),y)
-UPMPDCLI_CONF_OPTS = --disable-spotify
+UPMPDCLI_CONF_OPTS += --disable-spotify
 endif
 
 # Upmpdcli only runs if user upmpdcli exists

@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-LIBFTDI1_VERSION = 1.4
+LIBFTDI1_VERSION = 1.5
 LIBFTDI1_SOURCE = libftdi1-$(LIBFTDI1_VERSION).tar.bz2
 LIBFTDI1_SITE = http://www.intra2net.com/en/developer/libftdi/download
 LIBFTDI1_INSTALL_STAGING = YES
@@ -24,7 +24,7 @@ LIBFTDI1_CONF_OPTS += -DFTDIPP=OFF
 endif
 
 ifeq ($(BR2_PACKAGE_LIBFTDI1_PYTHON_BINDINGS),y)
-LIBFTDI1_DEPENDENCIES += $(if $(BR2_PACKAGE_PYTHON),python,python3) host-swig
+LIBFTDI1_DEPENDENCIES += python3 host-swig
 LIBFTDI1_CONF_OPTS += -DPYTHON_BINDINGS=ON
 else
 LIBFTDI1_CONF_OPTS += -DPYTHON_BINDINGS=OFF

@@ -6,9 +6,15 @@ menuconfig BR2_PACKAGE_GST1_PLUGINS_BASE
 	help
 	  A basic set of well-supported plug-ins for GStreamer.
 
-	  http://gstreamer.freedesktop.org/
+	  https://gstreamer.freedesktop.org/
 
 if BR2_PACKAGE_GST1_PLUGINS_BASE
+
+config BR2_PACKAGE_GST1_PLUGINS_BASE_INSTALL_TOOLS
+	bool "install tools"
+	help
+	  Install the gst-discoverer, gst-device-monitor and gst-play
+	  tools.
 
 comment "dependency-less plugins"
 
@@ -62,6 +68,11 @@ config BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_GIO
 	bool "gio"
 	help
 	  GIO elements
+
+config BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_GIO_TYPEFINDER
+	bool "gio-typefinder"
+	help
+	  GIO typefinder elements
 
 config BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_OVERLAYCOMPOSITION
 	bool "overlaycomposition"
@@ -282,14 +293,14 @@ config BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_PANGO
 	bool "pango font renderer"
 	depends on BR2_INSTALL_LIBSTDCPP # pango -> freetype
 	depends on BR2_TOOLCHAIN_HAS_SYNC_4 # pango -> harfbuzz
-	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_8 # pango -> harfbuzz
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_9 # pango -> harfbuzz
 	select BR2_PACKAGE_PANGO
 	help
 	  Pango-based text rendering and overlay
 
-comment "pango plugin needs a toolchain w/ C++, gcc >= 4.8"
+comment "pango plugin needs a toolchain w/ C++, gcc >= 4.9"
 	depends on !BR2_INSTALL_LIBSTDCPP || \
-		!BR2_TOOLCHAIN_GCC_AT_LEAST_4_8
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_4_9
 	depends on BR2_TOOLCHAIN_HAS_SYNC_4
 
 config BR2_PACKAGE_GST1_PLUGINS_BASE_PLUGIN_THEORA

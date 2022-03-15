@@ -9,6 +9,9 @@ menuconfig BR2_PACKAGE_UTIL_LINUX
 
 if BR2_PACKAGE_UTIL_LINUX
 
+config BR2_PACKAGE_UTIL_LINUX_LIBS
+	bool
+
 config BR2_PACKAGE_UTIL_LINUX_LIBBLKID
 	bool "libblkid"
 	depends on BR2_USE_MMU # fork()
@@ -84,15 +87,14 @@ config BR2_PACKAGE_UTIL_LINUX_CHFN_CHSH
 	bool "chfn/chsh"
 	depends on (BR2_ENABLE_LOCALE && BR2_USE_WCHAR) # linux-pam
 	depends on !BR2_STATIC_LIBS
-	depends on !BR2_TOOLCHAIN_USES_MUSL # linux-pam
 	depends on BR2_USE_MMU # linux-pam
 	select BR2_PACKAGE_LINUX_PAM
 	help
 	  Change login shell, real user name and information
 
-comment "chfn/chsh needs a uClibc or glibc toolchain w/ wchar, locale, dynamic library"
+comment "chfn/chsh needs a toolchain w/ wchar, locale, dynamic library"
 	depends on !(BR2_ENABLE_LOCALE && BR2_USE_WCHAR) \
-		|| BR2_STATIC_LIBS || BR2_TOOLCHAIN_USES_MUSL
+		|| BR2_STATIC_LIBS
 
 config BR2_PACKAGE_UTIL_LINUX_CHMEM
 	bool "chmem"
@@ -289,8 +291,12 @@ config BR2_PACKAGE_UTIL_LINUX_PIVOT_ROOT
 
 config BR2_PACKAGE_UTIL_LINUX_RAW
 	bool "raw"
+	depends on !BR2_TOOLCHAIN_HEADERS_AT_LEAST_5_14
 	help
 	  Build a linux raw character device
+
+comment "raw needs a toolchain w/ headers < 5.14"
+	depends on BR2_TOOLCHAIN_HEADERS_AT_LEAST_5_14
 
 config BR2_PACKAGE_UTIL_LINUX_RENAME
 	bool "rename"
@@ -324,8 +330,12 @@ comment "runuser needs a uClibc or glibc toolchain w/ wchar, locale, dynamic lib
 
 config BR2_PACKAGE_UTIL_LINUX_SCHEDUTILS
 	bool "scheduling utilities"
+	depends on BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_14
 	help
-	  Scheduling utilities (chrt, ionice, taskset)
+	  Scheduling utilities (chrt, ionice, taskset, uclampset)
+
+comment "scheduling utilities need a toolchain w/ headers >= 3.14"
+	depends on !BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_14
 
 config BR2_PACKAGE_UTIL_LINUX_SETPRIV
 	bool "setpriv"

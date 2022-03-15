@@ -4,10 +4,11 @@
 #
 ################################################################################
 
-MUSL_VERSION = 1.1.24
+MUSL_VERSION = 1.2.2
 MUSL_SITE = http://www.musl-libc.org/releases
 MUSL_LICENSE = MIT
 MUSL_LICENSE_FILES = COPYRIGHT
+MUSL_CPE_ID_VENDOR = musl-libc
 
 # Before musl is configured, we must have the first stage
 # cross-compiler and the kernel headers
@@ -24,6 +25,12 @@ MUSL_DEPENDENCIES += musl-compat-headers
 MUSL_ADD_TOOLCHAIN_DEPENDENCY = NO
 
 MUSL_INSTALL_STAGING = YES
+
+# musl does not build with LTO, so explicitly disable it
+# when using a compiler that may have support for LTO
+ifeq ($(BR2_TOOLCHAIN_GCC_AT_LEAST_4_7),y)
+MUSL_EXTRA_CFLAGS += -fno-lto
+endif
 
 # Thumb build is broken, build in ARM mode, since all architectures
 # that support Thumb1 also support ARM.

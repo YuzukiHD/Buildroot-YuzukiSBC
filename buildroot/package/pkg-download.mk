@@ -15,7 +15,13 @@ export BZR := $(call qstrip,$(BR2_BZR))
 export GIT := $(call qstrip,$(BR2_GIT))
 export HG := $(call qstrip,$(BR2_HG))
 export SCP := $(call qstrip,$(BR2_SCP))
+export SFTP := $(call qstrip,$(BR2_SFTP))
 export LOCALFILES := $(call qstrip,$(BR2_LOCALFILES))
+
+# Version of the format of the archives we generate in the corresponding
+# download backend:
+BR_FMT_VERSION_git = -br1
+BR_FMT_VERSION_svn = -br2
 
 DL_WRAPPER = support/download/dl-wrapper
 
@@ -55,6 +61,9 @@ domainseparator = $(if $(1),$(1),/)
 
 # github(user,package,version): returns site of GitHub repository
 github = https://github.com/$(1)/$(2)/archive/$(3)
+
+# gitlab(user,package,version): returns site of Gitlab-generated tarball
+gitlab = https://gitlab.com/$(1)/$(2)/-/archive/$(3)
 
 # Expressly do not check hashes for those files
 # Exported variables default to immediately expanded in some versions of
@@ -99,7 +108,8 @@ endif
 
 define DOWNLOAD
 	$(Q)mkdir -p $($(2)_DL_DIR)
-	$(Q)$(EXTRA_ENV) flock $($(2)_DL_DIR)/.lock $(DL_WRAPPER) \
+	$(Q)$(EXTRA_ENV) $($(2)_DL_ENV) \
+		flock $($(2)_DL_DIR)/.lock $(DL_WRAPPER) \
 		-c '$($(2)_DL_VERSION)' \
 		-d '$($(2)_DL_DIR)' \
 		-D '$(DL_DIR)' \
@@ -108,7 +118,9 @@ define DOWNLOAD
 		-n '$($(2)_BASENAME_RAW)' \
 		-N '$($(2)_RAWNAME)' \
 		-o '$($(2)_DL_DIR)/$(notdir $(1))' \
+		$(if $($(2)_DOWNLOAD_POST_PROCESS),-p '$($(2)_DOWNLOAD_POST_PROCESS)') \
 		$(if $($(2)_GIT_SUBMODULES),-r) \
+		$(if $($(2)_GIT_LFS),-l) \
 		$(foreach uri,$(call DOWNLOAD_URIS,$(1),$(2)),-u $(uri)) \
 		$(QUIET) \
 		-- \

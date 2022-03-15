@@ -4,11 +4,12 @@
 #
 ################################################################################
 
-COREUTILS_VERSION = 8.31
+COREUTILS_VERSION = 9.0
 COREUTILS_SITE = $(BR2_GNU_MIRROR)/coreutils
 COREUTILS_SOURCE = coreutils-$(COREUTILS_VERSION).tar.xz
 COREUTILS_LICENSE = GPL-3.0+
 COREUTILS_LICENSE_FILES = COPYING
+COREUTILS_CPE_ID_VENDOR = gnu
 
 COREUTILS_CONF_OPTS = --disable-rpath \
 	$(if $(BR2_TOOLCHAIN_USES_MUSL),--with-included-regex)
@@ -44,7 +45,6 @@ COREUTILS_CONF_ENV = ac_cv_c_restrict=no \
 	gl_cv_func_getcwd_null=yes \
 	gl_cv_func_getcwd_path_max=yes \
 	gl_cv_func_gettimeofday_clobber=no \
-	gl_cv_func_fstatat_zero_flag=no \
 	gl_cv_func_link_follows_symlink=no \
 	gl_cv_func_re_compile_pattern_working=yes \
 	gl_cv_func_svid_putenv=yes \
@@ -91,6 +91,13 @@ ifeq ($(BR2_PACKAGE_LIBCAP),y)
 COREUTILS_DEPENDENCIES += libcap
 else
 COREUTILS_CONF_OPTS += --disable-libcap
+endif
+
+ifeq ($(BR2_PACKAGE_LIBSELINUX),y)
+COREUTILS_DEPENDENCIES += libselinux
+COREUTILS_CONF_OPTS += --with-selinux
+else
+COREUTILS_CONF_OPTS += --without-selinux
 endif
 
 ifeq ($(BR2_PACKAGE_OPENSSL),y)
@@ -147,7 +154,8 @@ COREUTILS_POST_INSTALL_TARGET_HOOKS += COREUTILS_FIX_CHROOT_LOCATION
 # Explicitly install ln and realpath, which we *are* insterested in.
 # A lot of other programs still get installed, however, but disabling
 # them does not gain much at build time, and is a loooong list that is
-# difficult to maintain...
+# difficult to maintain... Just avoid overwriting fakedate when creating
+# a reproducible build
 HOST_COREUTILS_CONF_OPTS = \
 	--disable-acl \
 	--disable-libcap \
@@ -155,7 +163,8 @@ HOST_COREUTILS_CONF_OPTS = \
 	--disable-single-binary \
 	--disable-xattr \
 	--without-gmp \
-	--enable-install-program=ln,realpath
+	--enable-install-program=ln,realpath \
+	--enable-no-install-program=date
 
 $(eval $(autotools-package))
 $(eval $(host-autotools-package))

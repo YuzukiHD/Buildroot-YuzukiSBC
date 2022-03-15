@@ -5,11 +5,13 @@
 ################################################################################
 
 LIBGTK3_VERSION_MAJOR = 3.24
-LIBGTK3_VERSION = $(LIBGTK3_VERSION_MAJOR).12
+LIBGTK3_VERSION = $(LIBGTK3_VERSION_MAJOR).31
 LIBGTK3_SOURCE = gtk+-$(LIBGTK3_VERSION).tar.xz
 LIBGTK3_SITE = http://ftp.gnome.org/pub/gnome/sources/gtk+/$(LIBGTK3_VERSION_MAJOR)
 LIBGTK3_LICENSE = LGPL-2.0+
 LIBGTK3_LICENSE_FILES = COPYING
+LIBGTK3_CPE_ID_VENDOR = gnome
+LIBGTK3_CPE_ID_PRODUCT = gtk
 LIBGTK3_INSTALL_STAGING = YES
 LIBGTK3_AUTORECONF = YES
 
@@ -21,6 +23,7 @@ LIBGTK3_CONF_ENV = \
 LIBGTK3_CONF_OPTS = \
 	--disable-glibtest \
 	--enable-explicit-deps=no
+HOST_LIBGTK3_CONF_OPTS = --disable-introspection
 
 # Override pkg-config pkgdatadir variable, it needs the prefix
 LIBGTK3_MAKE_OPTS = \
@@ -39,6 +42,13 @@ LIBGTK3_CONF_OPTS += \
 	--x-libraries=$(STAGING_DIR)/usr/lib
 else
 LIBGTK3_CONF_OPTS += --disable-x11-backend
+endif
+
+ifeq ($(BR2_PACKAGE_GOBJECT_INTROSPECTION),y)
+LIBGTK3_CONF_OPTS += --enable-introspection
+LIBGTK3_DEPENDENCIES += gobject-introspection
+else
+LIBGTK3_CONF_OPTS += --disable-introspection
 endif
 
 ifeq ($(BR2_PACKAGE_LIBGTK3_WAYLAND),y)

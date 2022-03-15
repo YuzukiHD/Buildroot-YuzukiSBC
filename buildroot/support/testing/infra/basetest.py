@@ -11,11 +11,11 @@ BASIC_TOOLCHAIN_CONFIG = \
     BR2_TOOLCHAIN_EXTERNAL=y
     BR2_TOOLCHAIN_EXTERNAL_CUSTOM=y
     BR2_TOOLCHAIN_EXTERNAL_DOWNLOAD=y
-    BR2_TOOLCHAIN_EXTERNAL_URL="http://autobuild.buildroot.org/toolchains/tarballs/br-arm-full-2017.05-1078-g95b1dae.tar.bz2"
-    BR2_TOOLCHAIN_EXTERNAL_GCC_4_9=y
-    BR2_TOOLCHAIN_EXTERNAL_HEADERS_3_10=y
+    BR2_TOOLCHAIN_EXTERNAL_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs/armv5-eabi--uclibc--bleeding-edge-2018.11-1.tar.bz2"
+    BR2_TOOLCHAIN_EXTERNAL_GCC_8=y
+    BR2_TOOLCHAIN_EXTERNAL_HEADERS_4_14=y
     BR2_TOOLCHAIN_EXTERNAL_LOCALE=y
-    # BR2_TOOLCHAIN_EXTERNAL_HAS_THREADS_DEBUG is not set
+    BR2_TOOLCHAIN_HAS_THREADS_DEBUG=y
     BR2_TOOLCHAIN_EXTERNAL_CXX=y
     """
 
@@ -29,6 +29,7 @@ MINIMAL_CONFIG = \
 
 
 class BRConfigTest(unittest.TestCase):
+    """Test up to the configure stage."""
     config = None
     br2_external = list()
     downloaddir = None
@@ -66,6 +67,7 @@ class BRConfigTest(unittest.TestCase):
 
 
 class BRTest(BRConfigTest):
+    """Test up to the build stage and instantiate an emulator."""
     def __init__(self, names):
         super(BRTest, self).__init__(names)
         self.emulator = None

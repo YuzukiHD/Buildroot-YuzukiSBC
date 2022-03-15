@@ -4,25 +4,20 @@
 #
 ################################################################################
 
-APACHE_VERSION = 2.4.46
+APACHE_VERSION = 2.4.52
 APACHE_SOURCE = httpd-$(APACHE_VERSION).tar.bz2
-APACHE_SITE = http://archive.apache.org/dist/httpd
+APACHE_SITE = https://downloads.apache.org/httpd
 APACHE_LICENSE = Apache-2.0
 APACHE_LICENSE_FILES = LICENSE
+APACHE_CPE_ID_VENDOR = apache
+APACHE_CPE_ID_PRODUCT = http_server
+APACHE_SELINUX_MODULES = apache
 # Needed for mod_php
 APACHE_INSTALL_STAGING = YES
 # We have a patch touching configure.in and Makefile.in,
 # so we need to autoreconf:
 APACHE_AUTORECONF = YES
 APACHE_DEPENDENCIES = apr apr-util pcre
-
-ifeq ($(BR2_PER_PACKAGE_DIRECTORIES),y)
-define APACHE_FIXUP_APR_LIBTOOL
-	$(SED) "s@$(PER_PACKAGE_DIR)/[^/]\+/@$(PER_PACKAGE_DIR)/apache/@g" \
-		$(STAGING_DIR)/usr/build-1/libtool
-endef
-APACHE_POST_CONFIGURE_HOOKS += APACHE_FIXUP_APR_LIBTOOL
-endif
 
 APACHE_CONF_ENV= \
 	ap_cv_void_ptr_lt_long=no \

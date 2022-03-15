@@ -4,10 +4,11 @@
 #
 ################################################################################
 
-LIBDRM_VERSION = 2.4.100
-LIBDRM_SOURCE = libdrm-$(LIBDRM_VERSION).tar.bz2
+LIBDRM_VERSION = 2.4.109
+LIBDRM_SOURCE = libdrm-$(LIBDRM_VERSION).tar.xz
 LIBDRM_SITE = https://dri.freedesktop.org/libdrm
 LIBDRM_LICENSE = MIT
+LIBDRM_LICENSE_FILES = data/meson.build
 LIBDRM_INSTALL_STAGING = YES
 
 LIBDRM_DEPENDENCIES = \
@@ -16,7 +17,7 @@ LIBDRM_DEPENDENCIES = \
 
 LIBDRM_CONF_OPTS = \
 	-Dcairo-tests=false \
-	-Dmanpages=false
+	-Dman-pages=false
 
 ifeq ($(BR2_PACKAGE_LIBATOMIC_OPS),y)
 LIBDRM_DEPENDENCIES += libatomic_ops

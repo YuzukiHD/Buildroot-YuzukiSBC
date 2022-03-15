@@ -4,11 +4,17 @@
 #
 ################################################################################
 
-TIFF_VERSION = 4.1.0
+TIFF_VERSION = 4.3.0
 TIFF_SITE = http://download.osgeo.org/libtiff
 TIFF_LICENSE = tiff license
 TIFF_LICENSE_FILES = COPYRIGHT
+TIFF_CPE_ID_VENDOR = libtiff
+TIFF_CPE_ID_PRODUCT = libtiff
 TIFF_INSTALL_STAGING = YES
+
+# 0001-tiffset-fix-global-buffer-overflow-for-ASCII-tags.patch
+TIFF_IGNORE_CVES += CVE-2022-22844
+
 TIFF_CONF_OPTS = \
 	--disable-cxx \
 	--without-x

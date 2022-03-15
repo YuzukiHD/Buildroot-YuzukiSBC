@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-DAV1D_VERSION = 0.5.2
+DAV1D_VERSION = 0.9.2
 DAV1D_SOURCE = dav1d-$(DAV1D_VERSION).tar.bz2
 DAV1D_SITE = https://code.videolan.org/videolan/dav1d/-/archive/$(DAV1D_VERSION)
 DAV1D_LICENSE = BSD-2-Clause
@@ -25,7 +25,7 @@ endif
 
 # Uses __atomic_fetch_add_4
 ifeq ($(BR2_TOOLCHAIN_HAS_LIBATOMIC),y)
-DAV1D_LDFLAGS += -latomic
+DAV1D_LDFLAGS += $(TARGET_LDFLAGS) -latomic
 endif
 
 $(eval $(meson-package))

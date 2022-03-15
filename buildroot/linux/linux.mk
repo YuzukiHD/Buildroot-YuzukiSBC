@@ -12,13 +12,9 @@ LINUX_LICENSE_FILES = \
 	LICENSES/preferred/GPL-2.0 \
 	LICENSES/exceptions/Linux-syscall-note
 endif
-
-define LINUX_HELP_CMDS
-	@echo '  linux-menuconfig       - Run Linux kernel menuconfig'
-	@echo '  linux-savedefconfig    - Run Linux kernel savedefconfig'
-	@echo '  linux-update-defconfig - Save the Linux configuration to the path specified'
-	@echo '                             by BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE'
-endef
+LINUX_CPE_ID_VENDOR = linux
+LINUX_CPE_ID_PRODUCT = linux_kernel
+LINUX_CPE_ID_PREFIX = cpe:2.3:o
 
 # Compute LINUX_SOURCE and LINUX_SITE from the configuration
 ifeq ($(BR2_LINUX_KERNEL_CUSTOM_TARBALL),y)
@@ -34,9 +30,6 @@ LINUX_SITE_METHOD = hg
 else ifeq ($(BR2_LINUX_KERNEL_CUSTOM_SVN),y)
 LINUX_SITE = $(call qstrip,$(BR2_LINUX_KERNEL_CUSTOM_REPO_URL))
 LINUX_SITE_METHOD = svn
-else ifeq ($(BR2_LINUX_KERNEL_CUSTOM_LOCAL),y)
-LINUX_SITE = $(call qstrip,$(BR2_LINUX_KERNEL_CUSTOM_LOCAL_PATH))
-LINUX_SITE_METHOD = local
 else ifeq ($(BR2_LINUX_KERNEL_LATEST_CIP_VERSION)$(BR2_LINUX_KERNEL_LATEST_CIP_RT_VERSION),y)
 LINUX_SOURCE = linux-cip-$(LINUX_VERSION).tar.gz
 LINUX_SITE = https://git.kernel.org/pub/scm/linux/kernel/git/cip/linux-cip.git/snapshot
@@ -55,10 +48,6 @@ endif
 
 ifeq ($(BR2_LINUX_KERNEL)$(BR2_LINUX_KERNEL_LATEST_VERSION),y)
 BR_NO_CHECK_HASH_FOR += $(LINUX_SOURCE)
-endif
-
-ifeq ($(BR2_LINUX_KERNEL_CUSTOM_LOCAL),y)
-BR_NO_CHECK_HASH_FOR += $(LINUX_SOURCE_DIR)
 endif
 
 LINUX_PATCHES = $(call qstrip,$(BR2_LINUX_KERNEL_PATCH))
@@ -82,7 +71,9 @@ LINUX_MAKE_ENV = \
 
 LINUX_INSTALL_IMAGES = YES
 LINUX_DEPENDENCIES = host-kmod \
-	$(if $(BR2_PACKAGE_INTEL_MICROCODE),intel-microcode)
+	$(if $(BR2_PACKAGE_INTEL_MICROCODE),intel-microcode) \
+	$(if $(BR2_PACKAGE_LINUX_FIRMWARE),linux-firmware) \
+	$(if $(BR2_PACKAGE_WIRELESS_REGDB),wireless-regdb)
 
 # Starting with 4.16, the generated kconfig paser code is no longer
 # shipped with the kernel sources, so we need flex and bison, but
@@ -105,12 +96,16 @@ else ifeq ($(BR2_LINUX_KERNEL_LZO),y)
 LINUX_DEPENDENCIES += host-lzop
 else ifeq ($(BR2_LINUX_KERNEL_XZ),y)
 LINUX_DEPENDENCIES += host-xz
+else ifeq ($(BR2_LINUX_KERNEL_ZSTD),y)
+LINUX_DEPENDENCIES += host-zstd
 endif
 LINUX_COMPRESSION_OPT_$(BR2_LINUX_KERNEL_GZIP) += CONFIG_KERNEL_GZIP
 LINUX_COMPRESSION_OPT_$(BR2_LINUX_KERNEL_LZ4) += CONFIG_KERNEL_LZ4
 LINUX_COMPRESSION_OPT_$(BR2_LINUX_KERNEL_LZMA) += CONFIG_KERNEL_LZMA
 LINUX_COMPRESSION_OPT_$(BR2_LINUX_KERNEL_LZO) += CONFIG_KERNEL_LZO
 LINUX_COMPRESSION_OPT_$(BR2_LINUX_KERNEL_XZ) += CONFIG_KERNEL_XZ
+LINUX_COMPRESSION_OPT_$(BR2_LINUX_KERNEL_ZSTD) += CONFIG_KERNEL_ZSTD
+LINUX_COMPRESSION_OPT_$(BR2_LINUX_KERNEL_UNCOMPRESSED) += CONFIG_KERNEL_UNCOMPRESSED
 
 ifeq ($(BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL),y)
 LINUX_DEPENDENCIES += host-openssl
@@ -118,6 +113,17 @@ endif
 
 ifeq ($(BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF),y)
 LINUX_DEPENDENCIES += host-elfutils host-pkgconf
+endif
+
+ifeq ($(BR2_LINUX_KERNEL_NEEDS_HOST_PAHOLE),y)
+LINUX_DEPENDENCIES += host-pahole
+else
+define LINUX_FIXUP_CONFIG_PAHOLE_CHECK
+	if grep -q "^CONFIG_DEBUG_INFO_BTF=y" $(KCONFIG_DOT_CONFIG); then \
+		echo "To use CONFIG_DEBUG_INFO_BTF, enable host-pahole (BR2_LINUX_KERNEL_NEEDS_HOST_PAHOLE)" 1>&2; \
+		exit 1; \
+	fi
+endef
 endif
 
 # If host-uboot-tools is selected by the user, assume it is needed to
@@ -205,6 +211,8 @@ else ifeq ($(BR2_LINUX_KERNEL_SIMPLEIMAGE),y)
 LINUX_IMAGE_NAME = simpleImage.$(firstword $(LINUX_DTS_NAME))
 else ifeq ($(BR2_LINUX_KERNEL_IMAGE),y)
 LINUX_IMAGE_NAME = Image
+else ifeq ($(BR2_LINUX_KERNEL_IMAGEGZ),y)
+LINUX_IMAGE_NAME = Image.gz
 else ifeq ($(BR2_LINUX_KERNEL_LINUX_BIN),y)
 LINUX_IMAGE_NAME = linux.bin
 else ifeq ($(BR2_LINUX_KERNEL_VMLINUX_BIN),y)
@@ -235,6 +243,8 @@ ifeq ($(KERNEL_ARCH),i386)
 LINUX_ARCH_PATH = $(LINUX_DIR)/arch/x86
 else ifeq ($(KERNEL_ARCH),x86_64)
 LINUX_ARCH_PATH = $(LINUX_DIR)/arch/x86
+else ifeq ($(KERNEL_ARCH),sparc64)
+LINUX_ARCH_PATH = $(LINUX_DIR)/arch/sparc
 else
 LINUX_ARCH_PATH = $(LINUX_DIR)/arch/$(KERNEL_ARCH)
 endif
@@ -260,6 +270,13 @@ define LINUX_APPLY_LOCAL_PATCHES
 endef
 
 LINUX_POST_PATCH_HOOKS += LINUX_APPLY_LOCAL_PATCHES
+
+# Older versions break on gcc 10+ because of redefined symbols
+define LINUX_DROP_YYLLOC
+	$(Q)grep -Z -l -r -E '^YYLTYPE yylloc;$$' $(@D) \
+	|xargs -0 -r $(SED) '/^YYLTYPE yylloc;$$/d'
+endef
+LINUX_POST_PATCH_HOOKS += LINUX_DROP_YYLLOC
 
 # Older linux kernels use deprecated perl constructs in timeconst.pl
 # that were removed for perl 5.22+ so it breaks on newer distributions
@@ -312,40 +329,41 @@ LINUX_NEEDS_MODULES ?= $(BR2_LINUX_NEEDS_MODULES)
 # option will be thrown away and ignored if it doesn't exist.
 ifeq ($(BR2_ENDIAN),"BIG")
 define LINUX_FIXUP_CONFIG_ENDIANNESS
-	$(call KCONFIG_ENABLE_OPT,CONFIG_CPU_BIG_ENDIAN,$(@D)/.config)
+	$(call KCONFIG_ENABLE_OPT,CONFIG_CPU_BIG_ENDIAN)
 endef
 else
 define LINUX_FIXUP_CONFIG_ENDIANNESS
-	$(call KCONFIG_ENABLE_OPT,CONFIG_CPU_LITTLE_ENDIAN,$(@D)/.config)
+	$(call KCONFIG_ENABLE_OPT,CONFIG_CPU_LITTLE_ENDIAN)
 endef
 endif
 
 define LINUX_KCONFIG_FIXUP_CMDS
 	$(if $(LINUX_NEEDS_MODULES),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_MODULES,$(@D)/.config))
-	$(call KCONFIG_ENABLE_OPT,$(strip $(LINUX_COMPRESSION_OPT_y)),$(@D)/.config)
+		$(call KCONFIG_ENABLE_OPT,CONFIG_MODULES))
+	$(call KCONFIG_ENABLE_OPT,$(strip $(LINUX_COMPRESSION_OPT_y)))
 	$(foreach opt, $(LINUX_COMPRESSION_OPT_),
-		$(call KCONFIG_DISABLE_OPT,$(opt),$(@D)/.config)
+		$(call KCONFIG_DISABLE_OPT,$(opt))
 	)
 	$(LINUX_FIXUP_CONFIG_ENDIANNESS)
+	$(LINUX_FIXUP_CONFIG_PAHOLE_CHECK)
 	$(if $(BR2_arm)$(BR2_armeb),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_AEABI,$(@D)/.config))
+		$(call KCONFIG_ENABLE_OPT,CONFIG_AEABI))
 	$(if $(BR2_powerpc)$(BR2_powerpc64)$(BR2_powerpc64le),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_PPC_DISABLE_WERROR,$(@D)/.config))
+		$(call KCONFIG_ENABLE_OPT,CONFIG_PPC_DISABLE_WERROR))
 	$(if $(BR2_ARC_PAGE_SIZE_4K),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_ARC_PAGE_SIZE_4K,$(@D)/.config)
-		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_8K,$(@D)/.config)
-		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_16K,$(@D)/.config))
+		$(call KCONFIG_ENABLE_OPT,CONFIG_ARC_PAGE_SIZE_4K)
+		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_8K)
+		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_16K))
 	$(if $(BR2_ARC_PAGE_SIZE_8K),
-		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_4K,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_ARC_PAGE_SIZE_8K,$(@D)/.config)
-		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_16K,$(@D)/.config))
+		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_4K)
+		$(call KCONFIG_ENABLE_OPT,CONFIG_ARC_PAGE_SIZE_8K)
+		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_16K))
 	$(if $(BR2_ARC_PAGE_SIZE_16K),
-		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_4K,$(@D)/.config)
-		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_8K,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_ARC_PAGE_SIZE_16K,$(@D)/.config))
+		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_4K)
+		$(call KCONFIG_DISABLE_OPT,CONFIG_ARC_PAGE_SIZE_8K)
+		$(call KCONFIG_ENABLE_OPT,CONFIG_ARC_PAGE_SIZE_16K))
 	$(if $(BR2_TARGET_ROOTFS_CPIO),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_BLK_DEV_INITRD,$(@D)/.config))
+		$(call KCONFIG_ENABLE_OPT,CONFIG_BLK_DEV_INITRD))
 	# As the kernel gets compiled before root filesystems are
 	# built, we create a fake cpio file. It'll be
 	# replaced later by the real cpio archive, and the kernel will be
@@ -353,69 +371,24 @@ define LINUX_KCONFIG_FIXUP_CMDS
 	$(if $(BR2_TARGET_ROOTFS_INITRAMFS),
 		mkdir -p $(BINARIES_DIR)
 		touch $(BINARIES_DIR)/rootfs.cpio
-		$(call KCONFIG_SET_OPT,CONFIG_INITRAMFS_SOURCE,"$${BR_BINARIES_DIR}/rootfs.cpio",$(@D)/.config)
-		$(call KCONFIG_SET_OPT,CONFIG_INITRAMFS_ROOT_UID,0,$(@D)/.config)
-		$(call KCONFIG_SET_OPT,CONFIG_INITRAMFS_ROOT_GID,0,$(@D)/.config))
+		$(call KCONFIG_SET_OPT,CONFIG_INITRAMFS_SOURCE,"$${BR_BINARIES_DIR}/rootfs.cpio")
+		$(call KCONFIG_SET_OPT,CONFIG_INITRAMFS_ROOT_UID,0)
+		$(call KCONFIG_SET_OPT,CONFIG_INITRAMFS_ROOT_GID,0))
 	$(if $(BR2_ROOTFS_DEVICE_CREATION_STATIC),,
-		$(call KCONFIG_ENABLE_OPT,CONFIG_DEVTMPFS,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_DEVTMPFS_MOUNT,$(@D)/.config))
+		$(call KCONFIG_ENABLE_OPT,CONFIG_DEVTMPFS)
+		$(call KCONFIG_ENABLE_OPT,CONFIG_DEVTMPFS_MOUNT))
 	$(if $(BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_INOTIFY_USER,$(@D)/.config))
+		$(call KCONFIG_ENABLE_OPT,CONFIG_INOTIFY_USER))
 	$(if $(BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NET,$(@D)/.config))
-	$(if $(BR2_PACKAGE_AUDIT),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NET,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_AUDIT,$(@D)/.config))
-	$(if $(BR2_PACKAGE_INTEL_MICROCODE),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_MICROCODE,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_MICROCODE_INTEL,$(@D)/.config))
-	$(if $(BR2_PACKAGE_KTAP),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_DEBUG_FS,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_ENABLE_DEFAULT_TRACERS,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_PERF_EVENTS,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_FUNCTION_TRACER,$(@D)/.config))
-	$(if $(BR2_PACKAGE_LINUX_TOOLS_PERF),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_PERF_EVENTS,$(@D)/.config))
-	$(if $(BR2_PACKAGE_PCM_TOOLS),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_X86_MSR,$(@D)/.config))
-	$(if $(BR2_PACKAGE_SYSTEMD),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_CGROUPS,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_INOTIFY_USER,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_FHANDLE,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_AUTOFS4_FS,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_TMPFS_POSIX_ACL,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_TMPFS_XATTR,$(@D)/.config))
-	$(if $(BR2_PACKAGE_SMACK),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_SECURITY,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_SECURITY_SMACK,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_SECURITY_NETWORK,$(@D)/.config))
-	$(if $(BR2_PACKAGE_SUNXI_MALI_MAINLINE_DRIVER),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_CMA,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_DMA_CMA,$(@D)/.config))
-	$(if $(BR2_PACKAGE_IPTABLES),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_IP_NF_IPTABLES,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_IP_NF_FILTER,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NETFILTER,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NETFILTER_XTABLES,$(@D)/.config))
-	$(if $(BR2_PACKAGE_XTABLES_ADDONS),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NETFILTER_ADVANCED,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NF_CONNTRACK,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NF_CONNTRACK_MARK,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NF_NAT,$(@D)/.config))
-	$(if $(BR2_PACKAGE_WIREGUARD_LINUX_COMPAT),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_INET,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NET,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_NET_FOU,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_CRYPTO,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_CRYPTO_MANAGER,$(@D)/.config))
+		$(call KCONFIG_ENABLE_OPT,CONFIG_NET))
 	$(if $(BR2_LINUX_KERNEL_APPENDED_DTB),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_ARM_APPENDED_DTB,$(@D)/.config))
-	$(if $(BR2_PACKAGE_KERNEL_MODULE_IMX_GPU_VIV),
-		$(call KCONFIG_DISABLE_OPT,CONFIG_MXC_GPU_VIV,$(@D)/.config))
+		$(call KCONFIG_ENABLE_OPT,CONFIG_ARM_APPENDED_DTB))
 	$(if $(LINUX_KERNEL_CUSTOM_LOGO_PATH),
-		$(call KCONFIG_ENABLE_OPT,CONFIG_FB,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_LOGO,$(@D)/.config)
-		$(call KCONFIG_ENABLE_OPT,CONFIG_LOGO_LINUX_CLUT224,$(@D)/.config))
+		$(call KCONFIG_ENABLE_OPT,CONFIG_FB)
+		$(call KCONFIG_ENABLE_OPT,CONFIG_LOGO)
+		$(call KCONFIG_ENABLE_OPT,CONFIG_LOGO_LINUX_CLUT224))
+	$(call KCONFIG_DISABLE_OPT,CONFIG_GCC_PLUGINS)
+	$(PACKAGES_LINUX_CONFIG_FIXUPS)
 endef
 
 ifeq ($(BR2_LINUX_KERNEL_DTS_SUPPORT),y)
@@ -431,10 +404,11 @@ endef
 ifeq ($(BR2_LINUX_KERNEL_APPENDED_DTB),)
 define LINUX_INSTALL_DTB
 	# dtbs moved from arch/<ARCH>/boot to arch/<ARCH>/boot/dts since 3.8-rc1
-	cp $(addprefix \
-		$(LINUX_ARCH_PATH)/boot/$(if $(wildcard \
-		$(addprefix $(LINUX_ARCH_PATH)/boot/dts/,$(LINUX_DTBS))),dts/),$(LINUX_DTBS)) \
-		$(1)
+	$(foreach dtb,$(LINUX_DTBS), \
+		install -D \
+			$(or $(wildcard $(LINUX_ARCH_PATH)/boot/dts/$(dtb)),$(LINUX_ARCH_PATH)/boot/$(dtb)) \
+			$(1)/$(if $(BR2_LINUX_KERNEL_DTB_KEEP_DIRNAME),$(dtb),$(notdir $(dtb)))
+	)
 endef
 endif # BR2_LINUX_KERNEL_APPENDED_DTB
 endif # BR2_LINUX_KERNEL_DTB_IS_SELF_BUILT
@@ -475,7 +449,10 @@ endif
 # '$(LINUX_TARGET_NAME)' targets separately because calling them in
 # the same $(MAKE) invocation has shown to cause parallel build
 # issues.
+# The call to disable gcc-plugins is a stop-gap measure:
+#   http://lists.busybox.net/pipermail/buildroot/2020-May/282727.html
 define LINUX_BUILD_CMDS
+	$(call KCONFIG_DISABLE_OPT,CONFIG_GCC_PLUGINS)
 	$(foreach dts,$(call qstrip,$(BR2_LINUX_KERNEL_CUSTOM_DTS_PATH)), \
 		cp -f $(dts) $(LINUX_ARCH_PATH)/boot/dts/
 	)

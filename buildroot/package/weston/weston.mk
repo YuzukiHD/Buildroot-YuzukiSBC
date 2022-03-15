@@ -4,20 +4,22 @@
 #
 ################################################################################
 
-WESTON_VERSION = 8.0.0
-WESTON_SITE = http://wayland.freedesktop.org/releases
+WESTON_VERSION = 10.0.0
+WESTON_SITE = https://wayland.freedesktop.org/releases
 WESTON_SOURCE = weston-$(WESTON_VERSION).tar.xz
 WESTON_LICENSE = MIT
 WESTON_LICENSE_FILES = COPYING
+WESTON_CPE_ID_VENDOR = wayland
 
 WESTON_DEPENDENCIES = host-pkgconf wayland wayland-protocols \
-	libxkbcommon pixman libpng jpeg udev cairo libinput libdrm
+	libxkbcommon pixman libpng udev cairo libinput libdrm
 
 WESTON_CONF_OPTS = \
-	-Dbuild.pkg_config_path=$(HOST_DIR)/lib/pkgconfig \
 	-Dbackend-headless=false \
 	-Dcolor-management-colord=false \
-	-Dremoting=false
+	-Ddoc=false \
+	-Dremoting=false \
+	-Dtools=calibrator,debug,info,terminal,touch-calibrator
 
 # Uses VIDIOC_EXPBUF, only available from 3.8+
 ifeq ($(BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_8),y)
@@ -31,6 +33,13 @@ WESTON_CONF_OPTS += -Dlauncher-logind=true
 WESTON_DEPENDENCIES += dbus systemd
 else
 WESTON_CONF_OPTS += -Dlauncher-logind=false
+endif
+
+ifeq ($(BR2_PACKAGE_JPEG),y)
+WESTON_CONF_OPTS += -Dimage-jpeg=true
+WESTON_DEPENDENCIES += jpeg
+else
+WESTON_CONF_OPTS += -Dimage-jpeg=false
 endif
 
 ifeq ($(BR2_PACKAGE_WEBP),y)
@@ -48,18 +57,25 @@ endef
 define WESTON_USERS
 	- - weston-launch -1 - - - - Weston launcher group
 endef
-WESTON_CONF_OPTS += -Dweston-launch=true
+WESTON_CONF_OPTS += -Ddeprecated-weston-launch=true
 WESTON_DEPENDENCIES += linux-pam
 else
-WESTON_CONF_OPTS += -Dweston-launch=false
+WESTON_CONF_OPTS += -Ddeprecated-weston-launch=false
 endif
 
 ifeq ($(BR2_PACKAGE_HAS_LIBEGL_WAYLAND)$(BR2_PACKAGE_HAS_LIBGLES),yy)
 WESTON_CONF_OPTS += -Drenderer-gl=true
 WESTON_DEPENDENCIES += libegl libgles
+ifeq ($(BR2_PACKAGE_PIPEWIRE)$(BR2_PACKAGE_WESTON_DRM),yy)
+WESTON_CONF_OPTS += -Dpipewire=true
+WESTON_DEPENDENCIES += pipewire
+else
+WESTON_CONF_OPTS += -Dpipewire=false
+endif
 else
 WESTON_CONF_OPTS += \
-	-Drenderer-gl=false
+	-Drenderer-gl=false \
+	-Dpipewire=false
 endif
 
 ifeq ($(BR2_PACKAGE_WESTON_RDP),y)
@@ -69,16 +85,22 @@ else
 WESTON_CONF_OPTS += -Dbackend-rdp=false
 endif
 
-ifeq ($(BR2_PACKAGE_WESTON_FBDEV),y)
-WESTON_CONF_OPTS += -Dbackend-fbdev=true
-else
-WESTON_CONF_OPTS += -Dbackend-fbdev=false
-endif
-
 ifeq ($(BR2_PACKAGE_WESTON_DRM),y)
 WESTON_CONF_OPTS += -Dbackend-drm=true
 else
 WESTON_CONF_OPTS += -Dbackend-drm=false
+endif
+
+ifeq ($(BR2_PACKAGE_WESTON_HEADLESS),y)
+WESTON_CONF_OPTS += -Dbackend-headless=true
+else
+WESTON_CONF_OPTS += -Dbackend-headless=false
+endif
+
+ifeq ($(BR2_PACKAGE_WESTON_WAYLAND),y)
+WESTON_CONF_OPTS += -Dbackend-wayland=true
+else
+WESTON_CONF_OPTS += -Dbackend-wayland=false
 endif
 
 ifeq ($(BR2_PACKAGE_WESTON_X11),y)
@@ -126,11 +148,28 @@ else
 WESTON_CONF_OPTS += -Dtest-junit-xml=false
 endif
 
-ifeq ($(BR2_PACKAGE_PIPEWIRE)$(BR2_PACKAGE_WESTON_DRM),yy)
-WESTON_CONF_OPTS += -Dpipewire=true
-WESTON_DEPENDENCIES += pipewire
+ifeq ($(BR2_PACKAGE_WESTON_SHELL_DESKTOP),y)
+WESTON_CONF_OPTS += -Dshell-desktop=true
 else
-WESTON_CONF_OPTS += -Dpipewire=false
+WESTON_CONF_OPTS += -Dshell-desktop=false
+endif
+
+ifeq ($(BR2_PACKAGE_WESTON_SHELL_FULLSCREEN),y)
+WESTON_CONF_OPTS += -Dshell-fullscreen=true
+else
+WESTON_CONF_OPTS += -Dshell-fullscreen=false
+endif
+
+ifeq ($(BR2_PACKAGE_WESTON_SHELL_IVI),y)
+WESTON_CONF_OPTS += -Dshell-ivi=true
+else
+WESTON_CONF_OPTS += -Dshell-ivi=false
+endif
+
+ifeq ($(BR2_PACKAGE_WESTON_SHELL_KIOSK),y)
+WESTON_CONF_OPTS += -Dshell-kiosk=true
+else
+WESTON_CONF_OPTS += -Dshell-kiosk=false
 endif
 
 ifeq ($(BR2_PACKAGE_WESTON_DEMO_CLIENTS),y)

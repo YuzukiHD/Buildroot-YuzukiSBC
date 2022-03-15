@@ -1,4 +1,3 @@
-# From http://www.abisource.com/downloads/enchant/1.6.0/MD5SUM
-md5	de11011aff801dc61042828041fb59c7	enchant-1.6.0.tar.gz
 # locally computed
-sha256  d0db934167997c8b8c863af297b3653aa98500bca0a7c05e9c6ec0dabf4f67d4  COPYING.LIB
+sha256  ce9ba47fd4d34031bd69445598a698a6611602b2b0e91d705e91a6f5099ead6e  enchant-2.3.2.tar.gz
+sha256  dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551  COPYING.LIB

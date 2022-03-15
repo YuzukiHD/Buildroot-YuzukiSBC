@@ -4,11 +4,12 @@
 #
 ################################################################################
 
-PCRE_VERSION = 8.44
-PCRE_SITE = https://ftp.pcre.org/pub/pcre
+PCRE_VERSION = 8.45
+PCRE_SITE = http://downloads.sourceforge.net/project/pcre/pcre/$(PCRE_VERSION)
 PCRE_SOURCE = pcre-$(PCRE_VERSION).tar.bz2
 PCRE_LICENSE = BSD-3-Clause
 PCRE_LICENSE_FILES = LICENCE
+PCRE_CPE_ID_VENDOR = pcre
 PCRE_INSTALL_STAGING = YES
 PCRE_CONFIG_SCRIPTS = pcre-config
 
@@ -17,7 +18,7 @@ HOST_PCRE_CONF_OPTS = --enable-unicode-properties
 
 ifneq ($(BR2_INSTALL_LIBSTDCPP),y)
 # pcre will use the host g++ if a cross version isn't available
-PCRE_CONF_OPTS = --disable-cpp
+PCRE_CONF_OPTS += --disable-cpp
 endif
 
 PCRE_CONF_OPTS += --enable-pcre8

@@ -1,7 +1,6 @@
 config BR2_PACKAGE_QT5SCRIPT
 	bool "qt5script"
 	depends on BR2_PACKAGE_QT5_JSCORE_AVAILABLE
-	select BR2_PACKAGE_QT5BASE
 	help
 	  Qt is a cross-platform application and UI framework for
 	  developers using C++.
@@ -13,4 +12,4 @@ config BR2_PACKAGE_QT5SCRIPT
 	  5.5.0 and should be replaced by Qt QML module in new
 	  design.
 
-	  http://doc.qt.io/qt-5/qtscript-index.html
+	  https://doc.qt.io/qt-5/qtscript-index.html

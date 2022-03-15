@@ -15,28 +15,26 @@ class TestGlxinfo(infra.basetest.BRTest):
         BR2_TOOLCHAIN_EXTERNAL_URL="http://toolchains.bootlin.com/downloads/releases/toolchains/x86-core2/tarballs/x86-core2--glibc--bleeding-edge-2018.11-1.tar.bz2"
         BR2_TOOLCHAIN_EXTERNAL_GCC_8=y
         BR2_TOOLCHAIN_EXTERNAL_HEADERS_4_14=y
-        # BR2_TOOLCHAIN_EXTERNAL_LOCALE is not set
         BR2_TOOLCHAIN_EXTERNAL_CXX=y
         BR2_TOOLCHAIN_EXTERNAL_HAS_SSP=y
-        BR2_TOOLCHAIN_EXTERNAL_HAS_THREADS_DEBUG=y
-        BR2_TOOLCHAIN_EXTERNAL_HAS_THREADS=y
-        BR2_TOOLCHAIN_EXTERNAL_HAS_THREADS_NPTL=y
         BR2_TOOLCHAIN_EXTERNAL_CUSTOM_GLIBC=y
         BR2_LINUX_KERNEL=y
         BR2_LINUX_KERNEL_CUSTOM_VERSION=y
-        BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="4.16.7"
+        BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="4.19.204"
         BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
         BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/qemu/x86/linux.config"
         BR2_PACKAGE_MESA3D_DEMOS=y
         BR2_PACKAGE_MESA3D=y
-        BR2_PACKAGE_MESA3D_DRI_DRIVER_SWRAST=y
+        BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST=y
         BR2_PACKAGE_MESA3D_OPENGL_GLX=y
         BR2_PACKAGE_XORG7=y
         BR2_PACKAGE_XSERVER_XORG_SERVER=y
         BR2_TARGET_GENERIC_GETTY_PORT="ttyS0"
         BR2_TARGET_ROOTFS_EXT2=y
         # BR2_TARGET_ROOTFS_TAR is not set
-        """
+        BR2_ROOTFS_OVERLAY="{}"
+        """.format(
+          infra.filepath("tests/package/test_glxinfo/rootfs-overlay"))
 
     def wait_for_xserver(self):
         # xserver takes some time to start up

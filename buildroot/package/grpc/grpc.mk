@@ -4,28 +4,37 @@
 #
 ################################################################################
 
-GRPC_VERSION = 1.25.0
+GRPC_VERSION = 1.43.0
 GRPC_SITE = $(call github,grpc,grpc,v$(GRPC_VERSION))
-GRPC_LICENSE = Apache-2.0
+GRPC_LICENSE = Apache-2.0, BSD-3-Clause (third_party code), MPL-2.0 (etc/roots.pem)
 GRPC_LICENSE_FILES = LICENSE
+GRPC_CPE_ID_VENDOR = grpc
 
 GRPC_INSTALL_STAGING = YES
 
 # Need to use host grpc_cpp_plugin during cross compilation.
-GRPC_DEPENDENCIES = c-ares host-grpc openssl protobuf zlib
-HOST_GRPC_DEPENDENCIES = host-c-ares host-openssl host-protobuf host-zlib
+GRPC_DEPENDENCIES = c-ares host-grpc libabseil-cpp openssl protobuf re2 zlib
+HOST_GRPC_DEPENDENCIES = host-protobuf
 
 # gRPC_CARES_PROVIDER=package won't work because it requires c-ares to have
 # installed a cmake config file, but buildroot uses c-ares' autotools build,
 # which doesn't do this.  These CARES settings trick the gRPC cmake code into
 # not looking for c-ares at all and yet still linking with the library.
 GRPC_CONF_OPTS = \
+	-DgRPC_ABSL_PROVIDER=package \
 	-D_gRPC_CARES_LIBRARIES=cares \
 	-DgRPC_CARES_PROVIDER=none \
 	-DgRPC_PROTOBUF_PROVIDER=package \
+	-DgRPC_RE2_PROVIDER=package \
 	-DgRPC_SSL_PROVIDER=package \
 	-DgRPC_ZLIB_PROVIDER=package \
-	-DgRPC_NATIVE_CPP_PLUGIN=$(HOST_DIR)/bin/grpc_cpp_plugin
+	-DgRPC_BUILD_GRPC_CPP_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_CSHARP_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_NODE_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_OBJECTIVE_C_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_PHP_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_PYTHON_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_RUBY_PLUGIN=OFF
 
 # grpc can use __atomic builtins, so we need to link with
 # libatomic when available
@@ -60,12 +69,26 @@ GRPC_CONF_OPTS += \
 	-DCMAKE_C_FLAGS="$(GRPC_CFLAGS)" \
 	-DCMAKE_CXX_FLAGS="$(GRPC_CXXFLAGS)"
 
+# For host-grpc, we only need the 'grpc_cpp_plugin' binary, which is needed for
+# target grpc compilation. To avoid unnecessary build steps and host
+# dependencies, supply enough options to pass the configure checks without
+# requiring other host packages, unless those needed by grpc_cpp_plugin.
 HOST_GRPC_CONF_OPTS = \
-	-D_gRPC_CARES_LIBRARIES=cares \
-	-DgRPC_CARES_PROVIDER=none \
 	-DgRPC_PROTOBUF_PROVIDER=package \
-	-DgRPC_SSL_PROVIDER=package \
-	-DgRPC_ZLIB_PROVIDER=package
+	-DgRPC_ABSL_PROVIDER=none \
+	-DgRPC_CARES_PROVIDER=none \
+	-DgRPC_RE2_PROVIDER=none \
+	-DgRPC_SSL_PROVIDER=none \
+	-DgRPC_ZLIB_PROVIDER=none \
+	-DgRPC_BUILD_CODEGEN=OFF \
+	-DgRPC_BUILD_CSHARP_EXT=OFF \
+	-DgRPC_BUILD_PLUGIN_SUPPORT_ONLY=ON \
+	-DgRPC_BUILD_GRPC_CSHARP_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_NODE_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_OBJECTIVE_C_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_PHP_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_PYTHON_PLUGIN=OFF \
+	-DgRPC_BUILD_GRPC_RUBY_PLUGIN=OFF
 
 $(eval $(cmake-package))
 $(eval $(host-cmake-package))

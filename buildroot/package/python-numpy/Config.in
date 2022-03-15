@@ -28,4 +28,5 @@ config BR2_PACKAGE_PYTHON_NUMPY
 	  http://www.numpy.org/
 
 comment "python-numpy needs glibc or musl"
+	depends on BR2_PACKAGE_PYTHON_NUMPY_ARCH_SUPPORTS
 	depends on !(BR2_TOOLCHAIN_USES_GLIBC || BR2_TOOLCHAIN_USES_MUSL)

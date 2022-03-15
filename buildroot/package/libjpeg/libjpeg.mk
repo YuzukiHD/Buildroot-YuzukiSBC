@@ -4,12 +4,13 @@
 #
 ################################################################################
 
-LIBJPEG_VERSION = 9d
+LIBJPEG_VERSION = 9e
 LIBJPEG_SITE = http://www.ijg.org/files
 LIBJPEG_SOURCE = jpegsrc.v$(LIBJPEG_VERSION).tar.gz
 LIBJPEG_LICENSE = IJG
 LIBJPEG_LICENSE_FILES = README
 LIBJPEG_INSTALL_STAGING = YES
+LIBJPEG_CPE_ID_VENDOR = ijg
 LIBJPEG_PROVIDES = jpeg
 
 define LIBJPEG_REMOVE_USELESS_TOOLS

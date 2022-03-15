@@ -4,60 +4,22 @@
 #
 ################################################################################
 
-AVAHI_VERSION = 0.7
+AVAHI_VERSION = 0.8
 AVAHI_SITE = https://github.com/lathiat/avahi/releases/download/v$(AVAHI_VERSION)
 AVAHI_LICENSE = LGPL-2.1+
 AVAHI_LICENSE_FILES = LICENSE
+AVAHI_CPE_ID_VENDOR = avahi
+AVAHI_SELINUX_MODULES = avahi
 AVAHI_INSTALL_STAGING = YES
 
+# CVE-2021-26720 is an issue in avahi-daemon-check-dns.sh, which is
+# part of the Debian packaging and not part of upstream avahi
+AVAHI_IGNORE_CVES += CVE-2021-26720
+
+# 0001-Fix-NULL-pointer-crashes-from-175.patch
+AVAHI_IGNORE_CVES += CVE-2021-36217
+
 AVAHI_CONF_ENV = \
-	ac_cv_func_strtod=yes \
-	ac_fsusage_space=yes \
-	fu_cv_sys_stat_statfs2_bsize=yes \
-	ac_cv_func_closedir_void=no \
-	ac_cv_func_getloadavg=no \
-	ac_cv_lib_util_getloadavg=no \
-	ac_cv_lib_getloadavg_getloadavg=no \
-	ac_cv_func_getgroups=yes \
-	ac_cv_func_getgroups_works=yes \
-	ac_cv_func_chown_works=yes \
-	ac_cv_have_decl_euidaccess=no \
-	ac_cv_func_euidaccess=no \
-	ac_cv_have_decl_strnlen=yes \
-	ac_cv_func_strnlen_working=yes \
-	ac_cv_func_lstat_dereferences_slashed_symlink=yes \
-	ac_cv_func_lstat_empty_string_bug=no \
-	ac_cv_func_stat_empty_string_bug=no \
-	vb_cv_func_rename_trailing_slash_bug=no \
-	ac_cv_have_decl_nanosleep=yes \
-	jm_cv_func_nanosleep_works=yes \
-	gl_cv_func_working_utimes=yes \
-	ac_cv_func_utime_null=yes \
-	ac_cv_have_decl_strerror_r=yes \
-	ac_cv_func_strerror_r_char_p=no \
-	jm_cv_func_svid_putenv=yes \
-	ac_cv_func_getcwd_null=yes \
-	ac_cv_func_getdelim=yes \
-	ac_cv_func_mkstemp=yes \
-	utils_cv_func_mkstemp_limitations=no \
-	utils_cv_func_mkdir_trailing_slash_bug=no \
-	jm_cv_func_gettimeofday_clobber=no \
-	am_cv_func_working_getline=yes \
-	gl_cv_func_working_readdir=yes \
-	jm_ac_cv_func_link_follows_symlink=no \
-	utils_cv_localtime_cache=no \
-	ac_cv_struct_st_mtim_nsec=no \
-	gl_cv_func_tzset_clobber=no \
-	gl_cv_func_getcwd_null=yes \
-	gl_cv_func_getcwd_path_max=yes \
-	ac_cv_func_fnmatch_gnu=yes \
-	am_getline_needs_run_time_check=no \
-	am_cv_func_working_getline=yes \
-	gl_cv_func_mkdir_trailing_slash_bug=no \
-	gl_cv_func_mkstemp_limitations=no \
-	ac_cv_func_working_mktime=yes \
-	jm_cv_func_working_re_compile_pattern=yes \
-	ac_use_included_regex=no \
 	avahi_cv_sys_cxx_works=yes \
 	DATADIRNAME=share
 
@@ -74,10 +36,10 @@ AVAHI_CONF_ENV = \
 AVAHI_CONF_OPTS = \
 	--disable-qt3 \
 	--disable-qt4 \
+	--disable-qt5 \
 	--disable-gtk \
 	--disable-gtk3 \
 	--disable-gdbm \
-	--disable-pygobject \
 	--disable-mono \
 	--disable-monodoc \
 	--disable-stack-protector \
@@ -90,9 +52,7 @@ AVAHI_CONF_OPTS = \
 	--with-autoipd-user=avahi \
 	--with-autoipd-group=avahi
 
-AVAHI_DEPENDENCIES = \
-	host-intltool host-pkgconf \
-	$(TARGET_NLS_DEPENDENCIES)
+AVAHI_DEPENDENCIES = host-pkgconf $(TARGET_NLS_DEPENDENCIES)
 
 AVAHI_CFLAGS = $(TARGET_CFLAGS)
 
@@ -131,23 +91,28 @@ else
 AVAHI_CONF_OPTS += --disable-dbus
 endif
 
+ifeq ($(BR2_PACKAGE_LIBEVENT),y)
+AVAHI_DEPENDENCIES += libevent
+else
+AVAHI_CONF_OPTS += --disable-libevent
+endif
+
 ifeq ($(BR2_PACKAGE_LIBGLIB2),y)
 AVAHI_DEPENDENCIES += libglib2
 else
 AVAHI_CONF_OPTS += --disable-glib --disable-gobject
 endif
 
-ifeq ($(BR2_PACKAGE_PYTHON),y)
+ifeq ($(BR2_PACKAGE_PYTHON3),y)
 AVAHI_CONF_ENV += \
-	am_cv_pathless_PYTHON=python \
-	am_cv_path_PYTHON=$(PYTHON_TARGET_BINARY) \
-	am_cv_python_version=$(PYTHON_VERSION) \
-	am_cv_python_platform=linux2 \
-	am_cv_python_pythondir=/usr/lib/python$(PYTHON_VERSION_MAJOR)/site-packages \
-	am_cv_python_pyexecdir=/usr/lib/python$(PYTHON_VERSION_MAJOR)/site-packages \
+	am_cv_pathless_PYTHON=python3 \
+	am_cv_python_version=$(PYTHON3_VERSION) \
+	am_cv_python_platform=linux5 \
+	am_cv_python_pythondir=/usr/lib/python$(PYTHON3_VERSION_MAJOR)/site-packages \
+	am_cv_python_pyexecdir=/usr/lib/python$(PYTHON3_VERSION_MAJOR)/site-packages \
 	py_cv_mod_socket_=yes
 
-AVAHI_DEPENDENCIES += python
+AVAHI_DEPENDENCIES += python3
 AVAHI_CONF_OPTS += --enable-python
 else
 AVAHI_CONF_OPTS += --disable-python
@@ -159,6 +124,13 @@ AVAHI_CONF_ENV += py_cv_mod_dbus_=yes
 AVAHI_DEPENDENCIES += dbus-python
 else
 AVAHI_CONF_OPTS += --disable-python-dbus
+endif
+
+ifeq ($(BR2_PACKAGE_PYTHON_GOBJECT),y)
+AVAHI_CONF_OPTS += --enable-pygobject
+AVAHI_DEPENDENCIES += python-gobject
+else
+AVAHI_CONF_OPTS += --disable-pygobject
 endif
 
 AVAHI_CONF_ENV += CFLAGS="$(AVAHI_CFLAGS)"
@@ -224,6 +196,15 @@ define AVAHI_STAGING_INSTALL_LIBDNSSD_LINK
 endef
 
 AVAHI_POST_INSTALL_STAGING_HOOKS += AVAHI_STAGING_INSTALL_LIBDNSSD_LINK
+endif
+
+ifeq ($(BR2_PACKAGE_AVAHI_DEFAULT_SERVICES),)
+define AVAHI_REMOVE_DEFAULT_SERVICES
+	$(foreach service,ssh sftp-ssh, \
+		$(RM) -f $(TARGET_DIR)/etc/avahi/services/$(service).service
+	)
+endef
+AVAHI_POST_INSTALL_TARGET_HOOKS += AVAHI_REMOVE_DEFAULT_SERVICES
 endif
 
 $(eval $(autotools-package))

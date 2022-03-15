@@ -4,17 +4,18 @@
 #
 ################################################################################
 
-RNG_TOOLS_VERSION = 6.9
+RNG_TOOLS_VERSION = 6.14
 RNG_TOOLS_SITE = $(call github,nhorman,$(RNG_TOOLS_NAME),v$(RNG_TOOLS_VERSION))
 RNG_TOOLS_LICENSE = GPL-2.0
 RNG_TOOLS_LICENSE_FILES = COPYING
-RNG_TOOLS_DEPENDENCIES = libsysfs jitterentropy-library host-pkgconf
+RNG_TOOLS_CPE_ID_VENDOR = rng-tools_project
+RNG_TOOLS_SELINUX_MODULES = rngd
+
+RNG_TOOLS_DEPENDENCIES = host-pkgconf openssl
 # From git
 RNG_TOOLS_AUTORECONF = YES
 
-RNG_TOOLS_CONF_OPTS = \
-	--without-nistbeacon \
-	--without-pkcs11
+RNG_TOOLS_CONF_OPTS = --without-pkcs11
 
 # Work around for uClibc or musl toolchains which lack argp_*()
 # functions.
@@ -23,10 +24,25 @@ RNG_TOOLS_CONF_ENV += LIBS="-largp"
 RNG_TOOLS_DEPENDENCIES += argp-standalone
 endif
 
-ifeq ($(BR2_PACKAGE_LIBGCRYPT),y)
-RNG_TOOLS_DEPENDENCIES += libgcrypt
+ifeq ($(BR2_PACKAGE_LIBRTLSDR),y)
+RNG_TOOLS_DEPENDENCIES += librtlsdr
+RNG_TOOLS_CONF_OPTS += --with-rtlsdr
 else
-RNG_TOOLS_CONF_OPTS += --without-libgcrypt
+RNG_TOOLS_CONF_OPTS += --without-rtlsdr
+endif
+
+ifeq ($(BR2_PACKAGE_RNG_TOOLS_JITTERENTROPY_LIBRARY),y)
+RNG_TOOLS_DEPENDENCIES += jitterentropy-library
+RNG_TOOLS_CONF_OPTS += --enable-jitterentropy
+else
+RNG_TOOLS_CONF_OPTS += --disable-jitterentropy
+endif
+
+ifeq ($(BR2_PACKAGE_RNG_TOOLS_NISTBEACON),y)
+RNG_TOOLS_DEPENDENCIES += jansson libcurl libxml2
+RNG_TOOLS_CONF_OPTS += --with-nistbeacon
+else
+RNG_TOOLS_CONF_OPTS += --without-nistbeacon
 endif
 
 define RNG_TOOLS_INSTALL_INIT_SYSV

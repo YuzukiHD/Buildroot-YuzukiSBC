@@ -4,12 +4,14 @@
 #
 ################################################################################
 
-PYTHON3_VERSION_MAJOR = 3.8
-PYTHON3_VERSION = $(PYTHON3_VERSION_MAJOR).6
+PYTHON3_VERSION_MAJOR = 3.10
+PYTHON3_VERSION = $(PYTHON3_VERSION_MAJOR).2
 PYTHON3_SOURCE = Python-$(PYTHON3_VERSION).tar.xz
 PYTHON3_SITE = https://python.org/ftp/python/$(PYTHON3_VERSION)
 PYTHON3_LICENSE = Python-2.0, others
 PYTHON3_LICENSE_FILES = LICENSE
+PYTHON3_CPE_ID_VENDOR = python
+PYTHON3_CPE_ID_PRODUCT = python
 
 # This host Python is installed in $(HOST_DIR), as it is needed when
 # cross-compiling third-party Python modules.
@@ -39,7 +41,13 @@ HOST_PYTHON3_CONF_ENV += \
 
 PYTHON3_DEPENDENCIES = host-python3 libffi
 
-HOST_PYTHON3_DEPENDENCIES = host-expat host-zlib host-libffi
+HOST_PYTHON3_DEPENDENCIES = host-autoconf-archive host-expat host-zlib host-libffi
+
+ifeq ($(BR2_PACKAGE_HOST_PYTHON3_BZIP2),y)
+HOST_PYTHON3_DEPENDENCIES += host-bzip2
+else
+HOST_PYTHON3_CONF_OPTS += --disable-bzip2
+endif
 
 ifeq ($(BR2_PACKAGE_HOST_PYTHON3_SSL),y)
 HOST_PYTHON3_DEPENDENCIES += host-openssl
@@ -48,6 +56,18 @@ HOST_PYTHON3_CONF_OPTS += --disable-openssl
 endif
 
 PYTHON3_INSTALL_STAGING = YES
+
+ifeq ($(BR2_PACKAGE_PYTHON3_2TO3),y)
+PYTHON3_CONF_OPTS += --enable-lib2to3
+else
+PYTHON3_CONF_OPTS += --disable-lib2to3
+endif
+
+ifeq ($(BR2_PACKAGE_PYTHON3_BERKELEYDB),y)
+PYTHON3_DEPENDENCIES += berkeleydb
+else
+PYTHON3_CONF_OPTS += --disable-berkeleydb
+endif
 
 ifeq ($(BR2_PACKAGE_PYTHON3_READLINE),y)
 PYTHON3_DEPENDENCIES += readline
@@ -156,7 +176,6 @@ PYTHON3_CONF_OPTS += \
 	--with-system-ffi \
 	--disable-pydoc \
 	--disable-test-modules \
-	--disable-lib2to3 \
 	--disable-tk \
 	--disable-nis \
 	--disable-idle3 \
@@ -235,27 +254,20 @@ endef
 PYTHON3_POST_INSTALL_TARGET_HOOKS += PYTHON3_ENSURE_LIBPYTHON_STRIPPED
 
 PYTHON3_AUTORECONF = YES
+PYTHON3_AUTORECONF_OPTS = --include=$(HOST_DIR)/share/autoconf-archive
 
 define PYTHON3_INSTALL_SYMLINK
 	ln -fs python3 $(TARGET_DIR)/usr/bin/python
 endef
 
-ifneq ($(BR2_PACKAGE_PYTHON),y)
 PYTHON3_POST_INSTALL_TARGET_HOOKS += PYTHON3_INSTALL_SYMLINK
-endif
 
-# Some packages may have build scripts requiring python3, whatever is the
-# python version chosen for the target.
-# Only install the python symlink in the host tree if python3 is enabled
-# for the target.
-ifeq ($(BR2_PACKAGE_PYTHON3),y)
 define HOST_PYTHON3_INSTALL_SYMLINK
 	ln -fs python3 $(HOST_DIR)/bin/python
 	ln -fs python3-config $(HOST_DIR)/bin/python-config
 endef
 
 HOST_PYTHON3_POST_INSTALL_HOOKS += HOST_PYTHON3_INSTALL_SYMLINK
-endif
 
 # Provided to other packages
 PYTHON3_PATH = $(STAGING_DIR)/usr/lib/python$(PYTHON3_VERSION_MAJOR)/
@@ -280,6 +292,7 @@ define PYTHON3_CREATE_PYC_FILES
 	PYTHONPATH="$(PYTHON3_PATH)" \
 	$(HOST_DIR)/bin/python$(PYTHON3_VERSION_MAJOR) \
 		$(TOPDIR)/support/scripts/pycompile.py \
+		$(if $(VERBOSE),--verbose) \
 		--strip-root $(TARGET_DIR) \
 		$(TARGET_DIR)/usr/lib/python$(PYTHON3_VERSION_MAJOR)
 endef

@@ -4,11 +4,12 @@
 #
 ################################################################################
 
-KEEPALIVED_VERSION = 2.0.15
+KEEPALIVED_VERSION = 2.2.7
 KEEPALIVED_SITE = http://www.keepalived.org/software
 KEEPALIVED_DEPENDENCIES = host-pkgconf openssl
 KEEPALIVED_LICENSE = GPL-2.0+
 KEEPALIVED_LICENSE_FILES = COPYING
+KEEPALIVED_CPE_ID_VENDOR = keepalived
 KEEPALIVED_CONF_OPTS = --disable-hardening
 # We're patching configure.ac
 KEEPALIVED_AUTORECONF = YES
@@ -34,18 +35,18 @@ else
 KEEPALIVED_CONF_OPTS += --disable-libnl
 endif
 
+ifeq ($(BR2_PACKAGE_IPTABLES),y)
+KEEPALIVED_DEPENDENCIES += iptables
+KEEPALIVED_CONF_OPTS += --enable-iptables
+# ipset support only makes sense when iptables support is enabled.
 ifeq ($(BR2_PACKAGE_IPSET),y)
 KEEPALIVED_DEPENDENCIES += ipset
 KEEPALIVED_CONF_OPTS += --enable-libipset
 else
 KEEPALIVED_CONF_OPTS += --disable-libipset
 endif
-
-ifeq ($(BR2_PACKAGE_IPTABLES),y)
-KEEPALIVED_DEPENDENCIES += iptables
-KEEPALIVED_CONF_OPTS += --enable-libiptc
 else
-KEEPALIVED_CONF_OPTS += --disable-libiptc
+KEEPALIVED_CONF_OPTS += --disable-iptables
 endif
 
 ifeq ($(BR2_PACKAGE_LIBNFTNL),y)
@@ -53,6 +54,10 @@ KEEPALIVED_DEPENDENCIES += libnftnl
 KEEPALIVED_CONF_OPTS += --enable-nftables
 else
 KEEPALIVED_CONF_OPTS += --disable-nftables
+endif
+
+ifeq ($(BR2_TOOLCHAIN_GCC_AT_LEAST_4_9),)
+KEEPALIVED_CONF_OPTS += --disable-track-process
 endif
 
 $(eval $(autotools-package))

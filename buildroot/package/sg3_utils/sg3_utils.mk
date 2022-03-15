@@ -4,21 +4,25 @@
 #
 ################################################################################
 
-SG3_UTILS_VERSION = 1.44
+SG3_UTILS_VERSION = 1.47
 SG3_UTILS_SOURCE = sg3_utils-$(SG3_UTILS_VERSION).tar.xz
 SG3_UTILS_SITE = http://sg.danny.cz/sg/p
-SG3_UTILS_LICENSE = BSD-3-Clause (library)
+SG3_UTILS_LICENSE = BSD-2-Clause (library)
 # Some utils progs are GPL-2.0+ licensed while others are BSD-3-Clause
 ifeq ($(BR2_PACKAGE_SG3_UTILS_PROGS),y)
-SG3_UTILS_LICENSE += , GPL-2.0+ (programs), BSD-3-Clause (programs)
+SG3_UTILS_LICENSE += , GPL-2.0+ (programs), BSD-2-Clause (programs)
 endif
 SG3_UTILS_LICENSE_FILES = COPYING BSD_LICENSE
-
-# Patching configure.ac/Makefile.am
+# We're patching configure.ac
 SG3_UTILS_AUTORECONF = YES
 
 # install the libsgutils2 library
 SG3_UTILS_INSTALL_STAGING = YES
+
+# Uses __atomic_fetch_add_4
+ifeq ($(BR2_TOOLCHAIN_HAS_LIBATOMIC),y)
+SG3_UTILS_CONF_ENV += LIBS="-latomic"
+endif
 
 ifeq ($(BR2_PACKAGE_SG3_UTILS_PROGS),)
 define SG3_UTILS_REMOVE_PROGS

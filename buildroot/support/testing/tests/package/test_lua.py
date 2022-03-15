@@ -31,8 +31,7 @@ class TestLuaBase(infra.basetest.BRTest):
 
     def module_test(self, module, script="a=1"):
         cmd = "lua -l {} -e '{}'".format(module, script)
-        _, exit_code = self.emulator.run(cmd)
-        self.assertEqual(exit_code, 0)
+        self.assertRunOk(cmd)
 
 
 class TestLua(TestLuaBase):
@@ -43,8 +42,8 @@ class TestLua(TestLuaBase):
 
     def test_run(self):
         self.login()
-        self.version_test('Lua 5.3')
-        self.g_version_test('Lua 5.3')
+        self.version_test('Lua 5.4')
+        self.g_version_test('Lua 5.4')
 
 
 class TestLuajit(TestLuaBase):

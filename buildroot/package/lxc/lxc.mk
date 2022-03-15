@@ -4,14 +4,13 @@
 #
 ################################################################################
 
-LXC_VERSION = 3.2.1
+LXC_VERSION = 4.0.11
 LXC_SITE = https://linuxcontainers.org/downloads/lxc
-LXC_LICENSE = LGPL-2.1+
-LXC_LICENSE_FILES = COPYING
+LXC_LICENSE = GPL-2.0 (some tools), LGPL-2.1+
+LXC_LICENSE_FILES = LICENSE.GPL2 LICENSE.LGPL2.1
+LXC_CPE_ID_VENDOR = linuxcontainers
 LXC_DEPENDENCIES = host-pkgconf
 LXC_INSTALL_STAGING = YES
-# We're patching configure.ac
-LXC_AUTORECONF = YES
 
 LXC_CONF_OPTS = \
 	--disable-apparmor \
@@ -43,6 +42,13 @@ LXC_CONF_OPTS += --enable-selinux
 LXC_DEPENDENCIES += libselinux
 else
 LXC_CONF_OPTS += --disable-selinux
+endif
+
+ifeq ($(BR2_PACKAGE_LIBURING),y)
+LXC_CONF_OPTS += --enable-liburing
+LXC_DEPENDENCIES += liburing
+else
+LXC_CONF_OPTS += --disable-liburing
 endif
 
 ifeq ($(BR2_PACKAGE_OPENSSL),y)

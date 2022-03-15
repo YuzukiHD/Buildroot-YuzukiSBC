@@ -4,14 +4,13 @@
 #
 ################################################################################
 
-LIBOSTREE_VERSION_MAJOR = 2019.6
-LIBOSTREE_VERSION= $(LIBOSTREE_VERSION_MAJOR)
+LIBOSTREE_VERSION = 2022.1
 LIBOSTREE_SOURCE = libostree-$(LIBOSTREE_VERSION).tar.xz
-LIBOSTREE_SITE = https://github.com/ostreedev/ostree/releases/download/v$(LIBOSTREE_VERSION_MAJOR)
+LIBOSTREE_SITE = https://github.com/ostreedev/ostree/releases/download/v$(LIBOSTREE_VERSION)
 
 LIBOSTREE_LICENSE = LGPL-2.0+
 LIBOSTREE_LICENSE_FILES = COPYING
-LIBOSTREE_DEPENDENCIES = e2fsprogs host-bison host-pkgconf libfuse libglib2 libgpg-error libgpgme xz
+LIBOSTREE_DEPENDENCIES = e2fsprogs host-bison host-pkgconf libglib2 libgpg-error libgpgme xz
 LIBOSTREE_INSTALL_STAGING = YES
 
 LIBOSTREE_CONF_ENV = \
@@ -23,6 +22,14 @@ LIBOSTREE_CONF_OPTS += \
 	--disable-gtk-doc-pdf \
 	--disable-man
 
+ifeq ($(BR2_PACKAGE_GOBJECT_INTROSPECTION),y)
+LIBOSTREE_DEPENDENCIES += gobject-introspection
+LIBOSTREE_CONF_OPTS += --enable-introspection
+LIBOSTREE_MAKE_OPTS = INTROSPECTION_SCANNER_ENV=
+else
+LIBOSTREE_CONF_OPTS += --disable-introspection
+endif
+
 ifeq ($(BR2_PACKAGE_OPENSSL),y)
 LIBOSTREE_CONF_OPTS += --with-openssl
 LIBOSTREE_DEPENDENCIES += openssl
@@ -30,11 +37,7 @@ else
 LIBOSTREE_CONF_OPTS += --without-openssl
 endif
 
-# Avahi support needs libavahi-client, which is built by avahi if avahi-daemon
-# and dbus is selected. Since there is no BR2_PACKAGE_LIBAVAHI_CLIENT config
-# option yet, use the avahi-daemon and dbus config symbols to check for
-# libavahi-client.
-ifeq ($(BR2_PACKAGE_AVAHI_DAEMON)$(BR2_PACKAGE_DBUS),yy)
+ifeq ($(BR2_PACKAGE_AVAHI_LIBAVAHI_CLIENT),y)
 LIBOSTREE_CONF_OPTS += --with-avahi
 LIBOSTREE_DEPENDENCIES += avahi
 else
@@ -60,6 +63,13 @@ LIBOSTREE_CONF_OPTS += --with-libarchive
 LIBOSTREE_DEPENDENCIES += libarchive
 else
 LIBOSTREE_CONF_OPTS += --without-libarchive
+endif
+
+ifeq ($(BR2_PACKAGE_LIBFUSE),y)
+LIBOSTREE_CONF_OPTS += --enable-rofiles-fuse
+LIBOSTREE_DEPENDENCIES += libfuse
+else
+LIBOSTREE_CONF_OPTS += --disable-rofiles-fuse
 endif
 
 ifeq ($(BR2_PACKAGE_LIBSELINUX),y)

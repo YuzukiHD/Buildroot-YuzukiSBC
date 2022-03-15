@@ -1,4 +1,4 @@
-# From http://lists.nongnu.org/archive/html/lzip-bug/2018-02/msg00006.html
-sha256 c93b81a5a7788ef5812423d311345ba5d3bd4f5ebf1f693911e3a13553c1290c lzip-1.20.tar.gz
+# From https://lists.nongnu.org/archive/html/lzip-bug/2022-02/msg00000.html
+sha256  4792c047ddf15ef29d55ba8e68a1a21e0cb7692d87ecdf7204419864582f280d  lzip-1.23.tar.gz
 # Locally calculated
-sha256 3d77c1a58fbde5ddba612d1fe09965e20a3804953eca12e8c1892298bb8a5eef COPYING
+sha256  3d77c1a58fbde5ddba612d1fe09965e20a3804953eca12e8c1892298bb8a5eef  COPYING

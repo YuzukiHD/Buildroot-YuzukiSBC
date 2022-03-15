@@ -10,8 +10,8 @@ OLSR_PLUGINS = arprefresh bmf dot_draw dyn_gw dyn_gw_plain httpinfo jsoninfo \
 	mdns nameservice netjson poprouting p2pd pgraph secure txtinfo watchdog
 # Doesn't really need quagga but not very useful without it
 OLSR_PLUGINS += $(if $(BR2_PACKAGE_QUAGGA),quagga)
-OLSR_LICENSE = BSD-3-Clause, LGPL-2.1+
-OLSR_LICENSE_FILES = license.txt lib/pud/nmealib/LICENSE
+OLSR_LICENSE = BSD-3-Clause
+OLSR_LICENSE_FILES = license.txt
 OLSR_DEPENDENCIES = host-flex host-bison
 
 OLSR_CFLAGS = $(TARGET_CFLAGS)
@@ -19,11 +19,18 @@ OLSR_CFLAGS = $(TARGET_CFLAGS)
 # it needs -fPIC to link on lot of architectures
 OLSR_CFLAGS += -fPIC
 
+ifeq ($(BR2_PACKAGE_GPSD),y)
+OLSR_LICENSE += , LGPL-2.1+ (nmealib)
+OLSR_LICENSE_FILES += lib/pud/nmealib/LICENSE
+OLSR_DEPENDENCIES += gpsd
+OLSR_PLUGINS += pud
+endif
+
 define OLSR_BUILD_CMDS
-	$(TARGET_CONFIGURE_OPTS) $(MAKE) ARCH=$(KERNEL_ARCH) \
+	$(TARGET_CONFIGURE_OPTS) $(MAKE) ARCH=$(NORMALIZED_ARCH) \
 		CFLAGS="$(OLSR_CFLAGS)" -C $(@D) olsrd
 	$(foreach p,$(OLSR_PLUGINS), \
-		$(TARGET_CONFIGURE_OPTS) $(MAKE) ARCH=$(KERNEL_ARCH) \
+		$(TARGET_CONFIGURE_OPTS) $(MAKE) ARCH=$(NORMALIZED_ARCH) \
 			CFLAGS="$(OLSR_CFLAGS)" -C $(@D)/lib/$(p)
 	)
 endef

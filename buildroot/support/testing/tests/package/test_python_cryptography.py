@@ -1,23 +1,20 @@
 from tests.package.test_python import TestPythonPackageBase
 
 
-class TestPythonPy2Cryptography(TestPythonPackageBase):
-    __test__ = True
-    config = TestPythonPackageBase.config + \
-        """
-        BR2_PACKAGE_PYTHON=y
-        BR2_PACKAGE_PYTHON_CRYPTOGRAPHY=y
-        """
-    sample_scripts = ["tests/package/sample_python_cryptography.py"]
-    timeout = 40
-
-
 class TestPythonPy3Cryptography(TestPythonPackageBase):
     __test__ = True
-    config = TestPythonPackageBase.config + \
+    # Need to use a different toolchain than the default due to
+    # python-cryptography using Rust (not available with uclibc)
+    config = \
         """
+        BR2_arm=y
+        BR2_TOOLCHAIN_EXTERNAL=y
+        BR2_TOOLCHAIN_EXTERNAL_BOOTLIN=y
+        BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_ARMV5_EABI_GLIBC_STABLE=y
         BR2_PACKAGE_PYTHON3=y
         BR2_PACKAGE_PYTHON_CRYPTOGRAPHY=y
+        BR2_TARGET_ROOTFS_CPIO=y
+        # BR2_TARGET_ROOTFS_TAR is not set
         """
     sample_scripts = ["tests/package/sample_python_cryptography.py"]
     timeout = 40

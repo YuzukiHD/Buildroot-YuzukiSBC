@@ -4,11 +4,11 @@
 #
 ################################################################################
 
-OPENZWAVE_VERSION = 1.6
-OPENZWAVE_SITE = $(call github,OpenZWave,open-zwave,v$(OPENZWAVE_VERSION))
+OPENZWAVE_VERSION = 62444b0f979c337d2091d77d89cf63c2ae9775cf
+OPENZWAVE_SITE = $(call github,OpenZWave,open-zwave,$(OPENZWAVE_VERSION))
 OPENZWAVE_LICENSE = LGPL-3.0+, GPL-3.0 (examples), Apache-2.0 (sh2ju.sh)
-OPENZWAVE_LICENSE_FILES = license/license.txt license/lgpl.txt \
-	license/gpl.txt license/Apache-License-2.0.txt
+OPENZWAVE_LICENSE_FILES = LICENSE licenses/license.txt licenses/lgpl.txt \
+	licenses/gpl.txt licenses/Apache-License-2.0.txt
 OPENZWAVE_DEPENDENCIES = tinyxml
 
 OPENZWAVE_INSTALL_STAGING = YES
@@ -23,6 +23,7 @@ OPENZWAVE_INSTALL_STAGING = YES
 # the correct directory otherwise openzwave will install configuration files in
 # $(PREFIX)/etc/openzwave.
 # Disable doxygen documentation.
+# Set {DEBUG,RELEASE}_CFLAGS to remove -Werror.
 OPENZWAVE_MAKE_OPTS = \
 	CROSS_COMPILE="$(TARGET_CROSS)" \
 	PREFIX=/usr \
@@ -30,6 +31,8 @@ OPENZWAVE_MAKE_OPTS = \
 	pkgconfigdir=/usr/lib/pkgconfig \
 	sysconfdir=/etc/openzwave \
 	DOXYGEN= \
+	DEBUG_CFLAGS="-fPIC -std=c++11" \
+	RELEASE_CFLAGS="-fPIC -std=c++11" \
 	USE_BI_TXML=0
 
 ifeq ($(BR2_PACKAGE_HAS_UDEV),y)

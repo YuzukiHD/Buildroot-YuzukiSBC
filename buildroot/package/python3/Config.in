@@ -4,7 +4,6 @@ comment "python3 needs a toolchain w/ wchar, threads, dynamic library"
 
 config BR2_PACKAGE_PYTHON3
 	bool "python3"
-	depends on !BR2_PACKAGE_PYTHON
 	depends on BR2_USE_WCHAR
 	# uses fork()
 	depends on BR2_USE_MMU
@@ -40,6 +39,17 @@ endchoice
 menu "core python3 modules"
 
 comment "The following modules are unusual or require extra libraries"
+
+config BR2_PACKAGE_PYTHON3_2TO3
+	bool "2to3 module"
+	help
+	  code translation from python 2 to 3
+
+config BR2_PACKAGE_PYTHON3_BERKELEYDB
+	bool "berkeleydb"
+	select BR2_PACKAGE_BERKELEYDB
+	help
+	  berkeleydb module for Python3
 
 config BR2_PACKAGE_PYTHON3_BZIP2
 	bool "bz2 module"
@@ -79,6 +89,7 @@ config BR2_PACKAGE_PYTHON3_READLINE
 config BR2_PACKAGE_PYTHON3_SSL
 	bool "ssl"
 	select BR2_PACKAGE_OPENSSL
+	select BR2_PACKAGE_LIBOPENSSL_ENABLE_BLAKE2 if BR2_PACKAGE_LIBOPENSSL
 	help
 	  _ssl module for Python3 (required for https in urllib etc).
 

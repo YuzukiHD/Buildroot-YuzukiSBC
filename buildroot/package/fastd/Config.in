@@ -6,7 +6,6 @@ config BR2_PACKAGE_FASTD
 	select BR2_PACKAGE_LIBUECC
 	select BR2_PACKAGE_LIBSODIUM
 	select BR2_PACKAGE_LIBSODIUM_FULL
-	select BR2_PACKAGE_LIBCAP
 	help
 	  Fast and Secure Tunneling Daemon
 
@@ -21,6 +20,13 @@ config BR2_PACKAGE_FASTD_STATUS_SOCKET
 	select BR2_PACKAGE_JSON_C
 	help
 	  Enable support for a socket to get fastd's status.
+
+config BR2_PACKAGE_FASTD_OFFLOAD_L2TP
+	bool "l2tp offload support"
+	select BR2_PACKAGE_LIBMNL
+	help
+	  L2TP can be offloaded to the Linux kernel, significantly
+	  increasing throughput.
 
 endif
 

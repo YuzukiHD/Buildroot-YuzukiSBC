@@ -5,7 +5,7 @@ menuconfig BR2_PACKAGE_GST1_PLUGINS_BAD
 	  A set of plug-ins for GStreamer that may be of poor quality
 	  or lacking some features.
 
-	  http://gstreamer.freedesktop.org/
+	  https://gstreamer.freedesktop.org/
 
 if BR2_PACKAGE_GST1_PLUGINS_BAD
 
@@ -76,6 +76,12 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_CAMERABIN2
 	help
 	  Take image snapshots and record movies from camera
 
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_CODECALPHA
+	bool "codecalpha"
+	help
+	  Elements for VP8/VP9 alpha support (codecalphademux,
+	  alphacombine, vp8alphadecodebin, vp9alphadecodebin)
+
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_COLOREFFECTS
 	bool "coloreffects"
 	help
@@ -87,8 +93,13 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_DEBUGUTILS
 	  Collection of elements that may or may not be useful for
 	  debugging
 
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_DVBSUBENC
+	bool "dvbsubenc"
+	help
+	  DVB subpicture encoding support
+
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_DVBSUBOVERLAY
-	bool "dvdsuboverlay"
+	bool "dvbsuboverlay"
 	help
 	  DVB subtitle renderer plugin
 
@@ -232,6 +243,21 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_REMOVESILENCE
 	help
 	  Removes silence from an audio stream
 
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_RIST
+	bool "rist"
+	help
+	  RIST streaming
+
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_RTMP2
+	bool "rtmp2"
+	help
+	  RTMP sink/source (rtmp2sink, rtmp2src)
+
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_RTP2
+	bool "rtp"
+	help
+	  RTP (rtpsrc/rtpsink)
+
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_RTMP
 	bool "rtmp"
 	select BR2_PACKAGE_RTMPDUMP
@@ -268,6 +294,11 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_SUBENC
 	help
 	  subtitle encoders
 
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_SWITCHBIN
+	bool "switchbin"
+	help
+	  Switching between paths based on input caps
+
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_TIMECODE
 	bool "timecode"
 
@@ -297,16 +328,25 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_Y4M
 	help
 	  Demuxes/decodes YUV4MPEG streams
 
-config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_YADIF
-	bool "yadif"
-	help
-	  YADIF deinterlacing filter
-
 comment "plugins with external dependencies"
+
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_AES
+	bool "aes"
+	select BR2_PACKAGE_OPENSSL
+	help
+	  "AES encryption/decryption plugin"
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_ASSRENDER
 	bool "assrender"
+	depends on BR2_INSTALL_LIBSTDCPP # libass -> harfbuzz
+	depends on BR2_TOOLCHAIN_HAS_SYNC_4 # libass -> harfbuzz
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_9 # libass -> harfbuzz
 	select BR2_PACKAGE_LIBASS
+
+comment "assrender plugin needs a toolchain w/ C++, gcc >= 4.9"
+	depends on BR2_TOOLCHAIN_HAS_SYNC_4
+	depends on !BR2_INSTALL_LIBSTDCPP || \
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_4_9
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_BLUEZ
 	bool "bluez"
@@ -317,6 +357,7 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_BLUEZ
 	depends on BR2_TOOLCHAIN_HEADERS_AT_LEAST_3_4 # bluez5_utils
 	depends on BR2_TOOLCHAIN_HAS_SYNC_4 # bluez5_utils
 	select BR2_PACKAGE_BLUEZ5_UTILS
+	select BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_AUDIO # runtime
 	help
 	  Bluetooth audio A2DP/AVDTP sink, AVDTP source plugin
 
@@ -395,6 +436,7 @@ comment "fdk-aac needs a toolchain w/ C++"
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_FLUIDSYNTH
 	bool "fluidsynth"
+	depends on !BR2_STATIC_LIBS # fluidsynth
 	depends on BR2_USE_WCHAR # fluidsynth
 	depends on BR2_TOOLCHAIN_HAS_THREADS # fluidsynth
 	depends on BR2_USE_MMU # fluidsynth
@@ -402,9 +444,10 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_FLUIDSYNTH
 	help
 	  Fluidsynth MIDI decoder plugin
 
-comment "fluidsynth needs a toolchain w/ threads, wchar"
+comment "fluidsynth needs a toolchain w/ threads, wchar, dynamic library"
 	depends on BR2_USE_MMU
-	depends on !BR2_USE_WCHAR || !BR2_TOOLCHAIN_HAS_THREADS
+	depends on !BR2_USE_WCHAR || !BR2_TOOLCHAIN_HAS_THREADS || \
+		BR2_STATIC_LIBS
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_GL
 	bool "gl"
@@ -426,17 +469,6 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_KMS
 	select BR2_PACKAGE_LIBDRM
 	help
 	  KMS video sink
-
-config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_LIBMMS
-	bool "libmms"
-	depends on BR2_USE_WCHAR # libmms -> libglib2
-	depends on BR2_TOOLCHAIN_HAS_THREADS # libmms -> libglib2
-	select BR2_PACKAGE_LIBMMS
-	help
-	  Microsoft Multi Media Server streaming protocol support
-
-comment "libmms needs a toolchain w/ wchar, threads"
-	depends on !BR2_USE_WCHAR || !BR2_TOOLCHAIN_HAS_THREADS
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_DTLS
 	bool "dtls"
@@ -489,14 +521,16 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_NEON
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_OPENAL
 	bool "openal"
 	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_9
 	depends on BR2_TOOLCHAIN_HAS_THREADS_NPTL
 	depends on BR2_PAKCAGE_OPENAL_ARCH_SUPPORTS
 	select BR2_PACKAGE_OPENAL
 
-comment "openal plugin needs a toolchain w/ NPTL, C++"
+comment "openal plugin needs a toolchain w/ NPTL, C++, gcc >= 4.9"
 	depends on BR2_PAKCAGE_OPENAL_ARCH_SUPPORTS
 	depends on !BR2_TOOLCHAIN_HAS_THREADS_NPTL \
-		|| !BR2_INSTALL_LIBSTDCPP
+		|| !BR2_INSTALL_LIBSTDCPP \
+		|| !BR2_TOOLCHAIN_GCC_AT_LEAST_4_9
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_OPENH264
 	bool "openh264"
@@ -525,23 +559,37 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_OPUS
 	help
 	  OPUS plugin library
 
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_QROVERLAY
+	bool "qroverlay"
+	select BR2_PACKAGE_JSON_GLIB
+	select BR2_PACKAGE_LIBQRENCODE
+	help
+	  Elements qroverlay, debugqroverlay (overlay data on top of
+	  video in the form of a QR code)
+
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_RSVG
 	bool "rsvg"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS # librsvg
 	depends on BR2_INSTALL_LIBSTDCPP # librsvg -> pango
 	depends on BR2_TOOLCHAIN_HAS_SYNC_4 # librsvg -> pango -> harfbuzz
-	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_8 # librsvg -> pango -> harfbuzz
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_9 # librsvg -> pango -> harfbuzz
 	select BR2_PACKAGE_LIBRSVG
 	help
 	  RSVG plugin library
 
-comment "rsvg plugin needs a toolchain w/ C++, gcc >= 4.8"
+comment "rsvg plugin needs a toolchain w/ C++, gcc >= 4.9"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
 	depends on !BR2_INSTALL_LIBSTDCPP || \
-		!BR2_TOOLCHAIN_GCC_AT_LEAST_4_8
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_4_9
 	depends on BR2_TOOLCHAIN_HAS_SYNC_4
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_SBC
 	bool "sbc"
 	select BR2_PACKAGE_SBC
+
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_SCTP
+	bool "sctp"
+	depends on BR2_TOOLCHAIN_HAS_SYNC_4 # __sync_*_4 intrinsics
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_SHM
 	bool "shm"
@@ -555,6 +603,27 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_SNDFILE
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_SRTP
 	bool "srtp"
 	select BR2_PACKAGE_LIBSRTP
+
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_UVCH264
+	bool "uvch264"
+	depends on BR2_PACKAGE_HAS_UDEV # libgudev
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libgudev, libusb
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_9 # libusb
+	depends on BR2_USE_MMU # libgudev
+	depends on BR2_USE_WCHAR # libgudev
+	select BR2_PACKAGE_LIBGUDEV
+	select BR2_PACKAGE_LIBUSB
+	help
+	  UVC compliant H.264 camera source plugin
+
+comment "uvch264 needs udev /dev management"
+	depends on BR2_USE_MMU
+	depends on !BR2_PACKAGE_HAS_UDEV
+
+comment "uvch264 needs a toolchain w/ threads, wchar, gcc >= 4.9"
+	depends on BR2_USE_MMU
+	depends on !BR2_USE_WCHAR || !BR2_TOOLCHAIN_HAS_THREADS || \
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_4_9
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_VOAACENC
 	bool "voaacenc"
@@ -608,10 +677,26 @@ config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_WPE
 	default y
 	depends on BR2_PACKAGE_WPEWEBKIT
 	depends on BR2_PACKAGE_GST1_PLUGINS_BASE_HAS_LIB_OPENGL
+	depends on !BR2_PACKAGE_WPEWEBKIT_MEDIA_STREAM
 
 comment "wpe needs the gst1-plugins-base opengl library and wpewebkit"
 	depends on !BR2_PACKAGE_WPEWEBKIT \
 		|| !BR2_PACKAGE_GST1_PLUGINS_BASE_HAS_LIB_OPENGL
+
+comment "wpe is incompatible w/ wpewebkit media-stream support"
+	depends on BR2_PACKAGE_WPEWEBKIT
+	depends on BR2_PACKAGE_GST1_PLUGINS_BASE_HAS_LIB_OPENGL
+	depends on BR2_PACKAGE_WPEWEBKIT_MEDIA_STREAM
+
+config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_V4L2CODECS
+	bool "v4l2codecs"
+	depends on BR2_PACKAGE_HAS_UDEV # libgudev
+	select BR2_PACKAGE_LIBGUDEV
+	help
+	  Video4Linux Stateless CODECs support
+
+comment "v4l2codecs need udev /dev management"
+	depends on !BR2_PACKAGE_HAS_UDEV
 
 config BR2_PACKAGE_GST1_PLUGINS_BAD_PLUGIN_X265
 	bool "x265"
