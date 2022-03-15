@@ -16,7 +16,7 @@ index 30edc320..b90412de 100644
  
  dtb-$(CONFIG_MACH_SUNIV) += \
 -	suniv-generic.dtb
-+	f1c200s-yuzukiruler-uboot.dtb
++	suniv-f1c200s-uboot.dtb
  
  dtb-$(CONFIG_VF610) += vf500-colibri.dtb \
  	vf610-colibri.dtb \
