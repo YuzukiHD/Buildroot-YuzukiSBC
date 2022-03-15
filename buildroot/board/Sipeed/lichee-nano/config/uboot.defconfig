@@ -13,10 +13,10 @@ CONFIG_CMD_DFU=y
 CONFIG_CMD_MTD=y
 CONFIG_CMD_USB_MASS_STORAGE=y
 CONFIG_CMD_MTDPARTS=y
-CONFIG_DEFAULT_DEVICE_TREE="suniv-generic"
+CONFIG_DEFAULT_DEVICE_TREE="suniv-uboot"
 # CONFIG_ENV_IS_IN_FAT is not set
 CONFIG_USE_DEFAULT_ENV_FILE=y
-CONFIG_DEFAULT_ENV_FILE="../../../board/allwinner-generic/generic/uboot.env"
+CONFIG_DEFAULT_ENV_FILE="../../../board/allwinner-generic/suniv-generic/uboot.env"
 # CONFIG_NET is not set
 CONFIG_DFU_TIMEOUT=y
 CONFIG_DFU_MMC=y
