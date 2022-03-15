@@ -8,6 +8,16 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
 [![forthebadge](https://forthebadge.com/images/badges/contains-cat-gifs.svg)](https://forthebadge.com)
 [![forthebadge](https://forthebadge.com/images/badges/compatibility-betamax.svg)](https://forthebadge.com)
 
+## Supported Lists
+
+- YuzukiHD
+  - YuzukiRuler
+  - YuzukiCore F1
+
+- Sipeed
+  - Lichee Nano
+
+
 ## Notice
 This Buildroot development package is a fork of https://github.com/mangopi-sbc/buildroot-mangopi-r
 
