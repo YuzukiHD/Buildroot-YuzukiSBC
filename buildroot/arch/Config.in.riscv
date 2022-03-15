@@ -71,10 +71,12 @@ choice
 
 config BR2_RISCV_32
 	bool "32-bit"
+	select BR2_ARCH_HAS_MMU_MANDATORY
 
 config BR2_RISCV_64
 	bool "64-bit"
 	select BR2_ARCH_IS_64
+	select BR2_ARCH_HAS_MMU_OPTIONAL
 
 endchoice
 
@@ -115,6 +117,9 @@ endchoice
 config BR2_ARCH
 	default "riscv32" if !BR2_ARCH_IS_64
 	default "riscv64" if BR2_ARCH_IS_64
+
+config BR2_NORMALIZED_ARCH
+	default "riscv"
 
 config BR2_ENDIAN
 	default "LITTLE"
