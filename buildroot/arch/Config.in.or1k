@@ -1,9 +1,6 @@
 config BR2_ARCH
 	default "or1k"
 
-config BR2_NORMALIZED_ARCH
-	default "openrisc"
-
 config BR2_ENDIAN
 	default "BIG"
 
