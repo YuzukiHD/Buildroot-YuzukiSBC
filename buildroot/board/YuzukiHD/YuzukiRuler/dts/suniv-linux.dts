@@ -135,7 +135,7 @@
 };
 
 &usb_otg {
-	dr_mode = "host"; /* host peripheral */
+	dr_mode = "otg";
 	status = "okay";
 };
 
@@ -160,83 +160,4 @@
 		"FMINR", "Right FM In",
 		"MIC", "Mic";
 	status = "okay";
-};
-
-&i2c0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&i2c0_pd_pins>;
-	status = "disabled";
-
-	rtp@48 {
-		compatible = "ti,tsc2007";
-		reg = <0x48>;
-		interrupt-parent = <&pio>;
-		interrupts = <4 12 IRQ_TYPE_EDGE_FALLING>;
-		gpios = <&pio 4 12 GPIO_ACTIVE_LOW>;
-		pendown-gpio = <&pio 4 12 GPIO_ACTIVE_LOW>;
-		ti,x-plate-ohms = <660>;
-		wakeup-source;
-		status = "disabled";
-	};
-
-	ov2640: camera@30 {
-		compatible = "ovti,ov2640";
-		reg = <0x30>;
-		pinctrl-0 = <&clk_out_pins>;
-		pinctrl-names = "default";
-		clocks = <&clk_out>;
-		clock-names = "xvclk";
-		assigned-clocks = <&clk_out>;
-		assigned-clock-rates = <24000000>;
-		status = "disabled";
-
-		port {
-			ov2640_ep: endpoint {
-				remote-endpoint = <&csi0_ep>;
-				bus-width = <8>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				pclk-sample = <1>;
-			};
-		};
-	};
-
-	ov5640: camera@3c {
-		compatible = "ovti,ov5640";
-		reg = <0x3c>;
-		pinctrl-0 = <&clk_out_pins>;
-		pinctrl-names = "default";
-		clocks = <&clk_out>;
-		clock-names = "xclk";
-		assigned-clocks = <&clk_out>;
-		assigned-clock-rates = <24000000>;
-		status = "disabled";
-
-		port {
-			ov5640_ep: endpoint {
-				remote-endpoint = <&csi0_ep>;
-				bus-width = <8>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				pclk-sample = <1>;
-			};
-		};
-	};
-};
-
-&csi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&csi0_pins>;
-	packed-format;
-	status = "disabled";
-
-	port {
-		csi0_ep: endpoint {
-			remote-endpoint = <&ov2640_ep>;
-			bus-width = <8>;
-			hsync-active = <0>;
-			vsync-active = <0>;
-			pclk-sample = <1>;
-		};
-	};
 };
