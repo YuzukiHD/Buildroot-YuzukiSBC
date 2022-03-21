@@ -20,7 +20,10 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
 
 
 ## Notice
-This Buildroot development package is a fork of https://github.com/mangopi-sbc/buildroot-mangopi-r
+
+This Buildroot development package is a fork of https://github.com/mangopi-sbc/buildroot-mangopi-r which is a fork of https://github.com/aodzip/buildroot-tiny200
+
+## About buildroot
 
 ```
 Buildroot is a simple, efficient and easy-to-use tool to generate embedded
@@ -50,3 +53,5 @@ You can also find us on #buildroot on Freenode IRC.
 If you would like to contribute patches, please read
 https://buildroot.org/manual.html#submitting-patches
 ```
+
+
