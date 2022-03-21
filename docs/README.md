@@ -2,11 +2,13 @@
 <p align="center">Open Source development package for for YuzukiHD Boards and more boards</p>
 
 # Support Lists
-| Provider | Device      | Chip    | U-Boot  | Linux   |
-| -------- | ----------- | ------- | ------- | ------- |
-| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 |
-| Sipeed   | lichee-nano | F1C100s | 2020.07 | 5.4.180 |
-
+|  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
+| -------- | ----------- | ------- | ------- | ------- | --------- |
+| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | YuzukiHD_YuzukiRuler_defconfig |
+| YuzukiHD | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | YuzukiHD_YuzukiCore_F1_defconfig |
+| Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | Sipeed_lichee_nano_defconfig |
+| Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | Sipeed_lichee_zero_defconfig |
+| AWOL   | nezha | D1 | smaeul,u-boot | smaeul,linux | aw-ol_nezha_defconfig |
 
 
 # Install
@@ -19,22 +21,30 @@ sudo apt install rsync wget unzip build-essential git bc swig libncurses-dev lib
 sudo apt install python3-distutils
 ```
 
-## Download BSP
+## Download Buildroot BSP
 **Notice: Root permission is not necessery for download or extract.**
 ```shell
 git clone https://github.com/YuzukiHD/Buildroot-YuzukiSBC
+cd Buildroot-YuzukiSBC
 ```
 
 ## Make the first build
 **Notice: Root permission is not necessery for build firmware.**
 
-Do not use `sudo`
+```
+source build/envsetup.sh    # Set the build environment
+lunch                       # Change to Buildroot Directory
+```
 
 ### Apply defconfig
 **Caution: Apply defconfig will reset all buildroot configurations to default values.**
 
 **Generally, you only need to apply it once.**
 ```shell
+make *Defconfig Name*
+
+eg.
+
 make YuzukiHD_YuzukiRuler_defconfig
 ```
 
@@ -45,16 +55,45 @@ make
 
 ### If changed DTS or kernel build
 ```shell
-./rebuild-kernel.sh
+rebuild-kernel
 ```
 
 ### If changed Uboot, build
 ```shell
-./rebuild-uboot.sh
+rebuild-uboot
+```
+
+### If added linux patches, build
+```shell
+sync_kernel
 ```
 
 ## Flashing firmware to target
-### Using XFEL
+
+### Flashing to SD Card
+#### Using balenaEtcher
+
+Download balenaEtcher at [https://www.balena.io/etcher/](https://www.balena.io/etcher/)
+
+#### Using dd
+```
+cd buildroot/output/images/              # To System img dir
+sudo dd if=sdcard.img of=/dev/sdX bs=4M  # dd it
+```
+
+### Flashing to SPI-NAND
+#### Using XFEL
+
+Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
+
+```shell
+cd buildroot/output/images/                # To System img dir
+xfel.exe spinand                            # Checkout device connection
+xfel.exe spinand write 0 sysimage-nand.img   # Write System to devices
+```
+
+### Flashing to SPI-NOR
+#### Using XFEL
 
 Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
 
