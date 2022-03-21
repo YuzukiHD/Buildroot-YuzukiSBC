@@ -1,0 +1,37 @@
+From f64bb9e574148025d928db0baf702d2f2d5fff1e Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Mon, 21 Mar 2022 14:44:08 +0800
+Subject: [PATCH] uboot arch add support for sun8i-v3s-licheepi-zero-uboot
+
+---
+ arch/arm/dts/Makefile | 2 +-
+ image.map             | 4 ++++
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+ create mode 100644 image.map
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 9900b442..c43c7b12 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -563,7 +563,7 @@ dtb-$(CONFIG_MACH_SUN8I_R40) += \
+ 	sun8i-r40-bananapi-m2-ultra.dtb \
+ 	sun8i-v40-bananapi-m2-berry.dtb
+ dtb-$(CONFIG_MACH_SUN8I_V3S) += \
+-	sun8i-v3s-licheepi-zero.dtb
++	sun8i-v3s-licheepi-zero-uboot.dtb
+ dtb-$(CONFIG_MACH_SUN50I_H5) += \
+ 	sun50i-h5-bananapi-m2-plus.dtb \
+ 	sun50i-h5-emlid-neutis-n5-devboard.dtb \
+diff --git a/image.map b/image.map
+new file mode 100644
+index 00000000..ed5403ee
+--- /dev/null
++++ b/image.map
+@@ -0,0 +1,4 @@
++ImagePos    Offset      Size  Name
++00000000  00000000  000657eb  main-section
++00000000   00000000  00006000  blob
++00008000   00008000  0005d7eb  u-boot-img
+-- 
+2.17.1
+
