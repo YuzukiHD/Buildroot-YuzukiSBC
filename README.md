@@ -19,6 +19,7 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
 
 - Sipeed
   - Lichee Nano
+  - Lichee Zero
 
 
 ## Notice
