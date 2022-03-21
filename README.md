@@ -8,18 +8,15 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
 [![forthebadge](https://forthebadge.com/images/badges/contains-cat-gifs.svg)](https://forthebadge.com)
 [![forthebadge](https://forthebadge.com/images/badges/compatibility-betamax.svg)](https://forthebadge.com)
 
-## Supported Lists
+## Supported Devices
 
-- YuzukiHD
-  - YuzukiRuler
-  - YuzukiCore F1
-
-- AWOL
-  - Nezha
-
-- Sipeed
-  - Lichee Nano
-  - Lichee Zero
+|  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
+| -------- | ----------- | ------- | ------- | ------- | --------- |
+| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | YuzukiHD_YuzukiRuler_defconfig |
+| YuzukiHD | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | YuzukiHD_YuzukiCore_F1_defconfig |
+| Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | Sipeed_lichee_nano_defconfig |
+| Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | Sipeed_lichee_zero_defconfig |
+| AWOL   | nezha | D1 | smaeul,u-boot | smaeul,linux | aw-ol_nezha_defconfig |
 
 
 ## Notice
