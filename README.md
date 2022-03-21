@@ -1,4 +1,4 @@
-# Buildroot Package for YuzukiHD Devices and more
+# Buildroot Package for YuzukiHD Devices and More Devices
 
 [Documentation](https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/) &mdash;
 [Releases](https://github.com/YuzukiHD/Buildroot-YuzukiSBC/releases)
