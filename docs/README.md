@@ -105,7 +105,15 @@ xfel.exe spinor write 0 sysimage-nor.img   # Write System to devices
 
 <script id="asciicast-470363" src="https://asciinema.org/a/470363.js" async></script>
 
-## Helper Scripts
-- rebuild-uboot.sh: Recompile U-Boot when you direct edit U-Boot sourcecode.
-- rebuild-kernel.sh: Recompile Kernel when you direct edit Kernel sourcecode.
-- emulate-chroot.sh: Emulate target rootfs by chroot.
+# Script
+
+## env
+
+### wsl_path
+
+```
+Your PATH contains spaces, TABs, and/or newline (\n) characters.
+This doesn't work. Fix you PATH.
+support/dependencies/dependencies.mk:27: recipe for target 'dependencies' failed
+make: *** [dependencies] Error 1
+```
