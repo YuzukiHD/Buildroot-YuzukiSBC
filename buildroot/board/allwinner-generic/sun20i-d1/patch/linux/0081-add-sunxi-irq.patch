@@ -1,0 +1,1222 @@
+From 1669c9e83c81aad9f801135bfb9a26aab355537f Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:23:48 +0800
+Subject: [PATCH 81/93] add sunxi irq
+
+---
+ drivers/irqchip/Kconfig               |  18 +-
+ drivers/irqchip/Makefile              |   4 +
+ drivers/irqchip/irq-gic-v3.c          |   9 +-
+ drivers/irqchip/irq-sifive-plic.c     | 109 ++++++++++
+ drivers/irqchip/irq-sun8i-nmi.c       | 299 ++++++++++++++++++++++++++
+ drivers/irqchip/irq-sunxi-wakeupgen.c | 240 +++++++++++++++++++++
+ drivers/irqchip/qcom-pdc.c            | 268 +++++++++++++++++++++--
+ 7 files changed, 931 insertions(+), 16 deletions(-)
+ create mode 100644 drivers/irqchip/irq-sun8i-nmi.c
+ create mode 100644 drivers/irqchip/irq-sunxi-wakeupgen.c
+
+diff --git a/drivers/irqchip/Kconfig b/drivers/irqchip/Kconfig
+index 97f9c001d..2c9568729 100644
+--- a/drivers/irqchip/Kconfig
++++ b/drivers/irqchip/Kconfig
+@@ -421,7 +421,7 @@ config GOLDFISH_PIC
+          for Goldfish based virtual platforms.
+ 
+ config QCOM_PDC
+-	bool "QCOM PDC"
++	tristate "QCOM PDC"
+ 	depends on ARCH_QCOM
+ 	select IRQ_DOMAIN_HIERARCHY
+ 	help
+@@ -495,4 +495,20 @@ config SIFIVE_PLIC
+ 
+ 	   If you don't know what to do here, say Y.
+ 
++config SUNXI_WAKEUPGEN
++	tristate "sunxi wakeup irq chip"
++	depends on ARCH_SUNXI
++	select IRQ_DOMAIN_HIERARCHY
++	help
++	   This enables support for sunxi wakeupgen irq domain.
++
++	   If you don't know what to do here, say Y.
++
++config SUN8I_NMI
++	tristate "sun8i nmi irq chip"
++	depends on ARCH_SUNXI
++	help
++	   This enables support for sun8i nmi irq domain.
++
++	   If you don't know what to do here, say Y.
+ endmenu
+diff --git a/drivers/irqchip/Makefile b/drivers/irqchip/Makefile
+index cc7c43932..960864d0a 100644
+--- a/drivers/irqchip/Makefile
++++ b/drivers/irqchip/Makefile
+@@ -23,8 +23,12 @@ obj-$(CONFIG_OMPIC)			+= irq-ompic.o
+ obj-$(CONFIG_OR1K_PIC)			+= irq-or1k-pic.o
+ obj-$(CONFIG_ORION_IRQCHIP)		+= irq-orion.o
+ obj-$(CONFIG_OMAP_IRQCHIP)		+= irq-omap-intc.o
++ifneq ($(CONFIG_ARCH_SUN20I), y)
+ obj-$(CONFIG_ARCH_SUNXI)		+= irq-sun4i.o
+ obj-$(CONFIG_ARCH_SUNXI)		+= irq-sunxi-nmi.o
++endif
++obj-$(CONFIG_SUN8I_NMI)			+= irq-sun8i-nmi.o
++obj-$(CONFIG_SUNXI_WAKEUPGEN)	+= irq-sunxi-wakeupgen.o
+ obj-$(CONFIG_ARCH_SPEAR3XX)		+= spear-shirq.o
+ obj-$(CONFIG_ARM_GIC)			+= irq-gic.o irq-gic-common.o
+ obj-$(CONFIG_ARM_GIC_PM)		+= irq-gic-pm.o
+diff --git a/drivers/irqchip/irq-gic-v3.c b/drivers/irqchip/irq-gic-v3.c
+index 446603efb..d679edbcf 100644
+--- a/drivers/irqchip/irq-gic-v3.c
++++ b/drivers/irqchip/irq-gic-v3.c
+@@ -18,6 +18,8 @@
+ #include <linux/percpu.h>
+ #include <linux/refcount.h>
+ #include <linux/slab.h>
++#include <linux/wakeup_reason.h>
++
+ 
+ #include <linux/irqchip.h>
+ #include <linux/irqchip/arm-gic-common.h>
+@@ -648,6 +650,9 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
+ 		err = handle_domain_irq(gic_data.domain, irqnr, regs);
+ 		if (err) {
+ 			WARN_ONCE(true, "Unexpected interrupt received!\n");
++			log_abnormal_wakeup_reason(
++					"unexpected HW IRQ %u", irqnr);
++
+ 			gic_deactivate_unhandled(irqnr);
+ 		}
+ 		return;
+@@ -1722,7 +1727,7 @@ static void __init gic_of_setup_kvm_info(struct device_node *node)
+ 	gic_set_kvm_info(&gic_v3_kvm_info);
+ }
+ 
+-static int __init gic_of_init(struct device_node *node, struct device_node *parent)
++static int __init gicv3_of_init(struct device_node *node, struct device_node *parent)
+ {
+ 	void __iomem *dist_base;
+ 	struct redist_region *rdist_regs;
+@@ -1792,7 +1797,7 @@ static int __init gic_of_init(struct device_node *node, struct device_node *pare
+ 	return err;
+ }
+ 
+-IRQCHIP_DECLARE(gic_v3, "arm,gic-v3", gic_of_init);
++IRQCHIP_DECLARE(gic_v3, "arm,gic-v3", gicv3_of_init);
+ 
+ #ifdef CONFIG_ACPI
+ static struct
+diff --git a/drivers/irqchip/irq-sifive-plic.c b/drivers/irqchip/irq-sifive-plic.c
+index 7d0a12fe2..3cf0ba348 100644
+--- a/drivers/irqchip/irq-sifive-plic.c
++++ b/drivers/irqchip/irq-sifive-plic.c
+@@ -16,6 +16,8 @@
+ #include <linux/platform_device.h>
+ #include <linux/spinlock.h>
+ #include <asm/smp.h>
++#include <asm/sbi.h>
++#include <linux/cpu_pm.h>
+ 
+ /*
+  * This driver implements a version of the RISC-V PLIC with the actual layout
+@@ -55,6 +57,9 @@
+ #define     CONTEXT_THRESHOLD		0x00
+ #define     CONTEXT_CLAIM		0x04
+ 
++#define IRQS_NUM_MAX                   256
++#define IRQS_PER_U32                   32
++
+ static void __iomem *plic_regs;
+ 
+ struct plic_handler {
+@@ -66,6 +71,10 @@ struct plic_handler {
+ 	 */
+ 	raw_spinlock_t		enable_lock;
+ 	void __iomem		*enable_base;
++#if defined(CONFIG_CPU_PM)
++	u32 __percpu saved_plic_enable[IRQS_NUM_MAX/IRQS_PER_U32]; /*save 256 interrupts*/
++	u32 __percpu poriority;
++#endif
+ };
+ static DEFINE_PER_CPU(struct plic_handler, plic_handlers);
+ 
+@@ -141,6 +150,15 @@ static void plic_irq_eoi(struct irq_data *d)
+ 	writel(d->hwirq, handler->hart_base + CONTEXT_CLAIM);
+ }
+ 
++static int plic_irq_set_wake(struct irq_data *data, unsigned int on)
++{
++	unsigned long hw_irq = data->hwirq;
++
++	sbi_set_wakeup(hw_irq, on);
++
++	return 0;
++}
++
+ static struct irq_chip plic_chip = {
+ 	.name		= "SiFive PLIC",
+ 	.irq_mask	= plic_irq_mask,
+@@ -149,6 +167,7 @@ static struct irq_chip plic_chip = {
+ #ifdef CONFIG_SMP
+ 	.irq_set_affinity = plic_set_affinity,
+ #endif
++	.irq_set_wake   = plic_irq_set_wake,
+ };
+ 
+ static int plic_irqdomain_map(struct irq_domain *d, unsigned int irq,
+@@ -208,6 +227,93 @@ static int plic_find_hart_id(struct device_node *node)
+ 	return -1;
+ }
+ 
++#if defined(CONFIG_CPU_PM)
++void plic_cpu_save(void)
++{
++	int cpu = 0, i = 0;
++	struct plic_handler *handler = NULL;
++
++	cpu = smp_processor_id();
++	if (WARN_ON_ONCE(cpu >= nr_cpu_ids))
++		return;
++	handler = per_cpu_ptr(&plic_handlers, cpu);
++
++	raw_spin_lock(&handler->enable_lock);
++	/* save poriority */
++	handler->poriority = readl(handler->hart_base + CONTEXT_THRESHOLD);
++
++	for (i = 0; i < IRQS_NUM_MAX/IRQS_PER_U32; i++) {
++		u32 __iomem *reg = handler->enable_base + i * sizeof(u32);
++		handler->saved_plic_enable[i] = readl(reg);
++	}
++	raw_spin_unlock(&handler->enable_lock);
++
++}
++
++void plic_cpu_restore(void)
++{
++	int cpu = 0, i = 0, j = 0;
++	struct plic_handler *handler = NULL;
++
++	cpu = smp_processor_id();
++	if (WARN_ON_ONCE(cpu >= nr_cpu_ids))
++		return;
++	handler = per_cpu_ptr(&plic_handlers, cpu);
++
++	raw_spin_lock(&handler->enable_lock);
++	/* set poriority > threshold*/
++	writel(handler->poriority, handler->hart_base + CONTEXT_THRESHOLD);
++	/* save 256 interrupts */
++	for (i = 0; i < IRQS_NUM_MAX/IRQS_PER_U32; i++) {
++		u32 __iomem *reg = handler->enable_base + i * sizeof(u32);
++		writel(handler->saved_plic_enable[i], reg);
++		for (j = 0; j < IRQS_PER_U32; j++) {
++			int mask = 0x1 << j;
++			if (mask > handler->saved_plic_enable[i])
++				break;
++			if (mask & handler->saved_plic_enable[i])
++				writel(1, plic_regs + PRIORITY_BASE + (j + i * IRQS_PER_U32) * PRIORITY_PER_ID);
++		}
++	}
++	raw_spin_unlock(&handler->enable_lock);
++}
++
++static int plic_notifier(struct notifier_block *self, unsigned long cmd, void *v)
++{
++	switch (cmd) {
++	case CPU_PM_ENTER:
++		plic_cpu_save();
++		break;
++	case CPU_PM_ENTER_FAILED:
++	case CPU_PM_EXIT:
++		plic_cpu_restore();
++		break;
++	case CPU_CLUSTER_PM_ENTER:
++		break;
++	case CPU_CLUSTER_PM_ENTER_FAILED:
++	case CPU_CLUSTER_PM_EXIT:
++		break;
++	}
++	return NOTIFY_OK;
++}
++
++static struct notifier_block plic_notifier_block = {
++	.notifier_call = plic_notifier,
++};
++
++static int plic_pm_init(void)
++{
++	cpu_pm_register_notifier(&plic_notifier_block);
++	return 0;
++}
++#else
++static int plic_pm_init(void)
++{
++	return 0;
++}
++#endif
++
++
+ static int __init plic_init(struct device_node *node,
+ 		struct device_node *parent)
+ {
+@@ -298,6 +404,9 @@ static int __init plic_init(struct device_node *node,
+ 	pr_info("mapped %d interrupts with %d handlers for %d contexts.\n",
+ 		nr_irqs, nr_handlers, nr_contexts);
+ 	set_handle_irq(plic_handle_irq);
++	error = plic_pm_init();
++	if (error)
++		goto out_iounmap;
+ 	return 0;
+ 
+ out_iounmap:
+diff --git a/drivers/irqchip/irq-sun8i-nmi.c b/drivers/irqchip/irq-sun8i-nmi.c
+new file mode 100644
+index 000000000..93dc06cc0
+--- /dev/null
++++ b/drivers/irqchip/irq-sun8i-nmi.c
+@@ -0,0 +1,299 @@
++/*
++ * Allwinner A20/A31 SoCs NMI IRQ chip driver.
++ *
++ * Carlo Caione <carlo.caione@gmail.com>
++ *
++ * This file is licensed under the terms of the GNU General Public
++ * License version 2.  This program is licensed "as is" without any
++ * warranty of any kind, whether express or implied.
++ */
++
++#define DRV_NAME	"sunxi-8i-nmi"
++#define pr_fmt(fmt)	DRV_NAME ": " fmt
++
++#include <linux/bitops.h>
++#include <linux/device.h>
++#include <linux/io.h>
++#include <linux/irq.h>
++#include <linux/interrupt.h>
++#include <linux/irqdomain.h>
++#include <linux/of_irq.h>
++#include <linux/of_address.h>
++#include <linux/of_platform.h>
++#include <linux/irqchip.h>
++#include <linux/irqchip/chained_irq.h>
++#include <linux/syscore_ops.h>
++#include <linux/pinctrl/consumer.h>
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++
++#define SUNXI_NMI_SRC_TYPE_MASK	0x00000003
++
++enum {
++	SUNXI_SRC_TYPE_LEVEL_LOW = 0,
++	SUNXI_SRC_TYPE_EDGE_FALLING,
++	SUNXI_SRC_TYPE_LEVEL_HIGH,
++	SUNXI_SRC_TYPE_EDGE_RISING,
++};
++
++struct sunxi_sc_nmi_reg_offs {
++	u32 ctrl;
++	u32 pend;
++	u32 enable;
++};
++
++static struct sunxi_sc_nmi_reg_offs sun8i_reg_offs = {
++	.ctrl	= 0x00,
++	.pend	= 0x08,
++	.enable	= 0x04,
++};
++
++static inline void sunxi_sc_nmi_write(struct irq_chip_generic *gc, u32 off,
++				      u32 val)
++{
++	irq_reg_writel(gc, val, off);
++}
++
++static inline u32 sunxi_sc_nmi_read(struct irq_chip_generic *gc, u32 off)
++{
++	return irq_reg_readl(gc, off);
++}
++
++static void sunxi_sc_nmi_handle_irq(struct irq_desc *desc)
++{
++	struct irq_domain *domain = irq_desc_get_handler_data(desc);
++	struct irq_chip *chip = irq_desc_get_chip(desc);
++	unsigned int virq = irq_find_mapping(domain, 0);
++
++	chained_irq_enter(chip, desc);
++	generic_handle_irq(virq);
++	chained_irq_exit(chip, desc);
++}
++
++static int sunxi_sc_nmi_set_type(struct irq_data *data, unsigned int flow_type)
++{
++	struct irq_chip_generic *gc = irq_data_get_irq_chip_data(data);
++	struct irq_chip_type *ct = gc->chip_types;
++	u32 src_type_reg;
++	u32 ctrl_off = ct->regs.type;
++	unsigned int src_type;
++	unsigned int i;
++
++	irq_gc_lock(gc);
++
++	switch (flow_type & IRQF_TRIGGER_MASK) {
++	case IRQ_TYPE_EDGE_FALLING:
++		src_type = SUNXI_SRC_TYPE_EDGE_FALLING;
++		break;
++	case IRQ_TYPE_EDGE_RISING:
++		src_type = SUNXI_SRC_TYPE_EDGE_RISING;
++		break;
++	case IRQ_TYPE_LEVEL_HIGH:
++		src_type = SUNXI_SRC_TYPE_LEVEL_HIGH;
++		break;
++	case IRQ_TYPE_NONE:
++	case IRQ_TYPE_LEVEL_LOW:
++		src_type = SUNXI_SRC_TYPE_LEVEL_LOW;
++		break;
++	default:
++		irq_gc_unlock(gc);
++		pr_err("Cannot assign multiple trigger modes to IRQ %d.\n",
++			data->irq);
++		return -EBADR;
++	}
++
++	irqd_set_trigger_type(data, flow_type);
++	irq_setup_alt_chip(data, flow_type);
++
++	for (i = 0; i < gc->num_ct; i++, ct++)
++		if (ct->type & flow_type)
++			ctrl_off = ct->regs.type;
++
++	src_type_reg = sunxi_sc_nmi_read(gc, ctrl_off);
++	src_type_reg &= ~SUNXI_NMI_SRC_TYPE_MASK;
++	src_type_reg |= src_type;
++	sunxi_sc_nmi_write(gc, ctrl_off, src_type_reg);
++
++	irq_gc_unlock(gc);
++
++	return IRQ_SET_MASK_OK;
++}
++
++static void sunxi_nmi_pad_control(struct device_node *node)
++{
++	u32 v;
++	u32 __iomem *pad;
++
++	/* if we read pad-control-v1, the we use the addr to contorl nmi */
++	if (of_property_read_u32(node, "pad-control-v1", &v))
++		return;
++
++	pad = ioremap(v, 4);
++	*pad = *pad & ~BIT(0);
++	iounmap(pad);
++}
++
++/*
++ * on some standby, the prcm control register can lowpower down
++ * so it must resume the register value first
++ */
++static struct irq_chip_generic *sys_gc;
++static struct sunxi_sc_nmi_reg_offs *sys_reg_offs;
++static uint32_t sys_vaule;
++static int sunxi_nmi_suspend(void)
++{
++	sys_vaule = sunxi_sc_nmi_read(sys_gc, sys_reg_offs->enable);
++	return 0;
++}
++
++static void sunxi_nmi_resume(void)
++{
++	sunxi_sc_nmi_write(sys_gc, sys_reg_offs->enable, sys_vaule);
++}
++
++static struct syscore_ops sunxi_nmi_syscore_ops = {
++	.suspend = sunxi_nmi_suspend,
++	.resume = sunxi_nmi_resume,
++};
++
++static int sunxi_sc_nmi_irq_init(struct device_node *node,
++					struct sunxi_sc_nmi_reg_offs *reg_offs)
++{
++	struct irq_domain *domain;
++	struct irq_chip_generic *gc;
++	unsigned int irq;
++	unsigned int clr = IRQ_NOREQUEST | IRQ_NOPROBE | IRQ_NOAUTOEN;
++	int ret;
++
++
++	domain = irq_domain_add_linear(node, 1, &irq_generic_chip_ops, NULL);
++	if (!domain) {
++		pr_err("Could not register interrupt domain.\n");
++		return -ENOMEM;
++	}
++
++	ret = irq_alloc_domain_generic_chips(domain, 1, 2, DRV_NAME,
++					     handle_fasteoi_irq, clr, 0,
++					     IRQ_GC_INIT_MASK_CACHE);
++	if (ret) {
++		pr_err("Could not allocate generic interrupt chip.\n");
++		goto fail_irqd_remove;
++	}
++
++	irq = irq_of_parse_and_map(node, 0);
++	if (irq <= 0) {
++		pr_err("unable to parse irq\n");
++		ret = -EINVAL;
++		goto fail_irqd_remove;
++	}
++
++	gc = irq_get_domain_generic_chip(domain, 0);
++	gc->reg_base = of_io_request_and_map(node, 0, of_node_full_name(node));
++	if (IS_ERR(gc->reg_base)) {
++		pr_err("unable to map resource\n");
++		ret = PTR_ERR(gc->reg_base);
++		goto fail_irqd_remove;
++	}
++
++	gc->chip_types[0].type			= IRQ_TYPE_LEVEL_MASK;
++	gc->chip_types[0].chip.irq_mask		= irq_gc_mask_clr_bit;
++	gc->chip_types[0].chip.irq_unmask	= irq_gc_mask_set_bit;
++	gc->chip_types[0].chip.irq_eoi		= irq_gc_ack_set_bit;
++	gc->chip_types[0].chip.irq_set_type	= sunxi_sc_nmi_set_type;
++	gc->chip_types[0].chip.flags 		= IRQCHIP_EOI_THREADED |
++							IRQCHIP_EOI_IF_HANDLED |
++							IRQCHIP_SKIP_SET_WAKE;
++	gc->chip_types[0].regs.ack		= reg_offs->pend;
++	gc->chip_types[0].regs.mask		= reg_offs->enable;
++	gc->chip_types[0].regs.type		= reg_offs->ctrl;
++
++	gc->chip_types[1].type			= IRQ_TYPE_EDGE_BOTH;
++	gc->chip_types[1].chip.name		= gc->chip_types[0].chip.name;
++	gc->chip_types[1].chip.irq_ack		= irq_gc_ack_set_bit;
++	gc->chip_types[1].chip.irq_mask		= irq_gc_mask_clr_bit;
++	gc->chip_types[1].chip.irq_unmask	= irq_gc_mask_set_bit;
++	gc->chip_types[1].chip.irq_set_type	= sunxi_sc_nmi_set_type;
++	gc->chip_types[1].regs.ack		= reg_offs->pend;
++	gc->chip_types[1].regs.mask		= reg_offs->enable;
++	gc->chip_types[1].regs.type		= reg_offs->ctrl;
++	gc->chip_types[1].handler		= handle_edge_irq;
++
++	sunxi_sc_nmi_write(gc, reg_offs->enable, 0);
++	sunxi_sc_nmi_write(gc, reg_offs->pend, 0x1);
++
++	sunxi_nmi_pad_control(node);
++	sys_gc = gc;
++	sys_reg_offs = reg_offs;
++	register_syscore_ops(&sunxi_nmi_syscore_ops);
++
++	irq_set_chained_handler_and_data(irq, sunxi_sc_nmi_handle_irq, domain);
++
++	return 0;
++
++fail_irqd_remove:
++	irq_domain_remove(domain);
++
++	return ret;
++}
++
++static int sunxi_irq_nmi_probe(struct platform_device *pdev)
++{
++	struct pinctrl *pctrl;
++	struct pinctrl_state *pctrl_state = NULL;
++
++	pctrl = devm_pinctrl_get(&pdev->dev);
++	if (!IS_ERR_OR_NULL(pctrl)) {
++		pctrl_state = pinctrl_lookup_state(pctrl, "default");
++
++		pinctrl_select_state(pctrl, pctrl_state);
++	}
++
++	return sunxi_sc_nmi_irq_init(pdev->dev.of_node, &sun8i_reg_offs);
++}
++
++static int sunxi_irq_nmi_remove(struct platform_device *pdev)
++{
++	struct device_node *node = pdev->dev.of_node;
++	struct resource res;
++
++	unregister_syscore_ops(&sunxi_nmi_syscore_ops);
++	iounmap(sys_gc->reg_base);
++	of_address_to_resource(node, 0, &res);
++	release_mem_region(res.start, resource_size(&res));
++	irq_domain_remove(sys_gc->domain);
++
++	return 0;
++}
++
++static struct of_device_id sunxi_irq_nmi_match[] = {
++	{ .compatible = "allwinner,sun8i-nmi" },
++	{}
++};
++
++static struct platform_driver sunxi_irq_nmi_driver = {
++	.probe = sunxi_irq_nmi_probe,
++	.remove = sunxi_irq_nmi_remove,
++	.driver = {
++		.name = "sunxi_irq_nmi",
++		.owner = THIS_MODULE,
++		.of_match_table = sunxi_irq_nmi_match,
++	},
++};
++
++static int __init sun8i_nmi_irq_init(void)
++{
++	return platform_driver_register(&sunxi_irq_nmi_driver);
++}
++postcore_initcall_sync(sun8i_nmi_irq_init);
++
++static void __exit sun8i_nmi_irq_exit(void)
++{
++	platform_driver_unregister(&sunxi_irq_nmi_driver);
++}
++module_exit(sun8i_nmi_irq_exit);
++
++MODULE_AUTHOR("lihuaxing");
++MODULE_DESCRIPTION("Allwinner nmi irq");
++MODULE_LICENSE("GPL");
++MODULE_VERSION("1.0.0");
+diff --git a/drivers/irqchip/irq-sunxi-wakeupgen.c b/drivers/irqchip/irq-sunxi-wakeupgen.c
+new file mode 100644
+index 000000000..a01a062c3
+--- /dev/null
++++ b/drivers/irqchip/irq-sunxi-wakeupgen.c
+@@ -0,0 +1,240 @@
++/*
++ * Allwinner wakeup irq support.
++ *
++ *  Copyright (C) 2019 Allwinner Technology, Inc.
++ *	fanqinghua <fanqinghua@allwinnertech.com>
++ *
++ * SUNXI WakeupGen is the interrupt controller extension used along
++ * with ARM GIC to wake the CPU out from low power states on
++ * external interrupts. It is responsible for generating wakeup
++ * event from the incoming interrupts and enable bits. It is
++ * implemented in PMU always ON power domain. During normal operation,
++ * WakeupGen delivers external interrupts directly to the GIC.
++ *
++ * Copyright (C) 2017 Allwinner Technology, Inc.
++ * Author: Fan Qinghua <fanqinghua@allwinnertech.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++#include <linux/module.h>
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/io.h>
++#include <linux/irq.h>
++#include <linux/of_irq.h>
++#include <linux/irqchip.h>
++#include <linux/irqdomain.h>
++#include <linux/of_address.h>
++#include <linux/platform_device.h>
++#include <linux/cpu.h>
++#include <linux/notifier.h>
++#include <linux/cpu_pm.h>
++#include <soc/allwinner/sunxi_sip.h>
++
++#define GIC_SUPPORT_IRQS 1024
++
++struct sunxi_irq_domain {
++	struct device		*dev;
++	struct irq_domain	*irqd;
++};
++
++static inline int set_wakeup_source(u32 wakeup_irq)
++{
++	int result;
++
++	result = invoke_scp_fn_smc(SET_WAKEUP_SRC,
++								wakeup_irq, 0, 0);
++
++	return result;
++}
++
++static inline int clear_wakeup_source(u32 wakeup_irq)
++{
++	int result;
++
++	result = invoke_scp_fn_smc(CLEAR_WAKEUP_SRC,
++								wakeup_irq, 0, 0);
++
++	return result;
++}
++
++static int sunxi_irq_set_wake(struct irq_data *d, unsigned int on)
++{
++	if (on)
++		set_wakeup_source(SET_ROOT_WAKEUP_SOURCE(d->hwirq));
++	else
++		clear_wakeup_source(SET_ROOT_WAKEUP_SOURCE(d->hwirq));
++	/*
++	 * Do *not* call into the parent, as the GIC doesn't have any
++	 * wake-up facility...
++	 */
++	return 0;
++}
++
++static struct irq_chip wakeupgen_chip = {
++	.name			= "wakeupgen",
++	.irq_enable		= irq_chip_enable_parent,
++	.irq_disable		= irq_chip_disable_parent,
++	.irq_eoi		= irq_chip_eoi_parent,
++	.irq_mask		= irq_chip_mask_parent,
++	.irq_unmask		= irq_chip_unmask_parent,
++	.irq_retrigger		= irq_chip_retrigger_hierarchy,
++	.irq_set_wake		= sunxi_irq_set_wake,
++	.irq_set_type           = irq_chip_set_type_parent,
++	.irq_set_affinity	= irq_chip_set_affinity_parent,
++};
++
++static int sunxi_domain_translate(struct irq_domain *d,
++									struct irq_fwspec *fwspec,
++									unsigned long *hwirq,
++									unsigned int *type)
++{
++	if (is_of_node(fwspec->fwnode)) {
++		if (fwspec->param_count != 3)
++			return -EINVAL;
++
++		/* No PPI should point to this domain */
++		if (fwspec->param[0] != 0)
++			return -EINVAL;
++
++		*hwirq = fwspec->param[1];
++		*type = fwspec->param[2];
++		return 0;
++	}
++
++	return -EINVAL;
++}
++
++static int sunxi_domain_alloc(struct irq_domain *domain,
++								unsigned int irq,
++								unsigned int nr_irqs, void *data)
++{
++	struct irq_fwspec *fwspec = data;
++	struct irq_fwspec parent_fwspec;
++	irq_hw_number_t hwirq;
++	int i;
++
++	if (fwspec->param_count != 3)
++		return -EINVAL;	/* Not GIC compliant */
++	if (fwspec->param[0] != 0)
++		return -EINVAL;	/* No PPI should point to this domain */
++
++	hwirq = fwspec->param[1];
++	if (hwirq >= GIC_SUPPORT_IRQS)
++		return -EINVAL;	/* Can't deal with this */
++
++	for (i = 0; i < nr_irqs; i++)
++		irq_domain_set_hwirq_and_chip(domain, irq + i, hwirq + i,
++					      &wakeupgen_chip, NULL);
++
++	parent_fwspec = *fwspec;
++	parent_fwspec.fwnode = domain->parent->fwnode;
++	return irq_domain_alloc_irqs_parent(domain, irq, nr_irqs,
++					    &parent_fwspec);
++}
++
++static const struct irq_domain_ops sunxi_domain_ops = {
++	.translate	= sunxi_domain_translate,
++	.alloc		= sunxi_domain_alloc,
++	.free		= irq_domain_free_irqs_common,
++};
++
++#ifndef MODULE
++static int __init wakeupgen_init(struct device_node *node,
++			       struct device_node *parent)
++{
++	struct irq_domain *parent_domain, *domain;
++
++	if (!parent) {
++		pr_err("%s: no parent, giving up\n", node->full_name);
++		return -ENODEV;
++	}
++
++	parent_domain = irq_find_host(parent);
++	if (!parent_domain) {
++		pr_err("%s: unable to obtain parent domain\n", node->full_name);
++		return -ENXIO;
++	}
++
++	domain = irq_domain_add_hierarchy(parent_domain, 0, GIC_SUPPORT_IRQS,
++					  node, &sunxi_domain_ops,
++					  NULL);
++	if (!domain) {
++		pr_err("%s: failed to allocated domain\n", node->full_name);
++		return -ENOMEM;
++	}
++
++	return 0;
++}
++IRQCHIP_DECLARE(sunxi_wakeupgen, "allwinner,sunxi-wakeupgen", wakeupgen_init);
++#else
++static int sunxi_irq_domain_probe(struct platform_device *pdev)
++{
++	struct irq_domain *parent_domain;
++	struct sunxi_irq_domain *intr;
++	struct device_node *parent_node;
++	struct device *dev = &pdev->dev;
++
++	parent_node = of_irq_find_parent(dev_of_node(dev));
++	if (!parent_node) {
++		dev_err(dev, "Failed to get IRQ parent node\n");
++		return -ENODEV;
++	}
++
++	parent_domain = irq_find_host(parent_node);
++	if (!parent_domain) {
++		dev_err(dev, "Failed to find IRQ parent domain\n");
++		return -ENODEV;
++	}
++
++	intr = devm_kzalloc(dev, sizeof(*intr), GFP_KERNEL);
++	if (!intr)
++		return -ENOMEM;
++
++	intr->dev = dev;
++	intr->irqd = irq_domain_add_hierarchy(parent_domain, 0,
++											GIC_SUPPORT_IRQS,
++											dev_of_node(dev),
++											&sunxi_domain_ops,
++											NULL);
++	if (IS_ERR(intr->irqd)) {
++		dev_err(dev, "Failed to allocate IRQ domain\n");
++		return -ENOMEM;
++	}
++	platform_set_drvdata(pdev, intr);
++
++	return 0;
++}
++
++static int sunxi_irq_domain_remove(struct platform_device *pdev)
++{
++	struct sunxi_irq_domain *intr = platform_get_drvdata(pdev);
++
++	irq_domain_remove(intr->irqd);
++	return 0;
++}
++
++static const struct of_device_id sunxi_irq_domain_of_match[] = {
++	{ .compatible = "allwinner,sunxi-wakeupgen", },
++	{ },
++};
++MODULE_DEVICE_TABLE(of, sunxi_irq_domain_of_match);
++
++static struct platform_driver sunxi_irq_domain_driver = {
++	.probe = sunxi_irq_domain_probe,
++	.remove	= sunxi_irq_domain_remove,
++	.driver = {
++		.name = "sunxi_wakeupgen",
++		.of_match_table = sunxi_irq_domain_of_match,
++	},
++};
++module_platform_driver(sunxi_irq_domain_driver);
++
++MODULE_LICENSE("GPL v2");
++MODULE_DESCRIPTION("Allwinner wakeupgen driver");
++MODULE_ALIAS("platform: sunxi_wakeupgen");
++MODULE_AUTHOR("fanqinghua <fanqinghua@allwinnertech.com>");
++MODULE_VERSION("1.0.0");
++#endif
+diff --git a/drivers/irqchip/qcom-pdc.c b/drivers/irqchip/qcom-pdc.c
+index faa7d61b9..bf0b4c779 100644
+--- a/drivers/irqchip/qcom-pdc.c
++++ b/drivers/irqchip/qcom-pdc.c
+@@ -1,24 +1,30 @@
+ // SPDX-License-Identifier: GPL-2.0
+ /*
+- * Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
++ * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+  */
+ 
+ #include <linux/err.h>
+ #include <linux/init.h>
++#include <linux/interrupt.h>
+ #include <linux/irq.h>
+ #include <linux/irqchip.h>
+ #include <linux/irqdomain.h>
+ #include <linux/io.h>
+ #include <linux/kernel.h>
++#include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/of_irq.h>
+ #include <linux/of_address.h>
+ #include <linux/of_device.h>
++#include <linux/soc/qcom/irq.h>
+ #include <linux/spinlock.h>
+-#include <linux/platform_device.h>
+ #include <linux/slab.h>
+ #include <linux/types.h>
+ 
+-#define PDC_MAX_IRQS		126
++#include <linux/qcom_scm.h>
++
++#define PDC_MAX_IRQS		168
++#define PDC_MAX_GPIO_IRQS	256
+ 
+ #define CLEAR_INTR(reg, intr)	(reg & ~(1 << intr))
+ #define ENABLE_INTR(reg, intr)	(reg | (1 << intr))
+@@ -26,16 +32,28 @@
+ #define IRQ_ENABLE_BANK		0x10
+ #define IRQ_i_CFG		0x110
+ 
++#define PDC_NO_PARENT_IRQ	~0UL
++
+ struct pdc_pin_region {
+ 	u32 pin_base;
+ 	u32 parent_base;
+ 	u32 cnt;
+ };
+ 
++struct spi_cfg_regs {
++	union {
++		u64 start;
++		void __iomem *base;
++	};
++	resource_size_t size;
++	bool scm_io;
++};
++
+ static DEFINE_RAW_SPINLOCK(pdc_lock);
+ static void __iomem *pdc_base;
+ static struct pdc_pin_region *pdc_region;
+ static int pdc_region_cnt;
++static struct spi_cfg_regs *spi_cfg;
+ 
+ static void pdc_reg_write(int reg, u32 i, u32 val)
+ {
+@@ -63,18 +81,109 @@ static void pdc_enable_intr(struct irq_data *d, bool on)
+ 	raw_spin_unlock(&pdc_lock);
+ }
+ 
+-static void qcom_pdc_gic_mask(struct irq_data *d)
++static void qcom_pdc_gic_disable(struct irq_data *d)
+ {
++	if (d->hwirq == GPIO_NO_WAKE_IRQ)
++		return;
++
+ 	pdc_enable_intr(d, false);
++	irq_chip_disable_parent(d);
++}
++
++static int qcom_pdc_gic_get_irqchip_state(struct irq_data *d,
++		enum irqchip_irq_state which, bool *state)
++{
++	if (d->hwirq == GPIO_NO_WAKE_IRQ)
++		return 0;
++
++	return irq_chip_get_parent_state(d, which, state);
++}
++
++static int qcom_pdc_gic_set_irqchip_state(struct irq_data *d,
++		enum irqchip_irq_state which, bool value)
++{
++	if (d->hwirq == GPIO_NO_WAKE_IRQ)
++		return 0;
++
++	return irq_chip_set_parent_state(d, which, value);
++}
++
++static void qcom_pdc_gic_enable(struct irq_data *d)
++{
++	if (d->hwirq == GPIO_NO_WAKE_IRQ)
++		return;
++
++	pdc_enable_intr(d, true);
++	irq_chip_enable_parent(d);
++}
++
++static void qcom_pdc_gic_mask(struct irq_data *d)
++{
++	if (d->hwirq == GPIO_NO_WAKE_IRQ)
++		return;
++
+ 	irq_chip_mask_parent(d);
+ }
+ 
+ static void qcom_pdc_gic_unmask(struct irq_data *d)
+ {
+-	pdc_enable_intr(d, true);
++	if (d->hwirq == GPIO_NO_WAKE_IRQ)
++		return;
++
+ 	irq_chip_unmask_parent(d);
+ }
+ 
++static u32 __spi_pin_read(unsigned int pin)
++{
++	void __iomem *cfg_reg = spi_cfg->base + pin * 4;
++	u64 scm_cfg_reg = spi_cfg->start + pin * 4;
++
++	if (spi_cfg->scm_io) {
++		unsigned int val;
++
++		qcom_scm_io_readl(scm_cfg_reg, &val);
++		return val;
++	} else {
++		return readl(cfg_reg);
++	}
++}
++
++static void __spi_pin_write(unsigned int pin, unsigned int val)
++{
++	void __iomem *cfg_reg = spi_cfg->base + pin * 4;
++	u64 scm_cfg_reg = spi_cfg->start + pin * 4;
++
++	if (spi_cfg->scm_io)
++		qcom_scm_io_writel(scm_cfg_reg, val);
++	else
++		writel(val, cfg_reg);
++}
++
++static int spi_configure_type(irq_hw_number_t hwirq, unsigned int type)
++{
++	int spi = hwirq - 32;
++	u32 pin = spi / 32;
++	u32 mask = BIT(spi % 32);
++	u32 val;
++	unsigned long flags;
++
++	if (!spi_cfg)
++		return 0;
++
++	if (pin * 4 > spi_cfg->size)
++		return -EFAULT;
++
++	raw_spin_lock_irqsave(&pdc_lock, flags);
++	val = __spi_pin_read(pin);
++	val &= ~mask;
++	if (type & IRQ_TYPE_LEVEL_MASK)
++		val |= mask;
++	__spi_pin_write(pin, val);
++	raw_spin_unlock_irqrestore(&pdc_lock, flags);
++
++	return 0;
++}
++
+ /*
+  * GIC does not handle falling edge or active low. To allow falling edge and
+  * active low interrupts to be handled at GIC, PDC has an inverter that inverts
+@@ -112,7 +221,12 @@ enum pdc_irq_config_bits {
+ static int qcom_pdc_gic_set_type(struct irq_data *d, unsigned int type)
+ {
+ 	int pin_out = d->hwirq;
++	int parent_hwirq = d->parent_data->hwirq;
+ 	enum pdc_irq_config_bits pdc_type;
++	int ret;
++
++	if (pin_out == GPIO_NO_WAKE_IRQ)
++		return 0;
+ 
+ 	switch (type) {
+ 	case IRQ_TYPE_EDGE_RISING:
+@@ -140,6 +254,11 @@ static int qcom_pdc_gic_set_type(struct irq_data *d, unsigned int type)
+ 
+ 	pdc_reg_write(IRQ_i_CFG, pin_out, pdc_type);
+ 
++	/* Additionally, configure (only) the GPIO in the f/w */
++	ret = spi_configure_type(parent_hwirq, type);
++	if (ret)
++		return ret;
++
+ 	return irq_chip_set_type_parent(d, type);
+ }
+ 
+@@ -148,6 +267,10 @@ static struct irq_chip qcom_pdc_gic_chip = {
+ 	.irq_eoi		= irq_chip_eoi_parent,
+ 	.irq_mask		= qcom_pdc_gic_mask,
+ 	.irq_unmask		= qcom_pdc_gic_unmask,
++	.irq_disable		= qcom_pdc_gic_disable,
++	.irq_enable		= qcom_pdc_gic_enable,
++	.irq_get_irqchip_state	= qcom_pdc_gic_get_irqchip_state,
++	.irq_set_irqchip_state	= qcom_pdc_gic_set_irqchip_state,
+ 	.irq_retrigger		= irq_chip_retrigger_hierarchy,
+ 	.irq_set_type		= qcom_pdc_gic_set_type,
+ 	.flags			= IRQCHIP_MASK_ON_SUSPEND |
+@@ -169,8 +292,7 @@ static irq_hw_number_t get_parent_hwirq(int pin)
+ 			return (region->parent_base + pin - region->pin_base);
+ 	}
+ 
+-	WARN_ON(1);
+-	return ~0UL;
++	return PDC_NO_PARENT_IRQ;
+ }
+ 
+ static int qcom_pdc_translate(struct irq_domain *d, struct irq_fwspec *fwspec,
+@@ -199,17 +321,17 @@ static int qcom_pdc_alloc(struct irq_domain *domain, unsigned int virq,
+ 
+ 	ret = qcom_pdc_translate(domain, fwspec, &hwirq, &type);
+ 	if (ret)
+-		return -EINVAL;
+-
+-	parent_hwirq = get_parent_hwirq(hwirq);
+-	if (parent_hwirq == ~0UL)
+-		return -EINVAL;
++		return ret;
+ 
+ 	ret  = irq_domain_set_hwirq_and_chip(domain, virq, hwirq,
+ 					     &qcom_pdc_gic_chip, NULL);
+ 	if (ret)
+ 		return ret;
+ 
++	parent_hwirq = get_parent_hwirq(hwirq);
++	if (parent_hwirq == PDC_NO_PARENT_IRQ)
++		return 0;
++
+ 	if (type & IRQ_TYPE_EDGE_BOTH)
+ 		type = IRQ_TYPE_EDGE_RISING;
+ 
+@@ -232,6 +354,60 @@ static const struct irq_domain_ops qcom_pdc_ops = {
+ 	.free		= irq_domain_free_irqs_common,
+ };
+ 
++static int qcom_pdc_gpio_alloc(struct irq_domain *domain, unsigned int virq,
++			       unsigned int nr_irqs, void *data)
++{
++	struct irq_fwspec *fwspec = data;
++	struct irq_fwspec parent_fwspec;
++	irq_hw_number_t hwirq, parent_hwirq;
++	unsigned int type;
++	int ret;
++
++	ret = qcom_pdc_translate(domain, fwspec, &hwirq, &type);
++	if (ret)
++		return ret;
++
++	ret = irq_domain_set_hwirq_and_chip(domain, virq, hwirq,
++					    &qcom_pdc_gic_chip, NULL);
++	if (ret)
++		return ret;
++
++	if (hwirq == GPIO_NO_WAKE_IRQ)
++		return 0;
++
++	parent_hwirq = get_parent_hwirq(hwirq);
++	if (parent_hwirq == PDC_NO_PARENT_IRQ)
++		return 0;
++
++	if (type & IRQ_TYPE_EDGE_BOTH)
++		type = IRQ_TYPE_EDGE_RISING;
++
++	if (type & IRQ_TYPE_LEVEL_MASK)
++		type = IRQ_TYPE_LEVEL_HIGH;
++
++	parent_fwspec.fwnode      = domain->parent->fwnode;
++	parent_fwspec.param_count = 3;
++	parent_fwspec.param[0]    = 0;
++	parent_fwspec.param[1]    = parent_hwirq;
++	parent_fwspec.param[2]    = type;
++
++	return irq_domain_alloc_irqs_parent(domain, virq, nr_irqs,
++					    &parent_fwspec);
++}
++
++static int qcom_pdc_gpio_domain_select(struct irq_domain *d,
++				       struct irq_fwspec *fwspec,
++				       enum irq_domain_bus_token bus_token)
++{
++	return bus_token == DOMAIN_BUS_WAKEUP;
++}
++
++static const struct irq_domain_ops qcom_pdc_gpio_ops = {
++	.select		= qcom_pdc_gpio_domain_select,
++	.alloc		= qcom_pdc_gpio_alloc,
++	.free		= irq_domain_free_irqs_common,
++};
++
+ static int pdc_setup_pin_mapping(struct device_node *np)
+ {
+ 	int ret, n;
+@@ -270,7 +446,8 @@ static int pdc_setup_pin_mapping(struct device_node *np)
+ 
+ static int qcom_pdc_init(struct device_node *node, struct device_node *parent)
+ {
+-	struct irq_domain *parent_domain, *pdc_domain;
++	struct irq_domain *parent_domain, *pdc_domain, *pdc_gpio_domain;
++	struct resource res;
+ 	int ret;
+ 
+ 	pdc_base = of_iomap(node, 0);
+@@ -301,12 +478,77 @@ static int qcom_pdc_init(struct device_node *node, struct device_node *parent)
+ 		goto fail;
+ 	}
+ 
++	ret = of_address_to_resource(node, 1, &res);
++	if (!ret) {
++		spi_cfg = kcalloc(1, sizeof(*spi_cfg), GFP_KERNEL);
++		if (!spi_cfg) {
++			ret = -ENOMEM;
++			goto remove;
++		}
++		spi_cfg->scm_io = of_find_property(node,
++						   "qcom,scm-spi-cfg", NULL);
++		spi_cfg->size = resource_size(&res);
++		if (spi_cfg->scm_io) {
++			spi_cfg->start = res.start;
++		} else {
++			spi_cfg->base = ioremap(res.start, spi_cfg->size);
++			if (!spi_cfg->base) {
++				ret = -ENOMEM;
++				goto remove;
++			}
++		}
++	}
++
++	pdc_gpio_domain = irq_domain_create_hierarchy(parent_domain,
++						      IRQ_DOMAIN_FLAG_QCOM_PDC_WAKEUP,
++						      PDC_MAX_GPIO_IRQS,
++						      of_fwnode_handle(node),
++						      &qcom_pdc_gpio_ops, NULL);
++	if (!pdc_gpio_domain) {
++		pr_err("%pOF: PDC domain add failed for GPIO domain\n", node);
++		ret = -ENOMEM;
++		goto remove;
++	}
++
++	irq_domain_update_bus_token(pdc_gpio_domain, DOMAIN_BUS_WAKEUP);
++
+ 	return 0;
+ 
++remove:
++	irq_domain_remove(pdc_domain);
++	kfree(spi_cfg);
+ fail:
+ 	kfree(pdc_region);
+ 	iounmap(pdc_base);
+ 	return ret;
+ }
+ 
++
++#ifdef MODULE
++static int qcom_pdc_probe(struct platform_device *pdev)
++{
++	struct device_node *np = pdev->dev.of_node;
++	struct device_node *parent = of_irq_find_parent(np);
++	return qcom_pdc_init(np, parent);
++}
++
++static const struct of_device_id qcom_pdc_match_table[] = {
++	{ .compatible = "qcom,sdm845-pdc" },
++	{}
++};
++MODULE_DEVICE_TABLE(of, qcom_pdc_match_table);
++
++static struct platform_driver qcom_pdc_driver = {
++	.probe = qcom_pdc_probe,
++	.driver = {
++		.name = "qcom-pdc",
++		.of_match_table = qcom_pdc_match_table,
++	},
++};
++module_platform_driver(qcom_pdc_driver);
++#else
+ IRQCHIP_DECLARE(pdc_sdm845, "qcom,sdm845-pdc", qcom_pdc_init);
++#endif
++
++MODULE_DESCRIPTION("Qualcomm Technologies, Inc. Power Domain Controller");
++MODULE_LICENSE("GPL v2");
+-- 
+2.17.1
+

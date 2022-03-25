@@ -1,0 +1,5184 @@
+From f219b5dc8ec45d58e607efeddefddb9493dc5ad6 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 16:36:29 +0800
+Subject: [PATCH 07/93] kernel add support for sun20i
+
+---
+ kernel/Makefile                  |   5 +
+ kernel/bpf/core.c                |   9 +
+ kernel/bpf/helpers.c             |   2 +-
+ kernel/cfi.c                     | 317 ++++++++++++++++++
+ kernel/cgroup/cgroup-v1.c        |   3 +-
+ kernel/cgroup/cpuset.c           |  11 -
+ kernel/cpu.c                     |   7 +
+ kernel/dma/direct.c              |   3 +
+ kernel/dma/mapping.c             |   2 +
+ kernel/events/core.c             |  57 +++-
+ kernel/fork.c                    |  36 ++
+ kernel/futex.c                   |   6 +-
+ kernel/irq/chip.c                |  64 +++-
+ kernel/irq/irqdomain.c           |   1 +
+ kernel/kallsyms.c                |  56 +++-
+ kernel/kcov.c                    | 547 +++++++++++++++++++++++++++++--
+ kernel/kthread.c                 |   2 +
+ kernel/livepatch/core.c          |   4 +-
+ kernel/locking/mutex.c           |   5 +
+ kernel/locking/rwsem.c           |  28 +-
+ kernel/module.c                  |  92 ++++--
+ kernel/panic.c                   |  42 +++
+ kernel/pid.c                     |   1 +
+ kernel/power/Makefile            |   1 +
+ kernel/power/process.c           |  13 +-
+ kernel/power/qos.c               |   4 +-
+ kernel/power/suspend.c           |  19 +-
+ kernel/power/wakeup_reason.c     | 435 ++++++++++++++++++++++++
+ kernel/printk/printk.c           |   3 +
+ kernel/rcu/tree.c                |   2 +
+ kernel/rcu/tree_plugin.h         |   2 +-
+ kernel/reboot.c                  |   2 +
+ kernel/sched/core.c              |  87 +++--
+ kernel/sched/cpufreq_schedutil.c |   4 +-
+ kernel/sched/cpupri.c            | 145 +++++---
+ kernel/sched/cpupri.h            |   6 +-
+ kernel/sched/cputime.c           |  10 +
+ kernel/sched/fair.c              | 283 +++++++++++++---
+ kernel/sched/features.h          |   1 +
+ kernel/sched/loadavg.c           |   1 +
+ kernel/sched/rt.c                | 110 ++++++-
+ kernel/sched/sched.h             |  65 +++-
+ kernel/sched/topology.c          |  30 +-
+ kernel/scs.c                     | 241 ++++++++++++++
+ kernel/signal.c                  |   1 +
+ kernel/sys.c                     | 152 +++++++++
+ kernel/sysctl.c                  |  18 +-
+ kernel/time/tick-common.c        |   2 +
+ kernel/time/time.c               |   1 +
+ kernel/trace/Kconfig             |   1 -
+ kernel/trace/ftrace.c            |   6 +-
+ kernel/trace/power-traces.c      |   3 +-
+ kernel/trace/trace.c             |  12 +-
+ kernel/trace/trace.h             |   2 +-
+ kernel/trace/trace_event_perf.c  |  15 +-
+ kernel/workqueue.c               |   7 +
+ 56 files changed, 2699 insertions(+), 285 deletions(-)
+ create mode 100644 kernel/cfi.c
+ create mode 100644 kernel/power/wakeup_reason.c
+ create mode 100644 kernel/scs.c
+
+diff --git a/kernel/Makefile b/kernel/Makefile
+index daad787fb..ae0751315 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -35,6 +35,9 @@ CFLAGS_kcov.o := $(call cc-option, -fno-conserve-stack -fno-stack-protector)
+ # cond_syscall is currently not LTO compatible
+ CFLAGS_sys_ni.o = $(DISABLE_LTO)
+ 
++# Don't instrument error handlers
++CFLAGS_REMOVE_cfi.o := $(CC_FLAGS_CFI)
++
+ obj-y += sched/
+ obj-y += locking/
+ obj-y += power/
+@@ -102,6 +105,8 @@ obj-$(CONFIG_TRACEPOINTS) += trace/
+ obj-$(CONFIG_IRQ_WORK) += irq_work.o
+ obj-$(CONFIG_CPU_PM) += cpu_pm.o
+ obj-$(CONFIG_BPF) += bpf/
++obj-$(CONFIG_SHADOW_CALL_STACK) += scs.o
++obj-$(CONFIG_CFI_CLANG) += cfi.o
+ 
+ obj-$(CONFIG_PERF_EVENTS) += events/
+ 
+diff --git a/kernel/bpf/core.c b/kernel/bpf/core.c
+index ef0e1e3e6..f72cc0692 100644
+--- a/kernel/bpf/core.c
++++ b/kernel/bpf/core.c
+@@ -792,6 +792,14 @@ void __weak bpf_jit_free_exec(void *addr)
+ 	module_memfree(addr);
+ }
+ 
++#if IS_ENABLED(CONFIG_BPF_JIT) && IS_ENABLED(CONFIG_CFI_CLANG)
++bool __weak arch_bpf_jit_check_func(const struct bpf_prog *prog)
++{
++	return true;
++}
++EXPORT_SYMBOL_GPL(arch_bpf_jit_check_func);
++#endif
++
+ struct bpf_binary_header *
+ bpf_jit_binary_alloc(unsigned int proglen, u8 **image_ptr,
+ 		     unsigned int alignment,
+@@ -818,6 +826,7 @@ bpf_jit_binary_alloc(unsigned int proglen, u8 **image_ptr,
+ 	/* Fill space with illegal/arch-dep instructions. */
+ 	bpf_fill_ill_insns(hdr, size);
+ 
++	bpf_jit_set_header_magic(hdr);
+ 	hdr->pages = pages;
+ 	hole = min_t(unsigned int, size - (proglen + sizeof(*hdr)),
+ 		     PAGE_SIZE - sizeof(*hdr));
+diff --git a/kernel/bpf/helpers.c b/kernel/bpf/helpers.c
+index 5e2871892..3d23c94b7 100644
+--- a/kernel/bpf/helpers.c
++++ b/kernel/bpf/helpers.c
+@@ -148,7 +148,7 @@ BPF_CALL_0(bpf_ktime_get_ns)
+ 
+ const struct bpf_func_proto bpf_ktime_get_ns_proto = {
+ 	.func		= bpf_ktime_get_ns,
+-	.gpl_only	= true,
++	.gpl_only	= false,
+ 	.ret_type	= RET_INTEGER,
+ };
+ 
+diff --git a/kernel/cfi.c b/kernel/cfi.c
+new file mode 100644
+index 000000000..31419747b
+--- /dev/null
++++ b/kernel/cfi.c
+@@ -0,0 +1,317 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Clang Control Flow Integrity (CFI) error and slowpath handling.
++ *
++ * Copyright (C) 2019 Google LLC
++ */
++
++#include <linux/gfp.h>
++#include <linux/hardirq.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/printk.h>
++#include <linux/ratelimit.h>
++#include <linux/rcupdate.h>
++#include <asm/cacheflush.h>
++#include <asm/set_memory.h>
++
++/* Compiler-defined handler names */
++#ifdef CONFIG_CFI_PERMISSIVE
++#define cfi_failure_handler	__ubsan_handle_cfi_check_fail
++#define cfi_slowpath_handler	__cfi_slowpath_diag
++#else /* enforcing */
++#define cfi_failure_handler	__ubsan_handle_cfi_check_fail_abort
++#define cfi_slowpath_handler	__cfi_slowpath
++#endif /* CONFIG_CFI_PERMISSIVE */
++
++static inline void handle_cfi_failure(void *ptr)
++{
++	if (IS_ENABLED(CONFIG_CFI_PERMISSIVE))
++		WARN_RATELIMIT(1, "CFI failure (target: %pS):\n", ptr);
++	else
++		panic("CFI failure (target: %pS)\n", ptr);
++}
++
++#ifdef CONFIG_MODULES
++#ifdef CONFIG_CFI_CLANG_SHADOW
++struct shadow_range {
++	/* Module address range */
++	unsigned long mod_min_addr;
++	unsigned long mod_max_addr;
++	/* Module page range */
++	unsigned long min_page;
++	unsigned long max_page;
++};
++
++#define SHADOW_ORDER	2
++#define SHADOW_PAGES	(1 << SHADOW_ORDER)
++#define SHADOW_SIZE \
++	((SHADOW_PAGES * PAGE_SIZE - sizeof(struct shadow_range)) / sizeof(u16))
++#define SHADOW_INVALID	0xFFFF
++
++struct cfi_shadow {
++	/* Page range covered by the shadow */
++	struct shadow_range r;
++	/* Page offsets to __cfi_check functions in modules */
++	u16 shadow[SHADOW_SIZE];
++};
++
++static DEFINE_MUTEX(shadow_update_lock);
++static struct cfi_shadow __rcu *cfi_shadow __read_mostly;
++
++static inline int ptr_to_shadow(const struct cfi_shadow *s, unsigned long ptr)
++{
++	unsigned long index;
++	unsigned long page = ptr >> PAGE_SHIFT;
++
++	if (unlikely(page < s->r.min_page))
++		return -1; /* Outside of module area */
++
++	index = page - s->r.min_page;
++
++	if (index >= SHADOW_SIZE)
++		return -1; /* Cannot be addressed with shadow */
++
++	return (int)index;
++}
++
++static inline unsigned long shadow_to_ptr(const struct cfi_shadow *s,
++	int index)
++{
++	if (unlikely(index < 0 || index >= SHADOW_SIZE))
++		return 0;
++
++	if (unlikely(s->shadow[index] == SHADOW_INVALID))
++		return 0;
++
++	return (s->r.min_page + s->shadow[index]) << PAGE_SHIFT;
++}
++
++static inline unsigned long shadow_to_page(const struct cfi_shadow *s,
++	int index)
++{
++	if (unlikely(index < 0 || index >= SHADOW_SIZE))
++		return 0;
++
++	return (s->r.min_page + index) << PAGE_SHIFT;
++}
++
++static void prepare_next_shadow(const struct cfi_shadow __rcu *prev,
++		struct cfi_shadow *next)
++{
++	int i, index, check;
++
++	/* Mark everything invalid */
++	memset(next->shadow, 0xFF, sizeof(next->shadow));
++
++	if (!prev)
++		return; /* No previous shadow */
++
++	/* If the base address didn't change, update is not needed */
++	if (prev->r.min_page == next->r.min_page) {
++		memcpy(next->shadow, prev->shadow, sizeof(next->shadow));
++		return;
++	}
++
++	/* Convert the previous shadow to the new address range */
++	for (i = 0; i < SHADOW_SIZE; ++i) {
++		if (prev->shadow[i] == SHADOW_INVALID)
++			continue;
++
++		index = ptr_to_shadow(next, shadow_to_page(prev, i));
++		if (index < 0)
++			continue;
++
++		check = ptr_to_shadow(next,
++				shadow_to_ptr(prev, prev->shadow[i]));
++		if (check < 0)
++			continue;
++
++		next->shadow[index] = (u16)check;
++	}
++}
++
++static void add_module_to_shadow(struct cfi_shadow *s, struct module *mod)
++{
++	unsigned long ptr;
++	unsigned long min_page_addr;
++	unsigned long max_page_addr;
++	unsigned long check = (unsigned long)mod->cfi_check;
++	int check_index = ptr_to_shadow(s, check);
++
++	if (unlikely((check & PAGE_MASK) != check))
++		return; /* Must be page aligned */
++
++	if (check_index < 0)
++		return; /* Module not addressable with shadow */
++
++	min_page_addr = (unsigned long)mod->core_layout.base & PAGE_MASK;
++	max_page_addr = (unsigned long)mod->core_layout.base +
++				       mod->core_layout.text_size;
++	max_page_addr &= PAGE_MASK;
++
++	/* For each page, store the check function index in the shadow */
++	for (ptr = min_page_addr; ptr <= max_page_addr; ptr += PAGE_SIZE) {
++		int index = ptr_to_shadow(s, ptr);
++
++		if (index >= 0) {
++			/* Each page must only contain one module */
++			WARN_ON(s->shadow[index] != SHADOW_INVALID);
++			s->shadow[index] = (u16)check_index;
++		}
++	}
++}
++
++static void remove_module_from_shadow(struct cfi_shadow *s, struct module *mod)
++{
++	unsigned long ptr;
++	unsigned long min_page_addr;
++	unsigned long max_page_addr;
++
++	min_page_addr = (unsigned long)mod->core_layout.base & PAGE_MASK;
++	max_page_addr = (unsigned long)mod->core_layout.base +
++				       mod->core_layout.text_size;
++	max_page_addr &= PAGE_MASK;
++
++	for (ptr = min_page_addr; ptr <= max_page_addr; ptr += PAGE_SIZE) {
++		int index = ptr_to_shadow(s, ptr);
++
++		if (index >= 0)
++			s->shadow[index] = SHADOW_INVALID;
++	}
++}
++
++typedef void (*update_shadow_fn)(struct cfi_shadow *, struct module *);
++
++static void update_shadow(struct module *mod, unsigned long min_addr,
++	unsigned long max_addr, update_shadow_fn fn)
++{
++	struct cfi_shadow *prev;
++	struct cfi_shadow *next = (struct cfi_shadow *)
++		__get_free_pages(GFP_KERNEL, SHADOW_ORDER);
++
++	next->r.mod_min_addr = min_addr;
++	next->r.mod_max_addr = max_addr;
++	next->r.min_page = min_addr >> PAGE_SHIFT;
++	next->r.max_page = max_addr >> PAGE_SHIFT;
++
++	mutex_lock(&shadow_update_lock);
++	prev = rcu_dereference_protected(cfi_shadow, 1);
++	prepare_next_shadow(prev, next);
++
++	fn(next, mod);
++	set_memory_ro((unsigned long)next, SHADOW_PAGES);
++	rcu_assign_pointer(cfi_shadow, next);
++
++	mutex_unlock(&shadow_update_lock);
++	synchronize_rcu();
++
++	if (prev) {
++		set_memory_rw((unsigned long)prev, SHADOW_PAGES);
++		free_pages((unsigned long)prev, SHADOW_ORDER);
++	}
++}
++
++void cfi_module_add(struct module *mod, unsigned long min_addr,
++	unsigned long max_addr)
++{
++	update_shadow(mod, min_addr, max_addr, add_module_to_shadow);
++}
++EXPORT_SYMBOL_GPL(cfi_module_add);
++
++void cfi_module_remove(struct module *mod, unsigned long min_addr,
++	unsigned long max_addr)
++{
++	update_shadow(mod, min_addr, max_addr, remove_module_from_shadow);
++}
++EXPORT_SYMBOL_GPL(cfi_module_remove);
++
++static inline cfi_check_fn ptr_to_check_fn(const struct cfi_shadow __rcu *s,
++	unsigned long ptr)
++{
++	int index;
++
++	if (unlikely(!s))
++		return NULL; /* No shadow available */
++
++	if (ptr < s->r.mod_min_addr || ptr > s->r.mod_max_addr)
++		return NULL; /* Not in a mapped module */
++
++	index = ptr_to_shadow(s, ptr);
++	if (index < 0)
++		return NULL; /* Cannot be addressed with shadow */
++
++	return (cfi_check_fn)shadow_to_ptr(s, index);
++}
++#endif /* CONFIG_CFI_CLANG_SHADOW */
++
++static inline cfi_check_fn find_module_cfi_check(void *ptr)
++{
++	cfi_check_fn f = CFI_CHECK_FN;
++	struct module *mod;
++
++	preempt_disable();
++	mod = __module_address((unsigned long)ptr);
++	if (mod)
++		f = mod->cfi_check;
++	preempt_enable();
++
++	return f;
++}
++
++static inline cfi_check_fn find_cfi_check(void *ptr)
++{
++	bool rcu;
++	cfi_check_fn f;
++
++	rcu = rcu_is_watching();
++	if (!rcu)
++		rcu_nmi_enter();
++
++#ifdef CONFIG_CFI_CLANG_SHADOW
++	/* Look up the __cfi_check function to use */
++	rcu_read_lock_sched();
++	f = ptr_to_check_fn(rcu_dereference_sched(cfi_shadow),
++			    (unsigned long)ptr);
++	rcu_read_unlock_sched();
++
++	if (f)
++		goto out;
++
++	/*
++	 * Fall back to find_module_cfi_check, which works also for a larger
++	 * module address space, but is slower.
++	 */
++#endif /* CONFIG_CFI_CLANG_SHADOW */
++
++	f = find_module_cfi_check(ptr);
++
++out:
++	if (!rcu)
++		rcu_nmi_exit();
++
++	return f;
++}
++
++void cfi_slowpath_handler(uint64_t id, void *ptr, void *diag)
++{
++	cfi_check_fn check = find_cfi_check(ptr);
++
++	if (likely(check))
++		check(id, ptr, diag);
++	else /* Don't allow unchecked modules */
++		handle_cfi_failure(ptr);
++}
++EXPORT_SYMBOL_GPL(cfi_slowpath_handler);
++#endif /* CONFIG_MODULES */
++
++void cfi_failure_handler(void *data, void *ptr, void *vtable)
++{
++	handle_cfi_failure(ptr);
++}
++EXPORT_SYMBOL_GPL(cfi_failure_handler);
++
++void __cfi_check_fail(void *data, void *ptr)
++{
++	handle_cfi_failure(ptr);
++}
+diff --git a/kernel/cgroup/cgroup-v1.c b/kernel/cgroup/cgroup-v1.c
+index f684c82ef..7b9ee484a 100644
+--- a/kernel/cgroup/cgroup-v1.c
++++ b/kernel/cgroup/cgroup-v1.c
+@@ -514,7 +514,8 @@ static ssize_t __cgroup1_procs_write(struct kernfs_open_file *of,
+ 	tcred = get_task_cred(task);
+ 	if (!uid_eq(cred->euid, GLOBAL_ROOT_UID) &&
+ 	    !uid_eq(cred->euid, tcred->uid) &&
+-	    !uid_eq(cred->euid, tcred->suid))
++	    !uid_eq(cred->euid, tcred->suid) &&
++	    !ns_capable(tcred->user_ns, CAP_SYS_NICE))
+ 		ret = -EACCES;
+ 	put_cred(tcred);
+ 	if (ret)
+diff --git a/kernel/cgroup/cpuset.c b/kernel/cgroup/cpuset.c
+index c87ee6412..72aa7eecd 100644
+--- a/kernel/cgroup/cpuset.c
++++ b/kernel/cgroup/cpuset.c
+@@ -334,17 +334,6 @@ static struct cpuset top_cpuset = {
+  */
+ 
+ DEFINE_STATIC_PERCPU_RWSEM(cpuset_rwsem);
+-
+-void cpuset_read_lock(void)
+-{
+-	percpu_down_read(&cpuset_rwsem);
+-}
+-
+-void cpuset_read_unlock(void)
+-{
+-	percpu_up_read(&cpuset_rwsem);
+-}
+-
+ static DEFINE_SPINLOCK(callback_lock);
+ 
+ static struct workqueue_struct *cpuset_migrate_mm_wq;
+diff --git a/kernel/cpu.c b/kernel/cpu.c
+index 7527825ac..27d7201a2 100644
+--- a/kernel/cpu.c
++++ b/kernel/cpu.c
+@@ -1297,6 +1297,7 @@ void __weak arch_enable_nonboot_cpus_end(void)
+ void enable_nonboot_cpus(void)
+ {
+ 	int cpu, error;
++	struct device *cpu_device;
+ 
+ 	/* Allow everyone to use the CPU hotplug again */
+ 	cpu_maps_update_begin();
+@@ -1314,6 +1315,12 @@ void enable_nonboot_cpus(void)
+ 		trace_suspend_resume(TPS("CPU_ON"), cpu, false);
+ 		if (!error) {
+ 			pr_info("CPU%d is up\n", cpu);
++			cpu_device = get_cpu_device(cpu);
++			if (!cpu_device)
++				pr_err("%s: failed to get cpu%d device\n",
++				       __func__, cpu);
++			else
++				kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
+ 			continue;
+ 		}
+ 		pr_warn("Error taking CPU%d up: %d\n", cpu, error);
+diff --git a/kernel/dma/direct.c b/kernel/dma/direct.c
+index 0a093a675..05482fe7d 100644
+--- a/kernel/dma/direct.c
++++ b/kernel/dma/direct.c
+@@ -50,6 +50,7 @@ u64 dma_direct_get_required_mask(struct device *dev)
+ 
+ 	return (1ULL << (fls64(max_dma) - 1)) * 2 - 1;
+ }
++EXPORT_SYMBOL_GPL(dma_direct_get_required_mask);
+ 
+ static gfp_t __dma_direct_optimal_gfp_mask(struct device *dev, u64 dma_mask,
+ 		u64 *phys_mask)
+@@ -210,6 +211,7 @@ void *dma_direct_alloc(struct device *dev, size_t size,
+ 		return arch_dma_alloc(dev, size, dma_handle, gfp, attrs);
+ 	return dma_direct_alloc_pages(dev, size, dma_handle, gfp, attrs);
+ }
++EXPORT_SYMBOL_GPL(dma_direct_alloc);
+ 
+ void dma_direct_free(struct device *dev, size_t size,
+ 		void *cpu_addr, dma_addr_t dma_addr, unsigned long attrs)
+@@ -220,6 +222,7 @@ void dma_direct_free(struct device *dev, size_t size,
+ 	else
+ 		dma_direct_free_pages(dev, size, cpu_addr, dma_addr, attrs);
+ }
++EXPORT_SYMBOL_GPL(dma_direct_free);
+ 
+ #if defined(CONFIG_ARCH_HAS_SYNC_DMA_FOR_DEVICE) || \
+     defined(CONFIG_SWIOTLB)
+diff --git a/kernel/dma/mapping.c b/kernel/dma/mapping.c
+index 8682a5305..839e7366b 100644
+--- a/kernel/dma/mapping.c
++++ b/kernel/dma/mapping.c
+@@ -135,6 +135,7 @@ int dma_common_get_sgtable(struct device *dev, struct sg_table *sgt,
+ 		sg_set_page(sgt->sgl, page, PAGE_ALIGN(size), 0);
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(dma_common_get_sgtable);
+ 
+ /*
+  * The whole dma_get_sgtable() idea is fundamentally unsafe - it seems
+@@ -223,6 +224,7 @@ int dma_common_mmap(struct device *dev, struct vm_area_struct *vma,
+ 	return -ENXIO;
+ #endif /* CONFIG_MMU */
+ }
++EXPORT_SYMBOL_GPL(dma_common_mmap);
+ 
+ /**
+  * dma_can_mmap - check if a given device supports dma_mmap_*
+diff --git a/kernel/events/core.c b/kernel/events/core.c
+index db1f5aa75..2e70dd9d3 100644
+--- a/kernel/events/core.c
++++ b/kernel/events/core.c
+@@ -4242,8 +4242,9 @@ find_get_context(struct pmu *pmu, struct task_struct *task,
+ 
+ 	if (!task) {
+ 		/* Must be root to operate on a CPU event: */
+-		if (perf_paranoid_cpu() && !capable(CAP_SYS_ADMIN))
+-			return ERR_PTR(-EACCES);
++		err = perf_allow_cpu(&event->attr);
++		if (err)
++			return ERR_PTR(err);
+ 
+ 		cpuctx = per_cpu_ptr(pmu->pmu_cpu_context, cpu);
+ 		ctx = &cpuctx->ctx;
+@@ -4552,6 +4553,8 @@ static void _free_event(struct perf_event *event)
+ 
+ 	unaccount_event(event);
+ 
++	security_perf_event_free(event);
++
+ 	if (event->rb) {
+ 		/*
+ 		 * Can happen when we close an event with re-directed output.
+@@ -5005,6 +5008,10 @@ perf_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+ 	struct perf_event_context *ctx;
+ 	int ret;
+ 
++	ret = security_perf_event_read(event);
++	if (ret)
++		return ret;
++
+ 	ctx = perf_event_ctx_lock(event);
+ 	ret = __perf_read(event, buf, count);
+ 	perf_event_ctx_unlock(event, ctx);
+@@ -5269,6 +5276,11 @@ static long perf_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+ 	struct perf_event_context *ctx;
+ 	long ret;
+ 
++	/* Treat ioctl like writes as it is likely a mutating operation. */
++	ret = security_perf_event_write(event);
++	if (ret)
++		return ret;
++
+ 	ctx = perf_event_ctx_lock(event);
+ 	ret = _perf_ioctl(event, cmd, arg);
+ 	perf_event_ctx_unlock(event, ctx);
+@@ -5732,6 +5744,10 @@ static int perf_mmap(struct file *file, struct vm_area_struct *vma)
+ 	if (!(vma->vm_flags & VM_SHARED))
+ 		return -EINVAL;
+ 
++	ret = security_perf_event_read(event);
++	if (ret)
++		return ret;
++
+ 	vma_size = vma->vm_end - vma->vm_start;
+ 
+ 	if (vma->vm_pgoff == 0) {
+@@ -5865,7 +5881,7 @@ static int perf_mmap(struct file *file, struct vm_area_struct *vma)
+ 	lock_limit >>= PAGE_SHIFT;
+ 	locked = atomic64_read(&vma->vm_mm->pinned_vm) + extra;
+ 
+-	if ((locked > lock_limit) && perf_paranoid_tracepoint_raw() &&
++	if ((locked > lock_limit) && perf_is_paranoid() &&
+ 		!capable(CAP_IPC_LOCK)) {
+ 		ret = -EPERM;
+ 		goto unlock;
+@@ -10618,11 +10634,20 @@ perf_event_alloc(struct perf_event_attr *attr, int cpu,
+ 		}
+ 	}
+ 
++	err = security_perf_event_alloc(event);
++	if (err)
++		goto err_callchain_buffer;
++
+ 	/* symmetric to unaccount_event() in _free_event() */
+ 	account_event(event);
+ 
+ 	return event;
+ 
++err_callchain_buffer:
++	if (!event->parent) {
++		if (event->attr.sample_type & PERF_SAMPLE_CALLCHAIN)
++			put_callchain_buffers();
++	}
+ err_addr_filters:
+ 	kfree(event->addr_filter_ranges);
+ 
+@@ -10711,9 +10736,11 @@ static int perf_copy_attr(struct perf_event_attr __user *uattr,
+ 			attr->branch_sample_type = mask;
+ 		}
+ 		/* privileged levels capture (kernel, hv): check permissions */
+-		if ((mask & PERF_SAMPLE_BRANCH_PERM_PLM)
+-		    && perf_paranoid_kernel() && !capable(CAP_SYS_ADMIN))
+-			return -EACCES;
++		if (mask & PERF_SAMPLE_BRANCH_PERM_PLM) {
++			ret = perf_allow_kernel(attr);
++			if (ret)
++				return ret;
++		}
+ 	}
+ 
+ 	if (attr->sample_type & PERF_SAMPLE_REGS_USER) {
+@@ -10926,13 +10953,19 @@ SYSCALL_DEFINE5(perf_event_open,
+ 	if (flags & ~PERF_FLAG_ALL)
+ 		return -EINVAL;
+ 
++	/* Do we allow access to perf_event_open(2) ? */
++	err = security_perf_event_open(&attr, PERF_SECURITY_OPEN);
++	if (err)
++		return err;
++
+ 	err = perf_copy_attr(attr_uptr, &attr);
+ 	if (err)
+ 		return err;
+ 
+ 	if (!attr.exclude_kernel) {
+-		if (perf_paranoid_kernel() && !capable(CAP_SYS_ADMIN))
+-			return -EACCES;
++		err = perf_allow_kernel(&attr);
++		if (err)
++			return err;
+ 	}
+ 
+ 	if (attr.namespaces) {
+@@ -10949,9 +10982,11 @@ SYSCALL_DEFINE5(perf_event_open,
+ 	}
+ 
+ 	/* Only privileged users can get physical addresses */
+-	if ((attr.sample_type & PERF_SAMPLE_PHYS_ADDR) &&
+-	    perf_paranoid_kernel() && !capable(CAP_SYS_ADMIN))
+-		return -EACCES;
++	if ((attr.sample_type & PERF_SAMPLE_PHYS_ADDR)) {
++		err = perf_allow_kernel(&attr);
++		if (err)
++			return err;
++	}
+ 
+ 	err = security_locked_down(LOCKDOWN_PERF);
+ 	if (err && (attr.sample_type & PERF_SAMPLE_REGS_INTR))
+diff --git a/kernel/fork.c b/kernel/fork.c
+index 9180f4416..41ce6de4d 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -93,7 +93,9 @@
+ #include <linux/kcov.h>
+ #include <linux/livepatch.h>
+ #include <linux/thread_info.h>
++#include <linux/cpufreq_times.h>
+ #include <linux/stackleak.h>
++#include <linux/scs.h>
+ 
+ #include <asm/pgtable.h>
+ #include <asm/pgalloc.h>
+@@ -451,6 +453,9 @@ void put_task_stack(struct task_struct *tsk)
+ 
+ void free_task(struct task_struct *tsk)
+ {
++	cpufreq_task_times_exit(tsk);
++	scs_release(tsk);
++
+ #ifndef CONFIG_THREAD_INFO_IN_TASK
+ 	/*
+ 	 * The task is finally done with both the stack and thread_info,
+@@ -834,6 +839,8 @@ void __init fork_init(void)
+ 			  NULL, free_vm_stack_cache);
+ #endif
+ 
++	scs_init();
++
+ 	lockdep_init_task(&init_task);
+ 	uprobes_init();
+ }
+@@ -893,6 +900,10 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
+ 	if (err)
+ 		goto free_stack;
+ 
++	err = scs_prepare(tsk, node);
++	if (err)
++		goto free_stack;
++
+ #ifdef CONFIG_SECCOMP
+ 	/*
+ 	 * We must handle setting up seccomp filters once we're under
+@@ -1749,6 +1760,25 @@ static __always_inline void delayed_free_task(struct task_struct *tsk)
+ 		free_task(tsk);
+ }
+ 
++static void copy_oom_score_adj(u64 clone_flags, struct task_struct *tsk)
++{
++	/* Skip if kernel thread */
++	if (!tsk->mm)
++		return;
++
++	/* Skip if spawning a thread or using vfork */
++	if ((clone_flags & (CLONE_VM | CLONE_THREAD | CLONE_VFORK)) != CLONE_VM)
++		return;
++
++	/* We need to synchronize with __set_oom_adj */
++	mutex_lock(&oom_adj_mutex);
++	set_bit(MMF_MULTIPROCESS, &tsk->mm->flags);
++	/* Update the values in case they were changed after copy_signal */
++	tsk->signal->oom_score_adj = current->signal->oom_score_adj;
++	tsk->signal->oom_score_adj_min = current->signal->oom_score_adj_min;
++	mutex_unlock(&oom_adj_mutex);
++}
++
+ /*
+  * This creates a new process as a copy of the old one,
+  * but does not actually start it yet.
+@@ -1848,6 +1878,8 @@ static __latent_entropy struct task_struct *copy_process(
+ 	if (!p)
+ 		goto fork_out;
+ 
++	cpufreq_task_times_init(p);
++
+ 	/*
+ 	 * This _must_ happen before we call free_task(), i.e. before we jump
+ 	 * to any of the bad_fork_* labels. This is to avoid freeing
+@@ -2221,6 +2253,8 @@ static __latent_entropy struct task_struct *copy_process(
+ 	trace_task_newtask(p, clone_flags);
+ 	uprobe_copy_process(p, clone_flags);
+ 
++	copy_oom_score_adj(clone_flags, p);
++
+ 	return p;
+ 
+ bad_fork_cancel_cgroup:
+@@ -2359,6 +2393,8 @@ long _do_fork(struct kernel_clone_args *args)
+ 	if (IS_ERR(p))
+ 		return PTR_ERR(p);
+ 
++	cpufreq_task_times_alloc(p);
++
+ 	/*
+ 	 * Do this prior waking up the new thread - the thread pointer
+ 	 * might get invalid after that point, if the thread exits quickly.
+diff --git a/kernel/futex.c b/kernel/futex.c
+index 5660c02b0..d3867d6f5 100644
+--- a/kernel/futex.c
++++ b/kernel/futex.c
+@@ -60,6 +60,7 @@
+ #include <asm/futex.h>
+ 
+ #include "locking/rtmutex_common.h"
++#include <trace/hooks/futex.h>
+ 
+ /*
+  * READ this before attempting to hack on futexes!
+@@ -2346,6 +2347,7 @@ queue_unlock(struct futex_hash_bucket *hb)
+ static inline void __queue_me(struct futex_q *q, struct futex_hash_bucket *hb)
+ {
+ 	int prio;
++	bool already_on_hb = false;
+ 
+ 	/*
+ 	 * The priority used to register this element is
+@@ -2358,7 +2360,9 @@ static inline void __queue_me(struct futex_q *q, struct futex_hash_bucket *hb)
+ 	prio = min(current->normal_prio, MAX_RT_PRIO);
+ 
+ 	plist_node_init(&q->list, prio);
+-	plist_add(&q->list, &hb->chain);
++	trace_android_vh_alter_futex_plist_add(&q->list, &hb->chain, &already_on_hb);
++	if (!already_on_hb)
++		plist_add(&q->list, &hb->chain);
+ 	q->task = current;
+ }
+ 
+diff --git a/kernel/irq/chip.c b/kernel/irq/chip.c
+index b76703b2c..202302321 100644
+--- a/kernel/irq/chip.c
++++ b/kernel/irq/chip.c
+@@ -14,6 +14,7 @@
+ #include <linux/interrupt.h>
+ #include <linux/kernel_stat.h>
+ #include <linux/irqdomain.h>
++#include <linux/wakeup_reason.h>
+ 
+ #include <trace/events/irq.h>
+ 
+@@ -507,8 +508,22 @@ static bool irq_may_run(struct irq_desc *desc)
+ 	 * If the interrupt is not in progress and is not an armed
+ 	 * wakeup interrupt, proceed.
+ 	 */
+-	if (!irqd_has_set(&desc->irq_data, mask))
++	if (!irqd_has_set(&desc->irq_data, mask)) {
++#ifdef CONFIG_PM_SLEEP
++		if (unlikely(desc->no_suspend_depth &&
++			     irqd_is_wakeup_set(&desc->irq_data))) {
++			unsigned int irq = irq_desc_get_irq(desc);
++			const char *name = "(unnamed)";
++
++			if (desc->action && desc->action->name)
++				name = desc->action->name;
++
++			log_abnormal_wakeup_reason("misconfigured IRQ %u %s",
++						   irq, name);
++		}
++#endif
+ 		return true;
++	}
+ 
+ 	/*
+ 	 * If the interrupt is an armed wakeup source, mark it pending
+@@ -1297,6 +1312,50 @@ EXPORT_SYMBOL_GPL(handle_fasteoi_mask_irq);
+ 
+ #endif /* CONFIG_IRQ_FASTEOI_HIERARCHY_HANDLERS */
+ 
++/**
++ * irq_chip_set_parent_state - set the state of a parent interrupt.
++ *
++ * @data: Pointer to interrupt specific data
++ * @which: State to be restored (one of IRQCHIP_STATE_*)
++ * @val: Value corresponding to @which
++ *
++ * Conditional success, if the underlying irqchip does not implement it.
++ */
++int irq_chip_set_parent_state(struct irq_data *data,
++			      enum irqchip_irq_state which,
++			      bool val)
++{
++	data = data->parent_data;
++
++	if (!data || !data->chip->irq_set_irqchip_state)
++		return 0;
++
++	return data->chip->irq_set_irqchip_state(data, which, val);
++}
++EXPORT_SYMBOL_GPL(irq_chip_set_parent_state);
++
++/**
++ * irq_chip_get_parent_state - get the state of a parent interrupt.
++ *
++ * @data: Pointer to interrupt specific data
++ * @which: one of IRQCHIP_STATE_* the caller wants to know
++ * @state: a pointer to a boolean where the state is to be stored
++ *
++ * Conditional success, if the underlying irqchip does not implement it.
++ */
++int irq_chip_get_parent_state(struct irq_data *data,
++			      enum irqchip_irq_state which,
++			      bool *state)
++{
++	data = data->parent_data;
++
++	if (!data || !data->chip->irq_get_irqchip_state)
++		return 0;
++
++	return data->chip->irq_get_irqchip_state(data, which, state);
++}
++EXPORT_SYMBOL_GPL(irq_chip_get_parent_state);
++
+ /**
+  * irq_chip_enable_parent - Enable the parent interrupt (defaults to unmask if
+  * NULL)
+@@ -1434,6 +1493,7 @@ int irq_chip_retrigger_hierarchy(struct irq_data *data)
+ 
+ 	return 0;
+ }
++EXPORT_SYMBOL_GPL(irq_chip_retrigger_hierarchy);
+ 
+ /**
+  * irq_chip_set_vcpu_affinity_parent - Set vcpu affinity on the parent interrupt
+@@ -1448,7 +1508,7 @@ int irq_chip_set_vcpu_affinity_parent(struct irq_data *data, void *vcpu_info)
+ 
+ 	return -ENOSYS;
+ }
+-
++EXPORT_SYMBOL_GPL(irq_chip_set_vcpu_affinity_parent);
+ /**
+  * irq_chip_set_wake_parent - Set/reset wake-up on the parent interrupt
+  * @data:	Pointer to interrupt specific data
+diff --git a/kernel/irq/irqdomain.c b/kernel/irq/irqdomain.c
+index c776b8e86..20bf08a41 100644
+--- a/kernel/irq/irqdomain.c
++++ b/kernel/irq/irqdomain.c
+@@ -296,6 +296,7 @@ void irq_domain_update_bus_token(struct irq_domain *domain,
+ 
+ 	mutex_unlock(&irq_domain_mutex);
+ }
++EXPORT_SYMBOL_GPL(irq_domain_update_bus_token);
+ 
+ /**
+  * irq_domain_add_simple() - Register an irq_domain and optionally map a range of irqs
+diff --git a/kernel/kallsyms.c b/kernel/kallsyms.c
+index 61f9d781f..14de0c7bf 100644
+--- a/kernel/kallsyms.c
++++ b/kernel/kallsyms.c
+@@ -159,6 +159,26 @@ static unsigned long kallsyms_sym_address(int idx)
+ 	return kallsyms_relative_base - 1 - kallsyms_offsets[idx];
+ }
+ 
++#if defined(CONFIG_CFI_CLANG) && defined(CONFIG_THINLTO)
++/*
++ * LLVM appends a hash to static function names when ThinLTO and CFI are
++ * both enabled, which causes confusion and potentially breaks user space
++ * tools, so we will strip the postfix from expanded symbol names.
++ */
++static inline char *cleanup_symbol_name(char *s)
++{
++	char *res = NULL;
++
++	res = strrchr(s, '$');
++	if (res)
++		*res = '\0';
++
++	return res;
++}
++#else
++static inline char *cleanup_symbol_name(char *s) { return NULL; }
++#endif
++
+ /* Lookup the address for this symbol. Returns 0 if not found. */
+ unsigned long kallsyms_lookup_name(const char *name)
+ {
+@@ -171,10 +191,12 @@ unsigned long kallsyms_lookup_name(const char *name)
+ 
+ 		if (strcmp(namebuf, name) == 0)
+ 			return kallsyms_sym_address(i);
++
++		if (cleanup_symbol_name(namebuf) && strcmp(namebuf, name) == 0)
++			return kallsyms_sym_address(i);
+ 	}
+ 	return module_kallsyms_lookup_name(name);
+ }
+-EXPORT_SYMBOL_GPL(kallsyms_lookup_name);
+ 
+ int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
+ 				      unsigned long),
+@@ -193,7 +215,6 @@ int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
+ 	}
+ 	return module_kallsyms_on_each_symbol(fn, data);
+ }
+-EXPORT_SYMBOL_GPL(kallsyms_on_each_symbol);
+ 
+ static unsigned long get_symbol_pos(unsigned long addr,
+ 				    unsigned long *symbolsize,
+@@ -297,7 +318,9 @@ const char *kallsyms_lookup(unsigned long addr,
+ 				       namebuf, KSYM_NAME_LEN);
+ 		if (modname)
+ 			*modname = NULL;
+-		return namebuf;
++
++		ret = namebuf;
++		goto found;
+ 	}
+ 
+ 	/* See if it's in a module or a BPF JITed image. */
+@@ -310,11 +333,16 @@ const char *kallsyms_lookup(unsigned long addr,
+ 	if (!ret)
+ 		ret = ftrace_mod_address_lookup(addr, symbolsize,
+ 						offset, modname, namebuf);
++
++found:
++	cleanup_symbol_name(namebuf);
+ 	return ret;
+ }
+ 
+ int lookup_symbol_name(unsigned long addr, char *symname)
+ {
++	int res;
++
+ 	symname[0] = '\0';
+ 	symname[KSYM_NAME_LEN - 1] = '\0';
+ 
+@@ -325,15 +353,23 @@ int lookup_symbol_name(unsigned long addr, char *symname)
+ 		/* Grab name */
+ 		kallsyms_expand_symbol(get_symbol_offset(pos),
+ 				       symname, KSYM_NAME_LEN);
+-		return 0;
++		goto found;
+ 	}
+ 	/* See if it's in a module. */
+-	return lookup_module_symbol_name(addr, symname);
++	res = lookup_module_symbol_name(addr, symname);
++	if (res)
++		return res;
++
++found:
++	cleanup_symbol_name(symname);
++	return 0;
+ }
+ 
+ int lookup_symbol_attrs(unsigned long addr, unsigned long *size,
+ 			unsigned long *offset, char *modname, char *name)
+ {
++	int res;
++
+ 	name[0] = '\0';
+ 	name[KSYM_NAME_LEN - 1] = '\0';
+ 
+@@ -345,10 +381,16 @@ int lookup_symbol_attrs(unsigned long addr, unsigned long *size,
+ 		kallsyms_expand_symbol(get_symbol_offset(pos),
+ 				       name, KSYM_NAME_LEN);
+ 		modname[0] = '\0';
+-		return 0;
++		goto found;
+ 	}
+ 	/* See if it's in a module. */
+-	return lookup_module_symbol_attrs(addr, size, offset, modname, name);
++	res = lookup_module_symbol_attrs(addr, size, offset, modname, name);
++	if (res)
++		return res;
++
++found:
++	cleanup_symbol_name(name);
++	return 0;
+ }
+ 
+ /* Look up a kernel symbol and return it in a text buffer. */
+diff --git a/kernel/kcov.c b/kernel/kcov.c
+index 2ee387278..f50354202 100644
+--- a/kernel/kcov.c
++++ b/kernel/kcov.c
+@@ -9,6 +9,7 @@
+ #include <linux/types.h>
+ #include <linux/file.h>
+ #include <linux/fs.h>
++#include <linux/hashtable.h>
+ #include <linux/init.h>
+ #include <linux/mm.h>
+ #include <linux/preempt.h>
+@@ -21,8 +22,11 @@
+ #include <linux/uaccess.h>
+ #include <linux/kcov.h>
+ #include <linux/refcount.h>
++#include <linux/log2.h>
+ #include <asm/setup.h>
+ 
++#define kcov_debug(fmt, ...) pr_debug("%s: " fmt, __func__, ##__VA_ARGS__)
++
+ /* Number of 64-bit words written per one comparison: */
+ #define KCOV_WORDS_PER_CMP 4
+ 
+@@ -44,19 +48,100 @@ struct kcov {
+ 	 * Reference counter. We keep one for:
+ 	 *  - opened file descriptor
+ 	 *  - task with enabled coverage (we can't unwire it from another task)
++	 *  - each code section for remote coverage collection
+ 	 */
+ 	refcount_t		refcount;
+ 	/* The lock protects mode, size, area and t. */
+ 	spinlock_t		lock;
+ 	enum kcov_mode		mode;
+-	/* Size of arena (in long's for KCOV_MODE_TRACE). */
+-	unsigned		size;
++	/* Size of arena (in long's). */
++	unsigned int		size;
+ 	/* Coverage buffer shared with user space. */
+ 	void			*area;
+ 	/* Task for which we collect coverage, or NULL. */
+ 	struct task_struct	*t;
++	/* Collecting coverage from remote (background) threads. */
++	bool			remote;
++	/* Size of remote area (in long's). */
++	unsigned int		remote_size;
++	/*
++	 * Sequence is incremented each time kcov is reenabled, used by
++	 * kcov_remote_stop(), see the comment there.
++	 */
++	int			sequence;
+ };
+ 
++struct kcov_remote_area {
++	struct list_head	list;
++	unsigned int		size;
++};
++
++struct kcov_remote {
++	u64			handle;
++	struct kcov		*kcov;
++	struct hlist_node	hnode;
++};
++
++static DEFINE_SPINLOCK(kcov_remote_lock);
++static DEFINE_HASHTABLE(kcov_remote_map, 4);
++static struct list_head kcov_remote_areas = LIST_HEAD_INIT(kcov_remote_areas);
++
++/* Must be called with kcov_remote_lock locked. */
++static struct kcov_remote *kcov_remote_find(u64 handle)
++{
++	struct kcov_remote *remote;
++
++	hash_for_each_possible(kcov_remote_map, remote, hnode, handle) {
++		if (remote->handle == handle)
++			return remote;
++	}
++	return NULL;
++}
++
++static struct kcov_remote *kcov_remote_add(struct kcov *kcov, u64 handle)
++{
++	struct kcov_remote *remote;
++
++	if (kcov_remote_find(handle))
++		return ERR_PTR(-EEXIST);
++	remote = kmalloc(sizeof(*remote), GFP_ATOMIC);
++	if (!remote)
++		return ERR_PTR(-ENOMEM);
++	remote->handle = handle;
++	remote->kcov = kcov;
++	hash_add(kcov_remote_map, &remote->hnode, handle);
++	return remote;
++}
++
++/* Must be called with kcov_remote_lock locked. */
++static struct kcov_remote_area *kcov_remote_area_get(unsigned int size)
++{
++	struct kcov_remote_area *area;
++	struct list_head *pos;
++
++	kcov_debug("size = %u\n", size);
++	list_for_each(pos, &kcov_remote_areas) {
++		area = list_entry(pos, struct kcov_remote_area, list);
++		if (area->size == size) {
++			list_del(&area->list);
++			kcov_debug("rv = %px\n", area);
++			return area;
++		}
++	}
++	kcov_debug("rv = NULL\n");
++	return NULL;
++}
++
++/* Must be called with kcov_remote_lock locked. */
++static void kcov_remote_area_put(struct kcov_remote_area *area,
++					unsigned int size)
++{
++	kcov_debug("area = %px, size = %u\n", area, size);
++	INIT_LIST_HEAD(&area->list);
++	area->size = size;
++	list_add(&area->list, &kcov_remote_areas);
++}
++
+ static notrace bool check_kcov_mode(enum kcov_mode needed_mode, struct task_struct *t)
+ {
+ 	unsigned int mode;
+@@ -73,7 +158,7 @@ static notrace bool check_kcov_mode(enum kcov_mode needed_mode, struct task_stru
+ 	 * in_interrupt() returns false (e.g. preempt_schedule_irq()).
+ 	 * READ_ONCE()/barrier() effectively provides load-acquire wrt
+ 	 * interrupts, there are paired barrier()/WRITE_ONCE() in
+-	 * kcov_ioctl_locked().
++	 * kcov_start().
+ 	 */
+ 	barrier();
+ 	return mode == needed_mode;
+@@ -227,6 +312,78 @@ void notrace __sanitizer_cov_trace_switch(u64 val, u64 *cases)
+ EXPORT_SYMBOL(__sanitizer_cov_trace_switch);
+ #endif /* ifdef CONFIG_KCOV_ENABLE_COMPARISONS */
+ 
++static void kcov_start(struct task_struct *t, unsigned int size,
++			void *area, enum kcov_mode mode, int sequence)
++{
++	kcov_debug("t = %px, size = %u, area = %px\n", t, size, area);
++	/* Cache in task struct for performance. */
++	t->kcov_size = size;
++	t->kcov_area = area;
++	/* See comment in check_kcov_mode(). */
++	barrier();
++	WRITE_ONCE(t->kcov_mode, mode);
++	t->kcov_sequence = sequence;
++}
++
++static void kcov_stop(struct task_struct *t)
++{
++	WRITE_ONCE(t->kcov_mode, KCOV_MODE_DISABLED);
++	barrier();
++	t->kcov_size = 0;
++	t->kcov_area = NULL;
++}
++
++static void kcov_task_reset(struct task_struct *t)
++{
++	kcov_stop(t);
++	t->kcov = NULL;
++	t->kcov_sequence = 0;
++	t->kcov_handle = 0;
++}
++
++void kcov_task_init(struct task_struct *t)
++{
++	kcov_task_reset(t);
++	t->kcov_handle = current->kcov_handle;
++}
++
++static void kcov_reset(struct kcov *kcov)
++{
++	kcov->t = NULL;
++	kcov->mode = KCOV_MODE_INIT;
++	kcov->remote = false;
++	kcov->remote_size = 0;
++	kcov->sequence++;
++}
++
++static void kcov_remote_reset(struct kcov *kcov)
++{
++	int bkt;
++	struct kcov_remote *remote;
++	struct hlist_node *tmp;
++
++	spin_lock(&kcov_remote_lock);
++	hash_for_each_safe(kcov_remote_map, bkt, tmp, remote, hnode) {
++		if (remote->kcov != kcov)
++			continue;
++		kcov_debug("removing handle %llx\n", remote->handle);
++		hash_del(&remote->hnode);
++		kfree(remote);
++	}
++	/* Do reset before unlock to prevent races with kcov_remote_start(). */
++	kcov_reset(kcov);
++	spin_unlock(&kcov_remote_lock);
++}
++
++static void kcov_disable(struct task_struct *t, struct kcov *kcov)
++{
++	kcov_task_reset(t);
++	if (kcov->remote)
++		kcov_remote_reset(kcov);
++	else
++		kcov_reset(kcov);
++}
++
+ static void kcov_get(struct kcov *kcov)
+ {
+ 	refcount_inc(&kcov->refcount);
+@@ -235,20 +392,12 @@ static void kcov_get(struct kcov *kcov)
+ static void kcov_put(struct kcov *kcov)
+ {
+ 	if (refcount_dec_and_test(&kcov->refcount)) {
++		kcov_remote_reset(kcov);
+ 		vfree(kcov->area);
+ 		kfree(kcov);
+ 	}
+ }
+ 
+-void kcov_task_init(struct task_struct *t)
+-{
+-	WRITE_ONCE(t->kcov_mode, KCOV_MODE_DISABLED);
+-	barrier();
+-	t->kcov_size = 0;
+-	t->kcov_area = NULL;
+-	t->kcov = NULL;
+-}
+-
+ void kcov_task_exit(struct task_struct *t)
+ {
+ 	struct kcov *kcov;
+@@ -256,15 +405,36 @@ void kcov_task_exit(struct task_struct *t)
+ 	kcov = t->kcov;
+ 	if (kcov == NULL)
+ 		return;
++
+ 	spin_lock(&kcov->lock);
++	kcov_debug("t = %px, kcov->t = %px\n", t, kcov->t);
++	/*
++	 * For KCOV_ENABLE devices we want to make sure that t->kcov->t == t,
++	 * which comes down to:
++	 *        WARN_ON(!kcov->remote && kcov->t != t);
++	 *
++	 * For KCOV_REMOTE_ENABLE devices, the exiting task is either:
++	 * 2. A remote task between kcov_remote_start() and kcov_remote_stop().
++	 *    In this case we should print a warning right away, since a task
++	 *    shouldn't be exiting when it's in a kcov coverage collection
++	 *    section. Here t points to the task that is collecting remote
++	 *    coverage, and t->kcov->t points to the thread that created the
++	 *    kcov device. Which means that to detect this case we need to
++	 *    check that t != t->kcov->t, and this gives us the following:
++	 *        WARN_ON(kcov->remote && kcov->t != t);
++	 *
++	 * 2. The task that created kcov exiting without calling KCOV_DISABLE,
++	 *    and then again we can make sure that t->kcov->t == t:
++	 *        WARN_ON(kcov->remote && kcov->t != t);
++	 *
++	 * By combining all three checks into one we get:
++	 */
+ 	if (WARN_ON(kcov->t != t)) {
+ 		spin_unlock(&kcov->lock);
+ 		return;
+ 	}
+ 	/* Just to not leave dangling references behind. */
+-	kcov_task_init(t);
+-	kcov->t = NULL;
+-	kcov->mode = KCOV_MODE_INIT;
++	kcov_disable(t, kcov);
+ 	spin_unlock(&kcov->lock);
+ 	kcov_put(kcov);
+ }
+@@ -313,6 +483,7 @@ static int kcov_open(struct inode *inode, struct file *filep)
+ 	if (!kcov)
+ 		return -ENOMEM;
+ 	kcov->mode = KCOV_MODE_DISABLED;
++	kcov->sequence = 1;
+ 	refcount_set(&kcov->refcount, 1);
+ 	spin_lock_init(&kcov->lock);
+ 	filep->private_data = kcov;
+@@ -325,6 +496,20 @@ static int kcov_close(struct inode *inode, struct file *filep)
+ 	return 0;
+ }
+ 
++static int kcov_get_mode(unsigned long arg)
++{
++	if (arg == KCOV_TRACE_PC)
++		return KCOV_MODE_TRACE_PC;
++	else if (arg == KCOV_TRACE_CMP)
++#ifdef CONFIG_KCOV_ENABLE_COMPARISONS
++		return KCOV_MODE_TRACE_CMP;
++#else
++		return -ENOTSUPP;
++#endif
++	else
++		return -EINVAL;
++}
++
+ /*
+  * Fault in a lazily-faulted vmalloc area before it can be used by
+  * __santizer_cov_trace_pc(), to avoid recursion issues if any code on the
+@@ -340,14 +525,35 @@ static void kcov_fault_in_area(struct kcov *kcov)
+ 		READ_ONCE(area[offset]);
+ }
+ 
++static inline bool kcov_check_handle(u64 handle, bool common_valid,
++				bool uncommon_valid, bool zero_valid)
++{
++	if (handle & ~(KCOV_SUBSYSTEM_MASK | KCOV_INSTANCE_MASK))
++		return false;
++	switch (handle & KCOV_SUBSYSTEM_MASK) {
++	case KCOV_SUBSYSTEM_COMMON:
++		return (handle & KCOV_INSTANCE_MASK) ?
++			common_valid : zero_valid;
++	case KCOV_SUBSYSTEM_USB:
++		return uncommon_valid;
++	default:
++		return false;
++	}
++	return false;
++}
++
+ static int kcov_ioctl_locked(struct kcov *kcov, unsigned int cmd,
+ 			     unsigned long arg)
+ {
+ 	struct task_struct *t;
+ 	unsigned long size, unused;
++	int mode, i;
++	struct kcov_remote_arg *remote_arg;
++	struct kcov_remote *remote;
+ 
+ 	switch (cmd) {
+ 	case KCOV_INIT_TRACE:
++		kcov_debug("KCOV_INIT_TRACE\n");
+ 		/*
+ 		 * Enable kcov in trace mode and setup buffer size.
+ 		 * Must happen before anything else.
+@@ -366,6 +572,7 @@ static int kcov_ioctl_locked(struct kcov *kcov, unsigned int cmd,
+ 		kcov->mode = KCOV_MODE_INIT;
+ 		return 0;
+ 	case KCOV_ENABLE:
++		kcov_debug("KCOV_ENABLE\n");
+ 		/*
+ 		 * Enable coverage for the current task.
+ 		 * At this point user must have been enabled trace mode,
+@@ -378,29 +585,20 @@ static int kcov_ioctl_locked(struct kcov *kcov, unsigned int cmd,
+ 		t = current;
+ 		if (kcov->t != NULL || t->kcov != NULL)
+ 			return -EBUSY;
+-		if (arg == KCOV_TRACE_PC)
+-			kcov->mode = KCOV_MODE_TRACE_PC;
+-		else if (arg == KCOV_TRACE_CMP)
+-#ifdef CONFIG_KCOV_ENABLE_COMPARISONS
+-			kcov->mode = KCOV_MODE_TRACE_CMP;
+-#else
+-		return -ENOTSUPP;
+-#endif
+-		else
+-			return -EINVAL;
++		mode = kcov_get_mode(arg);
++		if (mode < 0)
++			return mode;
+ 		kcov_fault_in_area(kcov);
+-		/* Cache in task struct for performance. */
+-		t->kcov_size = kcov->size;
+-		t->kcov_area = kcov->area;
+-		/* See comment in check_kcov_mode(). */
+-		barrier();
+-		WRITE_ONCE(t->kcov_mode, kcov->mode);
++		kcov->mode = mode;
++		kcov_start(t, kcov->size, kcov->area, kcov->mode,
++				kcov->sequence);
+ 		t->kcov = kcov;
+ 		kcov->t = t;
+-		/* This is put either in kcov_task_exit() or in KCOV_DISABLE. */
++		/* Put either in kcov_task_exit() or in KCOV_DISABLE. */
+ 		kcov_get(kcov);
+ 		return 0;
+ 	case KCOV_DISABLE:
++		kcov_debug("KCOV_DISABLE\n");
+ 		/* Disable coverage for the current task. */
+ 		unused = arg;
+ 		if (unused != 0 || current->kcov != kcov)
+@@ -408,11 +606,65 @@ static int kcov_ioctl_locked(struct kcov *kcov, unsigned int cmd,
+ 		t = current;
+ 		if (WARN_ON(kcov->t != t))
+ 			return -EINVAL;
+-		kcov_task_init(t);
+-		kcov->t = NULL;
+-		kcov->mode = KCOV_MODE_INIT;
++		kcov_disable(t, kcov);
+ 		kcov_put(kcov);
+ 		return 0;
++	case KCOV_REMOTE_ENABLE:
++		kcov_debug("KCOV_REMOTE_ENABLE\n");
++		if (kcov->mode != KCOV_MODE_INIT || !kcov->area)
++			return -EINVAL;
++		t = current;
++		if (kcov->t != NULL || t->kcov != NULL)
++			return -EBUSY;
++		remote_arg = (struct kcov_remote_arg *)arg;
++		mode = kcov_get_mode(remote_arg->trace_mode);
++		if (mode < 0)
++			return mode;
++		if (remote_arg->area_size > LONG_MAX / sizeof(unsigned long))
++			return -EINVAL;
++		kcov->mode = mode;
++		t->kcov = kcov;
++		kcov->t = t;
++		kcov->remote = true;
++		kcov->remote_size = remote_arg->area_size;
++		spin_lock(&kcov_remote_lock);
++		for (i = 0; i < remote_arg->num_handles; i++) {
++			kcov_debug("handle %llx\n", remote_arg->handles[i]);
++			if (!kcov_check_handle(remote_arg->handles[i],
++						false, true, false)) {
++				spin_unlock(&kcov_remote_lock);
++				kcov_disable(t, kcov);
++				return -EINVAL;
++			}
++			remote = kcov_remote_add(kcov, remote_arg->handles[i]);
++			if (IS_ERR(remote)) {
++				spin_unlock(&kcov_remote_lock);
++				kcov_disable(t, kcov);
++				return PTR_ERR(remote);
++			}
++		}
++		if (remote_arg->common_handle) {
++			kcov_debug("common handle %llx\n",
++					remote_arg->common_handle);
++			if (!kcov_check_handle(remote_arg->common_handle,
++						true, false, false)) {
++				spin_unlock(&kcov_remote_lock);
++				kcov_disable(t, kcov);
++				return -EINVAL;
++			}
++			remote = kcov_remote_add(kcov,
++					remote_arg->common_handle);
++			if (IS_ERR(remote)) {
++				spin_unlock(&kcov_remote_lock);
++				kcov_disable(t, kcov);
++				return PTR_ERR(remote);
++			}
++			t->kcov_handle = remote_arg->common_handle;
++		}
++		spin_unlock(&kcov_remote_lock);
++		/* Put either in kcov_task_exit() or in KCOV_DISABLE. */
++		kcov_get(kcov);
++		return 0;
+ 	default:
+ 		return -ENOTTY;
+ 	}
+@@ -422,11 +674,35 @@ static long kcov_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
+ {
+ 	struct kcov *kcov;
+ 	int res;
++	struct kcov_remote_arg *remote_arg = NULL;
++	unsigned int remote_num_handles;
++	unsigned long remote_arg_size;
++
++	if (cmd == KCOV_REMOTE_ENABLE) {
++		if (get_user(remote_num_handles, (unsigned __user *)(arg +
++				offsetof(struct kcov_remote_arg, num_handles))))
++			return -EFAULT;
++		if (remote_num_handles > KCOV_REMOTE_MAX_HANDLES)
++			return -EINVAL;
++		remote_arg_size = struct_size(remote_arg, handles,
++					remote_num_handles);
++		remote_arg = memdup_user((void __user *)arg, remote_arg_size);
++		if (IS_ERR(remote_arg))
++			return PTR_ERR(remote_arg);
++		if (remote_arg->num_handles != remote_num_handles) {
++			kfree(remote_arg);
++			return -EINVAL;
++		}
++		arg = (unsigned long)remote_arg;
++	}
+ 
+ 	kcov = filep->private_data;
+ 	spin_lock(&kcov->lock);
+ 	res = kcov_ioctl_locked(kcov, cmd, arg);
+ 	spin_unlock(&kcov->lock);
++
++	kfree(remote_arg);
++
+ 	return res;
+ }
+ 
+@@ -438,6 +714,207 @@ static const struct file_operations kcov_fops = {
+ 	.release        = kcov_close,
+ };
+ 
++/*
++ * kcov_remote_start() and kcov_remote_stop() can be used to annotate a section
++ * of code in a kernel background thread to allow kcov to be used to collect
++ * coverage from that part of code.
++ *
++ * The handle argument of kcov_remote_start() identifies a code section that is
++ * used for coverage collection. A userspace process passes this handle to
++ * KCOV_REMOTE_ENABLE ioctl to make the used kcov device start collecting
++ * coverage for the code section identified by this handle.
++ *
++ * The usage of these annotations in the kernel code is different depending on
++ * the type of the kernel thread whose code is being annotated.
++ *
++ * For global kernel threads that are spawned in a limited number of instances
++ * (e.g. one USB hub_event() worker thread is spawned per USB HCD), each
++ * instance must be assigned a unique 4-byte instance id. The instance id is
++ * then combined with a 1-byte subsystem id to get a handle via
++ * kcov_remote_handle(subsystem_id, instance_id).
++ *
++ * For local kernel threads that are spawned from system calls handler when a
++ * user interacts with some kernel interface (e.g. vhost workers), a handle is
++ * passed from a userspace process as the common_handle field of the
++ * kcov_remote_arg struct (note, that the user must generate a handle by using
++ * kcov_remote_handle() with KCOV_SUBSYSTEM_COMMON as the subsystem id and an
++ * arbitrary 4-byte non-zero number as the instance id). This common handle
++ * then gets saved into the task_struct of the process that issued the
++ * KCOV_REMOTE_ENABLE ioctl. When this proccess issues system calls that spawn
++ * kernel threads, the common handle must be retrived via kcov_common_handle()
++ * and passed to the spawned threads via custom annotations. Those kernel
++ * threads must in turn be annotated with kcov_remote_start(common_handle) and
++ * kcov_remote_stop(). All of the threads that are spawned by the same process
++ * obtain the same handle, hence the name "common".
++ *
++ * See Documentation/dev-tools/kcov.rst for more details.
++ *
++ * Internally, this function looks up the kcov device associated with the
++ * provided handle, allocates an area for coverage collection, and saves the
++ * pointers to kcov and area into the current task_struct to allow coverage to
++ * be collected via __sanitizer_cov_trace_pc()
++ * In turns kcov_remote_stop() clears those pointers from task_struct to stop
++ * collecting coverage and copies all collected coverage into the kcov area.
++ */
++void kcov_remote_start(u64 handle)
++{
++	struct kcov_remote *remote;
++	void *area;
++	struct task_struct *t;
++	unsigned int size;
++	enum kcov_mode mode;
++	int sequence;
++
++	if (WARN_ON(!kcov_check_handle(handle, true, true, true)))
++		return;
++	if (WARN_ON(!in_task()))
++		return;
++	t = current;
++	/*
++	 * Check that kcov_remote_start is not called twice
++	 * nor called by user tasks (with enabled kcov).
++	 */
++	if (WARN_ON(t->kcov))
++		return;
++
++	kcov_debug("handle = %llx\n", handle);
++
++	spin_lock(&kcov_remote_lock);
++	remote = kcov_remote_find(handle);
++	if (!remote) {
++		kcov_debug("no remote found");
++		spin_unlock(&kcov_remote_lock);
++		return;
++	}
++	/* Put in kcov_remote_stop(). */
++	kcov_get(remote->kcov);
++	t->kcov = remote->kcov;
++	/*
++	 * Read kcov fields before unlock to prevent races with
++	 * KCOV_DISABLE / kcov_remote_reset().
++	 */
++	size = remote->kcov->remote_size;
++	mode = remote->kcov->mode;
++	sequence = remote->kcov->sequence;
++	area = kcov_remote_area_get(size);
++	spin_unlock(&kcov_remote_lock);
++
++	if (!area) {
++		area = vmalloc(size * sizeof(unsigned long));
++		if (!area) {
++			t->kcov = NULL;
++			kcov_put(remote->kcov);
++			return;
++		}
++	}
++	/* Reset coverage size. */
++	*(u64 *)area = 0;
++
++	kcov_debug("area = %px, size = %u", area, size);
++
++	kcov_start(t, size, area, mode, sequence);
++
++}
++EXPORT_SYMBOL(kcov_remote_start);
++
++static void kcov_move_area(enum kcov_mode mode, void *dst_area,
++				unsigned int dst_area_size, void *src_area)
++{
++	u64 word_size = sizeof(unsigned long);
++	u64 count_size, entry_size_log;
++	u64 dst_len, src_len;
++	void *dst_entries, *src_entries;
++	u64 dst_occupied, dst_free, bytes_to_move, entries_moved;
++
++	kcov_debug("%px %u <= %px %lu\n",
++		dst_area, dst_area_size, src_area, *(unsigned long *)src_area);
++
++	switch (mode) {
++	case KCOV_MODE_TRACE_PC:
++		dst_len = READ_ONCE(*(unsigned long *)dst_area);
++		src_len = *(unsigned long *)src_area;
++		count_size = sizeof(unsigned long);
++		entry_size_log = __ilog2_u64(sizeof(unsigned long));
++		break;
++	case KCOV_MODE_TRACE_CMP:
++		dst_len = READ_ONCE(*(u64 *)dst_area);
++		src_len = *(u64 *)src_area;
++		count_size = sizeof(u64);
++		BUILD_BUG_ON(!is_power_of_2(KCOV_WORDS_PER_CMP));
++		entry_size_log = __ilog2_u64(sizeof(u64) * KCOV_WORDS_PER_CMP);
++		break;
++	default:
++		WARN_ON(1);
++		return;
++	}
++
++	/* As arm can't divide u64 integers use log of entry size. */
++	if (dst_len > ((dst_area_size * word_size - count_size) >>
++				entry_size_log))
++		return;
++	dst_occupied = count_size + (dst_len << entry_size_log);
++	dst_free = dst_area_size * word_size - dst_occupied;
++	bytes_to_move = min(dst_free, src_len << entry_size_log);
++	dst_entries = dst_area + dst_occupied;
++	src_entries = src_area + count_size;
++	memcpy(dst_entries, src_entries, bytes_to_move);
++	entries_moved = bytes_to_move >> entry_size_log;
++
++	switch (mode) {
++	case KCOV_MODE_TRACE_PC:
++		WRITE_ONCE(*(unsigned long *)dst_area, dst_len + entries_moved);
++		break;
++	case KCOV_MODE_TRACE_CMP:
++		WRITE_ONCE(*(u64 *)dst_area, dst_len + entries_moved);
++		break;
++	default:
++		break;
++	}
++}
++
++/* See the comment before kcov_remote_start() for usage details. */
++void kcov_remote_stop(void)
++{
++	struct task_struct *t = current;
++	struct kcov *kcov = t->kcov;
++	void *area = t->kcov_area;
++	unsigned int size = t->kcov_size;
++	int sequence = t->kcov_sequence;
++
++	if (!kcov) {
++		kcov_debug("no kcov found\n");
++		return;
++	}
++
++	kcov_stop(t);
++	t->kcov = NULL;
++
++	spin_lock(&kcov->lock);
++	/*
++	 * KCOV_DISABLE could have been called between kcov_remote_start()
++	 * and kcov_remote_stop(), hence the check.
++	 */
++	kcov_debug("move if: %d == %d && %d\n",
++		sequence, kcov->sequence, (int)kcov->remote);
++	if (sequence == kcov->sequence && kcov->remote)
++		kcov_move_area(kcov->mode, kcov->area, kcov->size, area);
++	spin_unlock(&kcov->lock);
++
++	spin_lock(&kcov_remote_lock);
++	kcov_remote_area_put(area, size);
++	spin_unlock(&kcov_remote_lock);
++
++	kcov_put(kcov);
++}
++EXPORT_SYMBOL(kcov_remote_stop);
++
++/* See the comment before kcov_remote_start() for usage details. */
++u64 kcov_common_handle(void)
++{
++	return current->kcov_handle;
++}
++EXPORT_SYMBOL(kcov_common_handle);
++
+ static int __init kcov_init(void)
+ {
+ 	/*
+diff --git a/kernel/kthread.c b/kernel/kthread.c
+index bfbfa481b..1e9bf63a3 100644
+--- a/kernel/kthread.c
++++ b/kernel/kthread.c
+@@ -886,7 +886,9 @@ static void __kthread_queue_delayed_work(struct kthread_worker *worker,
+ 	struct timer_list *timer = &dwork->timer;
+ 	struct kthread_work *work = &dwork->work;
+ 
++#ifndef CONFIG_CFI_CLANG
+ 	WARN_ON_ONCE(timer->function != kthread_delayed_work_timer_fn);
++#endif
+ 
+ 	/*
+ 	 * If @delay is 0, queue @dwork->work immediately.  This is for
+diff --git a/kernel/livepatch/core.c b/kernel/livepatch/core.c
+index ab4a4606d..1a9827a11 100644
+--- a/kernel/livepatch/core.c
++++ b/kernel/livepatch/core.c
+@@ -210,7 +210,7 @@ static int klp_resolve_symbols(Elf_Shdr *relasec, struct module *pmod)
+ 	 * we use the smallest/strictest upper bound possible (56, based on
+ 	 * the current definition of MODULE_NAME_LEN) to prevent overflows.
+ 	 */
+-	BUILD_BUG_ON(MODULE_NAME_LEN < 56 || KSYM_NAME_LEN != 128);
++	BUILD_BUG_ON(MODULE_NAME_LEN < 56 || KSYM_NAME_LEN != 192);
+ 
+ 	relas = (Elf_Rela *) relasec->sh_addr;
+ 	/* For each rela in this klp relocation section */
+@@ -224,7 +224,7 @@ static int klp_resolve_symbols(Elf_Shdr *relasec, struct module *pmod)
+ 
+ 		/* Format: .klp.sym.objname.symname,sympos */
+ 		cnt = sscanf(strtab + sym->st_name,
+-			     ".klp.sym.%55[^.].%127[^,],%lu",
++			     ".klp.sym.%55[^.].%191[^,],%lu",
+ 			     objname, symname, &sympos);
+ 		if (cnt != 3) {
+ 			pr_err("symbol %s has an incorrectly formatted name\n",
+diff --git a/kernel/locking/mutex.c b/kernel/locking/mutex.c
+index 468a9b842..5227d4786 100644
+--- a/kernel/locking/mutex.c
++++ b/kernel/locking/mutex.c
+@@ -36,6 +36,8 @@
+ # include "mutex.h"
+ #endif
+ 
++#include <trace/hooks/dtask.h>
++
+ void
+ __mutex_init(struct mutex *lock, const char *name, struct lock_class_key *key)
+ {
+@@ -1002,6 +1004,7 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
+ 
+ 	waiter.task = current;
+ 
++	trace_android_vh_mutex_wait_start(lock);
+ 	set_current_state(state);
+ 	for (;;) {
+ 		/*
+@@ -1057,6 +1060,7 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
+ 	spin_lock(&lock->wait_lock);
+ acquired:
+ 	__set_current_state(TASK_RUNNING);
++	trace_android_vh_mutex_wait_finish(lock);
+ 
+ 	if (use_ww_ctx && ww_ctx) {
+ 		/*
+@@ -1087,6 +1091,7 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
+ 
+ err:
+ 	__set_current_state(TASK_RUNNING);
++	trace_android_vh_mutex_wait_finish(lock);
+ 	mutex_remove_waiter(lock, &waiter, current);
+ err_early_kill:
+ 	spin_unlock(&lock->wait_lock);
+diff --git a/kernel/locking/rwsem.c b/kernel/locking/rwsem.c
+index baafa1dd9..302870ff5 100644
+--- a/kernel/locking/rwsem.c
++++ b/kernel/locking/rwsem.c
+@@ -31,6 +31,9 @@
+ #include "rwsem.h"
+ #include "lock_events.h"
+ 
++#include <trace/hooks/dtask.h>
++#include <trace/hooks/rwsem.h>
++
+ /*
+  * The least significant 3 bits of the owner value has the following
+  * meanings when set.
+@@ -341,6 +344,7 @@ void __init_rwsem(struct rw_semaphore *sem, const char *name,
+ #ifdef CONFIG_RWSEM_SPIN_ON_OWNER
+ 	osq_lock_init(&sem->osq);
+ #endif
++	trace_android_vh_rwsem_init(sem);
+ }
+ EXPORT_SYMBOL(__init_rwsem);
+ 
+@@ -998,6 +1002,7 @@ rwsem_down_read_slowpath(struct rw_semaphore *sem, int state)
+ 	struct rwsem_waiter waiter;
+ 	DEFINE_WAKE_Q(wake_q);
+ 	bool wake = false;
++	bool already_on_list = false;
+ 
+ 	/*
+ 	 * Save the current read-owner of rwsem, if available, and the
+@@ -1059,7 +1064,11 @@ rwsem_down_read_slowpath(struct rw_semaphore *sem, int state)
+ 		}
+ 		adjustment += RWSEM_FLAG_WAITERS;
+ 	}
+-	list_add_tail(&waiter.list, &sem->wait_list);
++	trace_android_vh_alter_rwsem_list_add(
++					&waiter,
++					sem, &already_on_list);
++	if (!already_on_list)
++		list_add_tail(&waiter.list, &sem->wait_list);
+ 
+ 	/* we're now waiting on the lock, but no longer actively locking */
+ 	if (adjustment)
+@@ -1081,10 +1090,12 @@ rwsem_down_read_slowpath(struct rw_semaphore *sem, int state)
+ 		    (adjustment & RWSEM_FLAG_WAITERS)))
+ 		rwsem_mark_wake(sem, RWSEM_WAKE_ANY, &wake_q);
+ 
++	trace_android_vh_rwsem_wake(sem);
+ 	raw_spin_unlock_irq(&sem->wait_lock);
+ 	wake_up_q(&wake_q);
+ 
+ 	/* wait to be given the lock */
++	trace_android_vh_rwsem_read_wait_start(sem);
+ 	for (;;) {
+ 		set_current_state(state);
+ 		if (!smp_load_acquire(&waiter.task)) {
+@@ -1104,6 +1115,7 @@ rwsem_down_read_slowpath(struct rw_semaphore *sem, int state)
+ 	}
+ 
+ 	__set_current_state(TASK_RUNNING);
++	trace_android_vh_rwsem_read_wait_finish(sem);
+ 	lockevent_inc(rwsem_rlock);
+ 	return sem;
+ 
+@@ -1115,6 +1127,7 @@ rwsem_down_read_slowpath(struct rw_semaphore *sem, int state)
+ 	}
+ 	raw_spin_unlock_irq(&sem->wait_lock);
+ 	__set_current_state(TASK_RUNNING);
++	trace_android_vh_rwsem_read_wait_finish(sem);
+ 	lockevent_inc(rwsem_rlock_fail);
+ 	return ERR_PTR(-EINTR);
+ }
+@@ -1144,6 +1157,7 @@ rwsem_down_write_slowpath(struct rw_semaphore *sem, int state)
+ 	struct rwsem_waiter waiter;
+ 	struct rw_semaphore *ret = sem;
+ 	DEFINE_WAKE_Q(wake_q);
++	bool already_on_list = false;
+ 
+ 	/* do optimistic spinning and steal lock if possible */
+ 	if (rwsem_can_spin_on_owner(sem, RWSEM_WR_NONSPINNABLE) &&
+@@ -1172,7 +1186,11 @@ rwsem_down_write_slowpath(struct rw_semaphore *sem, int state)
+ 	/* account for this before adding a new element to the list */
+ 	wstate = list_empty(&sem->wait_list) ? WRITER_FIRST : WRITER_NOT_FIRST;
+ 
+-	list_add_tail(&waiter.list, &sem->wait_list);
++	trace_android_vh_alter_rwsem_list_add(
++					&waiter,
++					sem, &already_on_list);
++	if (!already_on_list)
++		list_add_tail(&waiter.list, &sem->wait_list);
+ 
+ 	/* we're now waiting on the lock */
+ 	if (wstate == WRITER_NOT_FIRST) {
+@@ -1208,7 +1226,9 @@ rwsem_down_write_slowpath(struct rw_semaphore *sem, int state)
+ 	}
+ 
+ wait:
++	trace_android_vh_rwsem_wake(sem);
+ 	/* wait until we successfully acquire the lock */
++	trace_android_vh_rwsem_write_wait_start(sem);
+ 	set_current_state(state);
+ 	for (;;) {
+ 		if (rwsem_try_write_lock(sem, wstate)) {
+@@ -1268,6 +1288,7 @@ rwsem_down_write_slowpath(struct rw_semaphore *sem, int state)
+ 		raw_spin_lock_irq(&sem->wait_lock);
+ 	}
+ 	__set_current_state(TASK_RUNNING);
++	trace_android_vh_rwsem_write_wait_finish(sem);
+ 	list_del(&waiter.list);
+ 	rwsem_disable_reader_optspin(sem, disable_rspin);
+ 	raw_spin_unlock_irq(&sem->wait_lock);
+@@ -1277,6 +1298,7 @@ rwsem_down_write_slowpath(struct rw_semaphore *sem, int state)
+ 
+ out_nolock:
+ 	__set_current_state(TASK_RUNNING);
++	trace_android_vh_rwsem_write_wait_finish(sem);
+ 	raw_spin_lock_irq(&sem->wait_lock);
+ 	list_del(&waiter.list);
+ 
+@@ -1584,6 +1606,7 @@ EXPORT_SYMBOL(up_read);
+ void up_write(struct rw_semaphore *sem)
+ {
+ 	rwsem_release(&sem->dep_map, 1, _RET_IP_);
++	trace_android_vh_rwsem_write_finished(sem);
+ 	__up_write(sem);
+ }
+ EXPORT_SYMBOL(up_write);
+@@ -1594,6 +1617,7 @@ EXPORT_SYMBOL(up_write);
+ void downgrade_write(struct rw_semaphore *sem)
+ {
+ 	lock_downgrade(&sem->dep_map, _RET_IP_);
++	trace_android_vh_rwsem_write_finished(sem);
+ 	__downgrade_write(sem);
+ }
+ EXPORT_SYMBOL(downgrade_write);
+diff --git a/kernel/module.c b/kernel/module.c
+index 819c5d3b4..9012ff26d 100644
+--- a/kernel/module.c
++++ b/kernel/module.c
+@@ -419,7 +419,7 @@ static bool each_symbol_in_section(const struct symsearch *arr,
+ }
+ 
+ /* Returns true as soon as fn returns true, otherwise false. */
+-bool each_symbol_section(bool (*fn)(const struct symsearch *arr,
++static bool each_symbol_section(bool (*fn)(const struct symsearch *arr,
+ 				    struct module *owner,
+ 				    void *data),
+ 			 void *data)
+@@ -481,7 +481,6 @@ bool each_symbol_section(bool (*fn)(const struct symsearch *arr,
+ 	}
+ 	return false;
+ }
+-EXPORT_SYMBOL_GPL(each_symbol_section);
+ 
+ struct find_symbol_arg {
+ 	/* Input */
+@@ -493,6 +492,7 @@ struct find_symbol_arg {
+ 	struct module *owner;
+ 	const s32 *crc;
+ 	const struct kernel_symbol *sym;
++	enum mod_license license;
+ };
+ 
+ static bool check_exported_symbol(const struct symsearch *syms,
+@@ -502,9 +502,9 @@ static bool check_exported_symbol(const struct symsearch *syms,
+ 	struct find_symbol_arg *fsa = data;
+ 
+ 	if (!fsa->gplok) {
+-		if (syms->licence == GPL_ONLY)
++		if (syms->license == GPL_ONLY)
+ 			return false;
+-		if (syms->licence == WILL_BE_GPL_ONLY && fsa->warn) {
++		if (syms->license == WILL_BE_GPL_ONLY && fsa->warn) {
+ 			pr_warn("Symbol %s is being used by a non-GPL module, "
+ 				"which will not be allowed in the future\n",
+ 				fsa->name);
+@@ -526,6 +526,7 @@ static bool check_exported_symbol(const struct symsearch *syms,
+ 	fsa->owner = owner;
+ 	fsa->crc = symversion(syms->crcs, symnum);
+ 	fsa->sym = &syms->start[symnum];
++	fsa->license = syms->license;
+ 	return true;
+ }
+ 
+@@ -582,9 +583,10 @@ static bool find_exported_symbol_in_section(const struct symsearch *syms,
+ 
+ /* Find an exported symbol and return it, along with, (optional) crc and
+  * (optional) module which owns it.  Needs preempt disabled or module_mutex. */
+-const struct kernel_symbol *find_symbol(const char *name,
++static const struct kernel_symbol *find_symbol(const char *name,
+ 					struct module **owner,
+ 					const s32 **crc,
++					enum mod_license *license,
+ 					bool gplok,
+ 					bool warn)
+ {
+@@ -599,13 +601,14 @@ const struct kernel_symbol *find_symbol(const char *name,
+ 			*owner = fsa.owner;
+ 		if (crc)
+ 			*crc = fsa.crc;
++		if (license)
++			*license = fsa.license;
+ 		return fsa.sym;
+ 	}
+ 
+ 	pr_debug("Failed to find symbol %s\n", name);
+ 	return NULL;
+ }
+-EXPORT_SYMBOL_GPL(find_symbol);
+ 
+ /*
+  * Search for module by name: must hold module_mutex (or preempt disabled
+@@ -866,7 +869,7 @@ static int add_module_usage(struct module *a, struct module *b)
+ }
+ 
+ /* Module a uses b: caller needs module_mutex() */
+-int ref_module(struct module *a, struct module *b)
++static int ref_module(struct module *a, struct module *b)
+ {
+ 	int err;
+ 
+@@ -885,7 +888,6 @@ int ref_module(struct module *a, struct module *b)
+ 	}
+ 	return 0;
+ }
+-EXPORT_SYMBOL_GPL(ref_module);
+ 
+ /* Clear the unload stuff of the module. */
+ static void module_unload_free(struct module *mod)
+@@ -1074,12 +1076,11 @@ void __symbol_put(const char *symbol)
+ 	struct module *owner;
+ 
+ 	preempt_disable();
+-	if (!find_symbol(symbol, &owner, NULL, true, false))
++	if (!find_symbol(symbol, &owner, NULL, NULL, true, false))
+ 		BUG();
+ 	module_put(owner);
+ 	preempt_enable();
+ }
+-EXPORT_SYMBOL(__symbol_put);
+ 
+ /* Note this assumes addr is a function, which it currently always is. */
+ void symbol_put_addr(void *addr)
+@@ -1166,11 +1167,10 @@ static inline void module_unload_free(struct module *mod)
+ {
+ }
+ 
+-int ref_module(struct module *a, struct module *b)
++static int ref_module(struct module *a, struct module *b)
+ {
+ 	return strong_try_module_get(b);
+ }
+-EXPORT_SYMBOL_GPL(ref_module);
+ 
+ static inline int module_unload_init(struct module *mod)
+ {
+@@ -1353,7 +1353,7 @@ static inline int check_modstruct_version(const struct load_info *info,
+ 	 * locking is necessary -- use preempt_disable() to placate lockdep.
+ 	 */
+ 	preempt_disable();
+-	if (!find_symbol("module_layout", NULL, &crc, true, false)) {
++	if (!find_symbol("module_layout", NULL, &crc, NULL, true, false)) {
+ 		preempt_enable();
+ 		BUG();
+ 	}
+@@ -1427,6 +1427,24 @@ static int verify_namespace_is_imported(const struct load_info *info,
+ 	return 0;
+ }
+ 
++static bool inherit_taint(struct module *mod, struct module *owner)
++{
++	if (!owner || !test_bit(TAINT_PROPRIETARY_MODULE, &owner->taints))
++		return true;
++
++	if (mod->using_gplonly_symbols) {
++		pr_err("%s: module using GPL-only symbols uses symbols from proprietary module %s.\n",
++			mod->name, owner->name);
++		return false;
++	}
++
++	if (!test_bit(TAINT_PROPRIETARY_MODULE, &mod->taints)) {
++		pr_warn("%s: module uses symbols from proprietary module %s, inheriting taint.\n",
++			mod->name, owner->name);
++		set_bit(TAINT_PROPRIETARY_MODULE, &mod->taints);
++	}
++	return true;
++}
+ 
+ /* Resolve a symbol for this module.  I.e. if we find one, record usage. */
+ static const struct kernel_symbol *resolve_symbol(struct module *mod,
+@@ -1437,6 +1455,7 @@ static const struct kernel_symbol *resolve_symbol(struct module *mod,
+ 	struct module *owner;
+ 	const struct kernel_symbol *sym;
+ 	const s32 *crc;
++	enum mod_license license;
+ 	int err;
+ 
+ 	/*
+@@ -1446,11 +1465,19 @@ static const struct kernel_symbol *resolve_symbol(struct module *mod,
+ 	 */
+ 	sched_annotate_sleep();
+ 	mutex_lock(&module_mutex);
+-	sym = find_symbol(name, &owner, &crc,
++	sym = find_symbol(name, &owner, &crc, &license,
+ 			  !(mod->taints & (1 << TAINT_PROPRIETARY_MODULE)), true);
+ 	if (!sym)
+ 		goto unlock;
+ 
++	if (license == GPL_ONLY)
++		mod->using_gplonly_symbols = true;
++
++	if (!inherit_taint(mod, owner)) {
++		sym = NULL;
++		goto getname;
++	}
++
+ 	if (!check_version(info, name, mod, crc)) {
+ 		sym = ERR_PTR(-EINVAL);
+ 		goto getname;
+@@ -2205,6 +2232,8 @@ void __weak module_arch_freeing_init(struct module *mod)
+ {
+ }
+ 
++static void cfi_cleanup(struct module *mod);
++
+ /* Free a module, remove from lists, etc. */
+ static void free_module(struct module *mod)
+ {
+@@ -2244,6 +2273,9 @@ static void free_module(struct module *mod)
+ 	synchronize_rcu();
+ 	mutex_unlock(&module_mutex);
+ 
++	/* Clean up CFI for the module. */
++	cfi_cleanup(mod);
++
+ 	/* This may be empty, but that's OK */
+ 	module_arch_freeing_init(mod);
+ 	module_memfree(mod->init_layout.base);
+@@ -2263,14 +2295,13 @@ void *__symbol_get(const char *symbol)
+ 	const struct kernel_symbol *sym;
+ 
+ 	preempt_disable();
+-	sym = find_symbol(symbol, &owner, NULL, true, true);
++	sym = find_symbol(symbol, &owner, NULL, NULL, true, true);
+ 	if (sym && strong_try_module_get(owner))
+ 		sym = NULL;
+ 	preempt_enable();
+ 
+ 	return sym ? (void *)kernel_symbol_value(sym) : NULL;
+ }
+-EXPORT_SYMBOL_GPL(__symbol_get);
+ 
+ /*
+  * Ensure that an exported symbol [global namespace] does not already exist
+@@ -2299,7 +2330,7 @@ static int verify_exported_symbols(struct module *mod)
+ 	for (i = 0; i < ARRAY_SIZE(arr); i++) {
+ 		for (s = arr[i].sym; s < arr[i].sym + arr[i].num; s++) {
+ 			if (find_symbol(kernel_symbol_name(s), &owner, NULL,
+-					true, false)) {
++					NULL, true, false)) {
+ 				pr_err("%s: exports duplicate symbol %s"
+ 				       " (owned by %s)\n",
+ 				       mod->name, kernel_symbol_name(s),
+@@ -3494,6 +3525,8 @@ int __weak module_finalize(const Elf_Ehdr *hdr,
+ 	return 0;
+ }
+ 
++static void cfi_init(struct module *mod);
++
+ static int post_relocation(struct module *mod, const struct load_info *info)
+ {
+ 	/* Sort exception table now relocations are done. */
+@@ -3506,6 +3539,9 @@ static int post_relocation(struct module *mod, const struct load_info *info)
+ 	/* Setup kallsyms-specific fields. */
+ 	add_kallsyms(mod, info);
+ 
++	/* Setup CFI for the module. */
++	cfi_init(mod);
++
+ 	/* Arch-specific module finalizing. */
+ 	return module_finalize(info->hdr, info->sechdrs, mod);
+ }
+@@ -3966,6 +4002,8 @@ static int load_module(struct load_info *info, const char __user *uargs,
+ 	mutex_unlock(&module_mutex);
+ 
+  ddebug_cleanup:
++	/* Clean up CFI for the module. */
++	cfi_cleanup(mod);
+ 	ftrace_release_mod(mod);
+ 	dynamic_debug_remove(mod, info->debug);
+ 	synchronize_rcu();
+@@ -4309,6 +4347,24 @@ int module_kallsyms_on_each_symbol(int (*fn)(void *, const char *,
+ }
+ #endif /* CONFIG_KALLSYMS */
+ 
++static void cfi_init(struct module *mod)
++{
++#ifdef CONFIG_CFI_CLANG
++	rcu_read_lock_sched();
++	mod->cfi_check = (cfi_check_fn)find_kallsyms_symbol_value(mod,
++						CFI_CHECK_FN_NAME);
++	rcu_read_unlock_sched();
++	cfi_module_add(mod, module_addr_min, module_addr_max);
++#endif
++}
++
++static void cfi_cleanup(struct module *mod)
++{
++#ifdef CONFIG_CFI_CLANG
++	cfi_module_remove(mod, module_addr_min, module_addr_max);
++#endif
++}
++
+ /* Maximum number of characters written by module_flags() */
+ #define MODULE_FLAGS_BUF_SIZE (TAINT_FLAGS_COUNT + 4)
+ 
+@@ -4500,7 +4556,6 @@ struct module *__module_address(unsigned long addr)
+ 	}
+ 	return mod;
+ }
+-EXPORT_SYMBOL_GPL(__module_address);
+ 
+ /*
+  * is_module_text_address - is this address inside module code?
+@@ -4539,7 +4594,6 @@ struct module *__module_text_address(unsigned long addr)
+ 	}
+ 	return mod;
+ }
+-EXPORT_SYMBOL_GPL(__module_text_address);
+ 
+ /* Don't grab lock, we're oopsing. */
+ void print_modules(void)
+diff --git a/kernel/panic.c b/kernel/panic.c
+index f470a038b..e01df05a9 100644
+--- a/kernel/panic.c
++++ b/kernel/panic.c
+@@ -28,7 +28,11 @@
+ #include <linux/init.h>
+ #include <linux/nmi.h>
+ #include <linux/console.h>
++#include <linux/cpu.h>
++#include <linux/cpumask.h>
++#include <asm/cacheflush.h>
+ #include <linux/bug.h>
++#include <linux/sunxi-dump.h>
+ #include <linux/ratelimit.h>
+ #include <linux/debugfs.h>
+ #include <asm/sections.h>
+@@ -56,6 +60,13 @@ EXPORT_SYMBOL_GPL(panic_timeout);
+ #define PANIC_PRINT_ALL_PRINTK_MSG	0x00000020
+ unsigned long panic_print;
+ 
++#ifdef CONFIG_SUNXI_DUMP
++int sunxi_dump = 1;
++#else
++int sunxi_dump;
++#endif
++EXPORT_SYMBOL_GPL(sunxi_dump);
++
+ ATOMIC_NOTIFIER_HEAD(panic_notifier_list);
+ 
+ EXPORT_SYMBOL(panic_notifier_list);
+@@ -338,6 +349,37 @@ void panic(const char *fmt, ...)
+ #endif
+ 	pr_emerg("---[ end Kernel panic - not syncing: %s ]---\n", buf);
+ 
++	if (sunxi_dump) {
++		unsigned int i, count;
++
++		flush_cache_all();
++		pr_emerg("flush cache done\n");
++#if IS_ENABLED(CONFIG_SUNXI_DUMP)
++		pr_emerg("sunxi dump enabled\n");
++		sunxi_dump_group_dump();
++		pr_emerg("dump regs done\n");
++#endif
++
++		for (i = 0; i < num_possible_cpus(); i++) {
++			count = 500;
++			if (i == smp_processor_id())
++				continue;
++
++			while (count) {
++				if (!cpu_online(i))
++					break;
++				mdelay(10);
++				count--;
++			}
++			if (!count)
++				pr_emerg("wait cpu%d stopped timeout 5s\n", i);
++		}
++		pr_emerg("crashdump enter\n");
++#if IS_ENABLED(CONFIG_SUNXI_DUMP)
++		sunxi_set_crashdump_mode();
++#endif
++	}
++
+ 	/* Do not scroll important messages printed above */
+ 	suppress_printk = 1;
+ 	local_irq_enable();
+diff --git a/kernel/pid.c b/kernel/pid.c
+index 0a9f2e437..f4649916e 100644
+--- a/kernel/pid.c
++++ b/kernel/pid.c
+@@ -354,6 +354,7 @@ struct task_struct *find_task_by_vpid(pid_t vnr)
+ {
+ 	return find_task_by_pid_ns(vnr, task_active_pid_ns(current));
+ }
++EXPORT_SYMBOL_GPL(find_task_by_vpid);
+ 
+ struct task_struct *find_get_task_by_vpid(pid_t nr)
+ {
+diff --git a/kernel/power/Makefile b/kernel/power/Makefile
+index e7e47d9be..c673a1b73 100644
+--- a/kernel/power/Makefile
++++ b/kernel/power/Makefile
+@@ -16,4 +16,5 @@ obj-$(CONFIG_PM_WAKELOCKS)	+= wakelock.o
+ 
+ obj-$(CONFIG_MAGIC_SYSRQ)	+= poweroff.o
+ 
++obj-$(CONFIG_SUSPEND)		+= wakeup_reason.o
+ obj-$(CONFIG_ENERGY_MODEL)	+= energy_model.o
+diff --git a/kernel/power/process.c b/kernel/power/process.c
+index 4b6a54da7..da378ace6 100644
+--- a/kernel/power/process.c
++++ b/kernel/power/process.c
+@@ -85,18 +85,21 @@ static int try_to_freeze_tasks(bool user_only)
+ 	elapsed = ktime_sub(end, start);
+ 	elapsed_msecs = ktime_to_ms(elapsed);
+ 
+-	if (todo) {
++	if (wakeup) {
+ 		pr_cont("\n");
+-		pr_err("Freezing of tasks %s after %d.%03d seconds "
+-		       "(%d tasks refusing to freeze, wq_busy=%d):\n",
+-		       wakeup ? "aborted" : "failed",
++		pr_err("Freezing of tasks aborted after %d.%03d seconds",
++		       elapsed_msecs / 1000, elapsed_msecs % 1000);
++	} else if (todo) {
++		pr_cont("\n");
++		pr_err("Freezing of tasks failed after %d.%03d seconds"
++		       " (%d tasks refusing to freeze, wq_busy=%d):\n",
+ 		       elapsed_msecs / 1000, elapsed_msecs % 1000,
+ 		       todo - wq_busy, wq_busy);
+ 
+ 		if (wq_busy)
+ 			show_workqueue_state();
+ 
+-		if (!wakeup || pm_debug_messages_on) {
++		if (pm_debug_messages_on) {
+ 			read_lock(&tasklist_lock);
+ 			for_each_process_thread(g, p) {
+ 				if (p != current && !freezer_should_skip(p)
+diff --git a/kernel/power/qos.c b/kernel/power/qos.c
+index a45cba7df..83edf8698 100644
+--- a/kernel/power/qos.c
++++ b/kernel/power/qos.c
+@@ -714,8 +714,10 @@ s32 freq_qos_read_value(struct freq_constraints *qos,
+  * @req: Constraint request to apply.
+  * @action: Action to perform (add/update/remove).
+  * @value: Value to assign to the QoS request.
++ *
++ * This is only meant to be called from inside pm_qos, not drivers.
+  */
+-static int freq_qos_apply(struct freq_qos_request *req,
++int freq_qos_apply(struct freq_qos_request *req,
+ 			  enum pm_qos_req_action action, s32 value)
+ {
+ 	int ret;
+diff --git a/kernel/power/suspend.c b/kernel/power/suspend.c
+index 27f149f5d..44dfe0b3d 100644
+--- a/kernel/power/suspend.c
++++ b/kernel/power/suspend.c
+@@ -30,6 +30,7 @@
+ #include <trace/events/power.h>
+ #include <linux/compiler.h>
+ #include <linux/moduleparam.h>
++#include <linux/wakeup_reason.h>
+ 
+ #include "power.h"
+ 
+@@ -139,6 +140,7 @@ static void s2idle_loop(void)
+ 		}
+ 
+ 		pm_wakeup_clear(false);
++		clear_wakeup_reasons();
+ 
+ 		s2idle_enter();
+ 	}
+@@ -361,6 +363,7 @@ static int suspend_prepare(suspend_state_t state)
+ 	if (!error)
+ 		return 0;
+ 
++	log_suspend_abort_reason("One or more tasks refusing to freeze");
+ 	suspend_stats.failed_freeze++;
+ 	dpm_save_failed_step(SUSPEND_FREEZE);
+  Finish:
+@@ -390,7 +393,7 @@ void __weak arch_suspend_enable_irqs(void)
+  */
+ static int suspend_enter(suspend_state_t state, bool *wakeup)
+ {
+-	int error;
++	int error, last_dev;
+ 
+ 	error = platform_suspend_prepare(state);
+ 	if (error)
+@@ -398,7 +401,11 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
+ 
+ 	error = dpm_suspend_late(PMSG_SUSPEND);
+ 	if (error) {
++		last_dev = suspend_stats.last_failed_dev + REC_FAILED_NUM - 1;
++		last_dev %= REC_FAILED_NUM;
+ 		pr_err("late suspend of devices failed\n");
++		log_suspend_abort_reason("late suspend of %s device failed",
++					 suspend_stats.failed_devs[last_dev]);
+ 		goto Platform_finish;
+ 	}
+ 	error = platform_suspend_prepare_late(state);
+@@ -407,7 +414,11 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
+ 
+ 	error = dpm_suspend_noirq(PMSG_SUSPEND);
+ 	if (error) {
++		last_dev = suspend_stats.last_failed_dev + REC_FAILED_NUM - 1;
++		last_dev %= REC_FAILED_NUM;
+ 		pr_err("noirq suspend of devices failed\n");
++		log_suspend_abort_reason("noirq suspend of %s device failed",
++					 suspend_stats.failed_devs[last_dev]);
+ 		goto Platform_early_resume;
+ 	}
+ 	error = platform_suspend_prepare_noirq(state);
+@@ -423,8 +434,10 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
+ 	}
+ 
+ 	error = suspend_disable_secondary_cpus();
+-	if (error || suspend_test(TEST_CPUS))
++	if (error || suspend_test(TEST_CPUS)) {
++		log_suspend_abort_reason("Disabling non-boot cpus failed");
+ 		goto Enable_cpus;
++	}
+ 
+ 	arch_suspend_disable_irqs();
+ 	BUG_ON(!irqs_disabled());
+@@ -495,6 +508,8 @@ int suspend_devices_and_enter(suspend_state_t state)
+ 	error = dpm_suspend_start(PMSG_SUSPEND);
+ 	if (error) {
+ 		pr_err("Some devices failed to suspend, or early wake event detected\n");
++		log_suspend_abort_reason(
++				"Some devices failed to suspend, or early wake event detected");
+ 		goto Recover_platform;
+ 	}
+ 	suspend_test_finish("suspend devices");
+diff --git a/kernel/power/wakeup_reason.c b/kernel/power/wakeup_reason.c
+new file mode 100644
+index 000000000..5d6d2077d
+--- /dev/null
++++ b/kernel/power/wakeup_reason.c
+@@ -0,0 +1,435 @@
++/*
++ * kernel/power/wakeup_reason.c
++ *
++ * Logs the reasons which caused the kernel to resume from
++ * the suspend mode.
++ *
++ * Copyright (C) 2020 Google, Inc.
++ * This software is licensed under the terms of the GNU General Public
++ * License version 2, as published by the Free Software Foundation, and
++ * may be copied, distributed, and modified under those terms.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#include <linux/wakeup_reason.h>
++#include <linux/kernel.h>
++#include <linux/irq.h>
++#include <linux/interrupt.h>
++#include <linux/io.h>
++#include <linux/kobject.h>
++#include <linux/sysfs.h>
++#include <linux/init.h>
++#include <linux/spinlock.h>
++#include <linux/notifier.h>
++#include <linux/suspend.h>
++#include <linux/slab.h>
++
++/*
++ * struct wakeup_irq_node - stores data and relationships for IRQs logged as
++ * either base or nested wakeup reasons during suspend/resume flow.
++ * @siblings - for membership on leaf or parent IRQ lists
++ * @irq      - the IRQ number
++ * @irq_name - the name associated with the IRQ, or a default if none
++ */
++struct wakeup_irq_node {
++	struct list_head siblings;
++	int irq;
++	const char *irq_name;
++};
++
++enum wakeup_reason_flag {
++	RESUME_NONE = 0,
++	RESUME_IRQ,
++	RESUME_ABORT,
++	RESUME_ABNORMAL,
++};
++
++static DEFINE_SPINLOCK(wakeup_reason_lock);
++
++static LIST_HEAD(leaf_irqs);   /* kept in ascending IRQ sorted order */
++static LIST_HEAD(parent_irqs); /* unordered */
++
++static struct kmem_cache *wakeup_irq_nodes_cache;
++
++static const char *default_irq_name = "(unnamed)";
++
++static struct kobject *kobj;
++
++static bool capture_reasons;
++static int wakeup_reason;
++static char non_irq_wake_reason[MAX_SUSPEND_ABORT_LEN];
++
++static ktime_t last_monotime; /* monotonic time before last suspend */
++static ktime_t curr_monotime; /* monotonic time after last suspend */
++static ktime_t last_stime; /* monotonic boottime offset before last suspend */
++static ktime_t curr_stime; /* monotonic boottime offset after last suspend */
++
++static void init_node(struct wakeup_irq_node *p, int irq)
++{
++	struct irq_desc *desc;
++
++	INIT_LIST_HEAD(&p->siblings);
++
++	p->irq = irq;
++	desc = irq_to_desc(irq);
++	if (desc && desc->action && desc->action->name)
++		p->irq_name = desc->action->name;
++	else
++		p->irq_name = default_irq_name;
++}
++
++static struct wakeup_irq_node *create_node(int irq)
++{
++	struct wakeup_irq_node *result;
++
++	result = kmem_cache_alloc(wakeup_irq_nodes_cache, GFP_ATOMIC);
++	if (unlikely(!result))
++		pr_warn("Failed to log wakeup IRQ %d\n", irq);
++	else
++		init_node(result, irq);
++
++	return result;
++}
++
++static void delete_list(struct list_head *head)
++{
++	struct wakeup_irq_node *n;
++
++	while (!list_empty(head)) {
++		n = list_first_entry(head, struct wakeup_irq_node, siblings);
++		list_del(&n->siblings);
++		kmem_cache_free(wakeup_irq_nodes_cache, n);
++	}
++}
++
++static bool add_sibling_node_sorted(struct list_head *head, int irq)
++{
++	struct wakeup_irq_node *n;
++	struct list_head *predecessor = head;
++
++	if (unlikely(WARN_ON(!head)))
++		return NULL;
++
++	if (!list_empty(head))
++		list_for_each_entry(n, head, siblings) {
++			if (n->irq < irq)
++				predecessor = &n->siblings;
++			else if (n->irq == irq)
++				return true;
++			else
++				break;
++		}
++
++	n = create_node(irq);
++	if (n) {
++		list_add(&n->siblings, predecessor);
++		return true;
++	}
++
++	return false;
++}
++
++static struct wakeup_irq_node *find_node_in_list(struct list_head *head,
++						 int irq)
++{
++	struct wakeup_irq_node *n;
++
++	if (unlikely(WARN_ON(!head)))
++		return NULL;
++
++	list_for_each_entry(n, head, siblings)
++		if (n->irq == irq)
++			return n;
++
++	return NULL;
++}
++
++void log_irq_wakeup_reason(int irq)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&wakeup_reason_lock, flags);
++	if (wakeup_reason == RESUME_ABNORMAL || wakeup_reason == RESUME_ABORT) {
++		spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++		return;
++	}
++
++	if (!capture_reasons) {
++		spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++		return;
++	}
++
++	if (find_node_in_list(&parent_irqs, irq) == NULL)
++		add_sibling_node_sorted(&leaf_irqs, irq);
++
++	wakeup_reason = RESUME_IRQ;
++	spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++}
++
++void log_threaded_irq_wakeup_reason(int irq, int parent_irq)
++{
++	struct wakeup_irq_node *parent;
++	unsigned long flags;
++
++	/*
++	 * Intentionally unsynchronized.  Calls that come in after we have
++	 * resumed should have a fast exit path since there's no work to be
++	 * done, any any coherence issue that could cause a wrong value here is
++	 * both highly improbable - given the set/clear timing - and very low
++	 * impact (parent IRQ gets logged instead of the specific child).
++	 */
++	if (!capture_reasons)
++		return;
++
++	spin_lock_irqsave(&wakeup_reason_lock, flags);
++
++	if (wakeup_reason == RESUME_ABNORMAL || wakeup_reason == RESUME_ABORT) {
++		spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++		return;
++	}
++
++	if (!capture_reasons || (find_node_in_list(&leaf_irqs, irq) != NULL)) {
++		spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++		return;
++	}
++
++	parent = find_node_in_list(&parent_irqs, parent_irq);
++	if (parent != NULL)
++		add_sibling_node_sorted(&leaf_irqs, irq);
++	else {
++		parent = find_node_in_list(&leaf_irqs, parent_irq);
++		if (parent != NULL) {
++			list_del_init(&parent->siblings);
++			list_add_tail(&parent->siblings, &parent_irqs);
++			add_sibling_node_sorted(&leaf_irqs, irq);
++		}
++	}
++
++	spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++}
++EXPORT_SYMBOL_GPL(log_threaded_irq_wakeup_reason);
++
++void __log_abort_or_abnormal_wake(bool abort, const char *fmt, va_list args)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&wakeup_reason_lock, flags);
++
++	/* Suspend abort or abnormal wake reason has already been logged. */
++	if (wakeup_reason != RESUME_NONE) {
++		spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++		return;
++	}
++
++	if (abort)
++		wakeup_reason = RESUME_ABORT;
++	else
++		wakeup_reason = RESUME_ABNORMAL;
++
++	vsnprintf(non_irq_wake_reason, MAX_SUSPEND_ABORT_LEN, fmt, args);
++
++	spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++}
++
++void log_suspend_abort_reason(const char *fmt, ...)
++{
++	va_list args;
++
++	va_start(args, fmt);
++	__log_abort_or_abnormal_wake(true, fmt, args);
++	va_end(args);
++}
++EXPORT_SYMBOL_GPL(log_suspend_abort_reason);
++
++void log_abnormal_wakeup_reason(const char *fmt, ...)
++{
++	va_list args;
++
++	va_start(args, fmt);
++	__log_abort_or_abnormal_wake(false, fmt, args);
++	va_end(args);
++}
++EXPORT_SYMBOL_GPL(log_abnormal_wakeup_reason);
++
++void clear_wakeup_reasons(void)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&wakeup_reason_lock, flags);
++
++	delete_list(&leaf_irqs);
++	delete_list(&parent_irqs);
++	wakeup_reason = RESUME_NONE;
++	capture_reasons = true;
++
++	spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++}
++
++static void print_wakeup_sources(void)
++{
++	struct wakeup_irq_node *n;
++	unsigned long flags;
++
++	spin_lock_irqsave(&wakeup_reason_lock, flags);
++
++	capture_reasons = false;
++
++	if (wakeup_reason == RESUME_ABORT) {
++		pr_info("Abort: %s\n", non_irq_wake_reason);
++		spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++		return;
++	}
++
++	if (wakeup_reason == RESUME_IRQ && !list_empty(&leaf_irqs))
++		list_for_each_entry(n, &leaf_irqs, siblings)
++			pr_info("Resume caused by IRQ %d, %s\n", n->irq,
++				n->irq_name);
++	else if (wakeup_reason == RESUME_ABNORMAL)
++		pr_info("Resume caused by %s\n", non_irq_wake_reason);
++	else
++		pr_info("Resume cause unknown\n");
++
++	spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++}
++
++static ssize_t last_resume_reason_show(struct kobject *kobj,
++				       struct kobj_attribute *attr, char *buf)
++{
++	ssize_t buf_offset = 0;
++	struct wakeup_irq_node *n;
++	unsigned long flags;
++
++	spin_lock_irqsave(&wakeup_reason_lock, flags);
++
++	if (wakeup_reason == RESUME_ABORT) {
++		buf_offset = scnprintf(buf, PAGE_SIZE, "Abort: %s",
++				       non_irq_wake_reason);
++		spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++		return buf_offset;
++	}
++
++	if (wakeup_reason == RESUME_IRQ && !list_empty(&leaf_irqs))
++		list_for_each_entry(n, &leaf_irqs, siblings)
++			buf_offset += scnprintf(buf + buf_offset,
++						PAGE_SIZE - buf_offset,
++						"%d %s\n", n->irq, n->irq_name);
++	else if (wakeup_reason == RESUME_ABNORMAL)
++		buf_offset = scnprintf(buf, PAGE_SIZE, "-1 %s",
++				       non_irq_wake_reason);
++
++	spin_unlock_irqrestore(&wakeup_reason_lock, flags);
++
++	return buf_offset;
++}
++
++static ssize_t last_suspend_time_show(struct kobject *kobj,
++			struct kobj_attribute *attr, char *buf)
++{
++	struct timespec64 sleep_time;
++	struct timespec64 total_time;
++	struct timespec64 suspend_resume_time;
++
++	/*
++	 * total_time is calculated from monotonic bootoffsets because
++	 * unlike CLOCK_MONOTONIC it include the time spent in suspend state.
++	 */
++	total_time = ktime_to_timespec64(ktime_sub(curr_stime, last_stime));
++
++	/*
++	 * suspend_resume_time is calculated as monotonic (CLOCK_MONOTONIC)
++	 * time interval before entering suspend and post suspend.
++	 */
++	suspend_resume_time =
++		ktime_to_timespec64(ktime_sub(curr_monotime, last_monotime));
++
++	/* sleep_time = total_time - suspend_resume_time */
++	sleep_time = timespec64_sub(total_time, suspend_resume_time);
++
++	/* Export suspend_resume_time and sleep_time in pair here. */
++	return sprintf(buf, "%llu.%09lu %llu.%09lu\n",
++		       suspend_resume_time.tv_sec, suspend_resume_time.tv_nsec,
++		       sleep_time.tv_sec, sleep_time.tv_nsec);
++}
++
++static struct kobj_attribute resume_reason = __ATTR_RO(last_resume_reason);
++static struct kobj_attribute suspend_time = __ATTR_RO(last_suspend_time);
++
++static struct attribute *attrs[] = {
++	&resume_reason.attr,
++	&suspend_time.attr,
++	NULL,
++};
++static struct attribute_group attr_group = {
++	.attrs = attrs,
++};
++
++/* Detects a suspend and clears all the previous wake up reasons*/
++static int wakeup_reason_pm_event(struct notifier_block *notifier,
++		unsigned long pm_event, void *unused)
++{
++	switch (pm_event) {
++	case PM_SUSPEND_PREPARE:
++		/* monotonic time since boot */
++		last_monotime = ktime_get();
++		/* monotonic time since boot including the time spent in suspend */
++		last_stime = ktime_get_boottime();
++		clear_wakeup_reasons();
++		break;
++	case PM_POST_SUSPEND:
++		/* monotonic time since boot */
++		curr_monotime = ktime_get();
++		/* monotonic time since boot including the time spent in suspend */
++		curr_stime = ktime_get_boottime();
++		print_wakeup_sources();
++		break;
++	default:
++		break;
++	}
++	return NOTIFY_DONE;
++}
++
++static struct notifier_block wakeup_reason_pm_notifier_block = {
++	.notifier_call = wakeup_reason_pm_event,
++};
++
++int __init wakeup_reason_init(void)
++{
++	if (register_pm_notifier(&wakeup_reason_pm_notifier_block)) {
++		pr_warn("[%s] failed to register PM notifier\n", __func__);
++		goto fail;
++	}
++
++	kobj = kobject_create_and_add("wakeup_reasons", kernel_kobj);
++	if (!kobj) {
++		pr_warn("[%s] failed to create a sysfs kobject\n", __func__);
++		goto fail_unregister_pm_notifier;
++	}
++
++	if (sysfs_create_group(kobj, &attr_group)) {
++		pr_warn("[%s] failed to create a sysfs group\n", __func__);
++		goto fail_kobject_put;
++	}
++
++	wakeup_irq_nodes_cache =
++		kmem_cache_create("wakeup_irq_node_cache",
++				  sizeof(struct wakeup_irq_node), 0, 0, NULL);
++	if (!wakeup_irq_nodes_cache)
++		goto fail_remove_group;
++
++	return 0;
++
++fail_remove_group:
++	sysfs_remove_group(kobj, &attr_group);
++fail_kobject_put:
++	kobject_put(kobj);
++fail_unregister_pm_notifier:
++	unregister_pm_notifier(&wakeup_reason_pm_notifier_block);
++fail:
++	return 1;
++}
++
++late_initcall(wakeup_reason_init);
+diff --git a/kernel/printk/printk.c b/kernel/printk/printk.c
+index 971197f5d..36ad47c35 100644
+--- a/kernel/printk/printk.c
++++ b/kernel/printk/printk.c
+@@ -55,6 +55,8 @@
+ #include <trace/events/initcall.h>
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/printk.h>
++#undef CREATE_TRACE_POINTS
++#include <trace/hooks/debug.h>
+ 
+ #include "console_cmdline.h"
+ #include "braille.h"
+@@ -2007,6 +2009,7 @@ asmlinkage int vprintk_emit(int facility, int level,
+ 	pending_output = (curr_log_seq != log_next_seq);
+ 	logbuf_unlock_irqrestore(flags);
+ 
++	trace_android_vh_printk_store(facility, level);
+ 	/* If called from the scheduler, we can not call up(). */
+ 	if (!in_sched && pending_output) {
+ 		/*
+diff --git a/kernel/rcu/tree.c b/kernel/rcu/tree.c
+index 62e59596a..e370d2c19 100644
+--- a/kernel/rcu/tree.c
++++ b/kernel/rcu/tree.c
+@@ -603,6 +603,7 @@ void rcu_idle_enter(void)
+ 	lockdep_assert_irqs_disabled();
+ 	rcu_eqs_enter(false);
+ }
++EXPORT_SYMBOL_GPL(rcu_idle_enter);
+ 
+ #ifdef CONFIG_NO_HZ_FULL
+ /**
+@@ -768,6 +769,7 @@ void rcu_idle_exit(void)
+ 	rcu_eqs_exit(false);
+ 	local_irq_restore(flags);
+ }
++EXPORT_SYMBOL_GPL(rcu_idle_exit);
+ 
+ #ifdef CONFIG_NO_HZ_FULL
+ /**
+diff --git a/kernel/rcu/tree_plugin.h b/kernel/rcu/tree_plugin.h
+index f7118842a..1bf428384 100644
+--- a/kernel/rcu/tree_plugin.h
++++ b/kernel/rcu/tree_plugin.h
+@@ -1283,7 +1283,7 @@ static void rcu_prepare_for_idle(void)
+  * adjustment, they can be converted into kernel config parameters, though
+  * making the state machine smarter might be a better option.
+  */
+-#define RCU_IDLE_GP_DELAY 4		/* Roughly one grace period. */
++#define RCU_IDLE_GP_DELAY 1		/* Roughly one grace period. */
+ #define RCU_IDLE_LAZY_GP_DELAY (6 * HZ)	/* Roughly six seconds. */
+ 
+ static int rcu_idle_gp_delay = RCU_IDLE_GP_DELAY;
+diff --git a/kernel/reboot.c b/kernel/reboot.c
+index c4d472b7f..b1fbc220b 100644
+--- a/kernel/reboot.c
++++ b/kernel/reboot.c
+@@ -32,7 +32,9 @@ EXPORT_SYMBOL(cad_pid);
+ #define DEFAULT_REBOOT_MODE
+ #endif
+ enum reboot_mode reboot_mode DEFAULT_REBOOT_MODE;
++EXPORT_SYMBOL_GPL(reboot_mode);
+ enum reboot_mode panic_reboot_mode = REBOOT_UNDEFINED;
++EXPORT_SYMBOL_GPL(panic_reboot_mode);
+ 
+ /*
+  * This variable is used privately to keep track of whether or not
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index b34b5c6e2..26b519579 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -11,6 +11,7 @@
+ #include <linux/nospec.h>
+ 
+ #include <linux/kcov.h>
++#include <linux/scs.h>
+ 
+ #include <asm/switch_to.h>
+ #include <asm/tlb.h>
+@@ -23,6 +24,12 @@
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/sched.h>
+ 
++#undef CREATE_TRACE_POINTS
++#include <trace/hooks/dtask.h>
++
++#undef CREATE_TRACE_POINTS
++#include <trace/hooks/sched.h>
++
+ /*
+  * Export tracepoints that act as a bare tracehook (ie: have no trace event
+  * associated with them) to allow external modules to probe them.
+@@ -35,6 +42,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(pelt_se_tp);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(sched_overutilized_tp);
+ 
+ DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
++EXPORT_SYMBOL_GPL(runqueues);
+ 
+ #if defined(CONFIG_SCHED_DEBUG) && defined(CONFIG_JUMP_LABEL)
+ /*
+@@ -918,17 +926,17 @@ uclamp_eff_get(struct task_struct *p, enum uclamp_id clamp_id)
+ 	return uc_req;
+ }
+ 
+-unsigned int uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id)
++unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id)
+ {
+ 	struct uclamp_se uc_eff;
+ 
+ 	/* Task currently refcounted: use back-annotated (effective) value */
+ 	if (p->uclamp[clamp_id].active)
+-		return p->uclamp[clamp_id].value;
++		return (unsigned long)p->uclamp[clamp_id].value;
+ 
+ 	uc_eff = uclamp_eff_get(p, clamp_id);
+ 
+-	return uc_eff.value;
++	return (unsigned long)uc_eff.value;
+ }
+ 
+ /*
+@@ -1305,6 +1313,8 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
+ 
+ 	uclamp_rq_inc(rq, p);
+ 	p->sched_class->enqueue_task(rq, p, flags);
++
++	trace_android_rvh_enqueue_task(rq, p);
+ }
+ 
+ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
+@@ -1319,6 +1329,8 @@ static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
+ 
+ 	uclamp_rq_dec(rq, p);
+ 	p->sched_class->dequeue_task(rq, p, flags);
++
++	trace_android_rvh_dequeue_task(rq, p);
+ }
+ 
+ void activate_task(struct rq *rq, struct task_struct *p, int flags)
+@@ -2039,7 +2051,11 @@ static int select_fallback_rq(int cpu, struct task_struct *p)
+ 	int nid = cpu_to_node(cpu);
+ 	const struct cpumask *nodemask = NULL;
+ 	enum { cpuset, possible, fail } state = cpuset;
+-	int dest_cpu;
++	int dest_cpu = -1;
++
++	trace_android_rvh_select_fallback_rq(cpu, p, &dest_cpu);
++	if (dest_cpu >= 0)
++		return dest_cpu;
+ 
+ 	/*
+ 	 * If the node that the CPU is on has been offlined, cpu_to_node()
+@@ -2859,6 +2875,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
+ 	 * Make sure we do not leak PI boosting priority to the child.
+ 	 */
+ 	p->prio = current->normal_prio;
++	trace_android_rvh_prepare_prio_fork(p);
+ 
+ 	uclamp_fork(p);
+ 
+@@ -2891,6 +2908,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
+ 		p->sched_class = &fair_sched_class;
+ 
+ 	init_entity_runnable_average(&p->se);
++	trace_android_rvh_finish_prio_fork(p);
+ 
+ 	/*
+ 	 * The child is not yet in the pid-hash so no cgroup attach races,
+@@ -3619,6 +3637,8 @@ void scheduler_tick(void)
+ 	rq->idle_balance = idle_cpu(cpu);
+ 	trigger_load_balance(rq);
+ #endif
++
++	trace_android_vh_scheduler_tick(rq);
+ }
+ 
+ #ifdef CONFIG_NO_HZ_FULL
+@@ -4388,6 +4408,7 @@ void rt_mutex_setprio(struct task_struct *p, struct task_struct *pi_task)
+ 	struct rq_flags rf;
+ 	struct rq *rq;
+ 
++	trace_android_rvh_rtmutex_prepare_setprio(p, pi_task);
+ 	/* XXX used to be waiter->prio, not waiter->task->prio */
+ 	prio = __rt_effective_prio(pi_task, p->normal_prio);
+ 
+@@ -4519,6 +4540,7 @@ void set_user_nice(struct task_struct *p, long nice)
+ 	 */
+ 	rq = task_rq_lock(p, &rf);
+ 	update_rq_clock(rq);
++	trace_android_rvh_set_user_nice(p, &nice);
+ 
+ 	/*
+ 	 * The RT priorities are set via sched_setscheduler(), but we still
+@@ -4742,6 +4764,8 @@ static void __setscheduler(struct rq *rq, struct task_struct *p,
+ 		p->sched_class = &rt_sched_class;
+ 	else
+ 		p->sched_class = &fair_sched_class;
++
++	trace_android_rvh_setscheduler(p);
+ }
+ 
+ /*
+@@ -4870,9 +4894,6 @@ static int __sched_setscheduler(struct task_struct *p,
+ 			return retval;
+ 	}
+ 
+-	if (pi)
+-		cpuset_read_lock();
+-
+ 	/*
+ 	 * Make sure no PI-waiters arrive (or leave) while we are
+ 	 * changing the priority of the task:
+@@ -4947,8 +4968,6 @@ static int __sched_setscheduler(struct task_struct *p,
+ 	if (unlikely(oldpolicy != -1 && oldpolicy != p->policy)) {
+ 		policy = oldpolicy = -1;
+ 		task_rq_unlock(rq, p, &rf);
+-		if (pi)
+-			cpuset_read_unlock();
+ 		goto recheck;
+ 	}
+ 
+@@ -5009,10 +5028,8 @@ static int __sched_setscheduler(struct task_struct *p,
+ 	preempt_disable();
+ 	task_rq_unlock(rq, p, &rf);
+ 
+-	if (pi) {
+-		cpuset_read_unlock();
++	if (pi)
+ 		rt_mutex_adjust_pi(p);
+-	}
+ 
+ 	/* Run balance callbacks after we've adjusted the PI chain: */
+ 	balance_callback(rq);
+@@ -5022,8 +5039,6 @@ static int __sched_setscheduler(struct task_struct *p,
+ 
+ unlock:
+ 	task_rq_unlock(rq, p, &rf);
+-	if (pi)
+-		cpuset_read_unlock();
+ 	return retval;
+ }
+ 
+@@ -5108,14 +5123,9 @@ do_sched_setscheduler(pid_t pid, int policy, struct sched_param __user *param)
+ 	rcu_read_lock();
+ 	retval = -ESRCH;
+ 	p = find_process_by_pid(pid);
+-	if (likely(p))
+-		get_task_struct(p);
+-	rcu_read_unlock();
+-
+-	if (likely(p)) {
++	if (p != NULL)
+ 		retval = sched_setscheduler(p, policy, &lparam);
+-		put_task_struct(p);
+-	}
++	rcu_read_unlock();
+ 
+ 	return retval;
+ }
+@@ -5954,6 +5964,7 @@ void sched_show_task(struct task_struct *p)
+ 		(unsigned long)task_thread_info(p)->flags);
+ 
+ 	print_worker_info(KERN_INFO, p);
++	trace_android_vh_sched_show_task(p);
+ 	show_stack(p, NULL);
+ 	put_task_stack(p);
+ }
+@@ -6041,6 +6052,7 @@ void init_idle(struct task_struct *idle, int cpu)
+ 	idle->se.exec_start = sched_clock();
+ 	idle->flags |= PF_IDLE;
+ 
++	scs_task_reset(idle);
+ 	kasan_unpoison_task_stack(idle);
+ 
+ #ifdef CONFIG_SMP
+@@ -7364,6 +7376,27 @@ static int cpu_uclamp_max_show(struct seq_file *sf, void *v)
+ 	cpu_uclamp_print(sf, UCLAMP_MAX);
+ 	return 0;
+ }
++
++static int cpu_uclamp_ls_write_u64(struct cgroup_subsys_state *css,
++				   struct cftype *cftype, u64 ls)
++{
++	struct task_group *tg;
++
++	if (ls > 1)
++		return -EINVAL;
++	tg = css_tg(css);
++	tg->latency_sensitive = (unsigned int) ls;
++
++	return 0;
++}
++
++static u64 cpu_uclamp_ls_read_u64(struct cgroup_subsys_state *css,
++				  struct cftype *cft)
++{
++	struct task_group *tg = css_tg(css);
++
++	return (u64) tg->latency_sensitive;
++}
+ #endif /* CONFIG_UCLAMP_TASK_GROUP */
+ 
+ #ifdef CONFIG_FAIR_GROUP_SCHED
+@@ -7732,6 +7765,12 @@ static struct cftype cpu_legacy_files[] = {
+ 		.seq_show = cpu_uclamp_max_show,
+ 		.write = cpu_uclamp_max_write,
+ 	},
++	{
++		.name = "uclamp.latency_sensitive",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.read_u64 = cpu_uclamp_ls_read_u64,
++		.write_u64 = cpu_uclamp_ls_write_u64,
++	},
+ #endif
+ 	{ }	/* Terminate */
+ };
+@@ -7913,6 +7952,12 @@ static struct cftype cpu_files[] = {
+ 		.seq_show = cpu_uclamp_max_show,
+ 		.write = cpu_uclamp_max_write,
+ 	},
++	{
++		.name = "uclamp.latency_sensitive",
++		.flags = CFTYPE_NOT_ON_ROOT,
++		.read_u64 = cpu_uclamp_ls_read_u64,
++		.write_u64 = cpu_uclamp_ls_write_u64,
++	},
+ #endif
+ 	{ }	/* terminate */
+ };
+diff --git a/kernel/sched/cpufreq_schedutil.c b/kernel/sched/cpufreq_schedutil.c
+index b6f56e7c8..7fbaee24c 100644
+--- a/kernel/sched/cpufreq_schedutil.c
++++ b/kernel/sched/cpufreq_schedutil.c
+@@ -238,7 +238,7 @@ unsigned long schedutil_cpu_util(int cpu, unsigned long util_cfs,
+ 	 */
+ 	util = util_cfs + cpu_util_rt(rq);
+ 	if (type == FREQUENCY_UTIL)
+-		util = uclamp_util_with(rq, util, p);
++		util = uclamp_rq_util_with(rq, util, p);
+ 
+ 	dl_util = cpu_util_dl(rq);
+ 
+@@ -913,7 +913,7 @@ static int __init sugov_register(void)
+ {
+ 	return cpufreq_register_governor(&schedutil_gov);
+ }
+-fs_initcall(sugov_register);
++core_initcall(sugov_register);
+ 
+ #ifdef CONFIG_ENERGY_MODEL
+ extern bool sched_energy_update;
+diff --git a/kernel/sched/cpupri.c b/kernel/sched/cpupri.c
+index b7abca987..0033731a0 100644
+--- a/kernel/sched/cpupri.c
++++ b/kernel/sched/cpupri.c
+@@ -41,11 +41,72 @@ static int convert_prio(int prio)
+ 	return cpupri;
+ }
+ 
++static inline int __cpupri_find(struct cpupri *cp, struct task_struct *p,
++				struct cpumask *lowest_mask, int idx)
++{
++	struct cpupri_vec *vec  = &cp->pri_to_cpu[idx];
++	int skip = 0;
++
++	if (!atomic_read(&(vec)->count))
++		skip = 1;
++	/*
++	 * When looking at the vector, we need to read the counter,
++	 * do a memory barrier, then read the mask.
++	 *
++	 * Note: This is still all racey, but we can deal with it.
++	 *  Ideally, we only want to look at masks that are set.
++	 *
++	 *  If a mask is not set, then the only thing wrong is that we
++	 *  did a little more work than necessary.
++	 *
++	 *  If we read a zero count but the mask is set, because of the
++	 *  memory barriers, that can only happen when the highest prio
++	 *  task for a run queue has left the run queue, in which case,
++	 *  it will be followed by a pull. If the task we are processing
++	 *  fails to find a proper place to go, that pull request will
++	 *  pull this task if the run queue is running at a lower
++	 *  priority.
++	 */
++	smp_rmb();
++
++	/* Need to do the rmb for every iteration */
++	if (skip)
++		return 0;
++
++	if (cpumask_any_and(p->cpus_ptr, vec->mask) >= nr_cpu_ids)
++		return 0;
++
++	if (lowest_mask) {
++		cpumask_and(lowest_mask, p->cpus_ptr, vec->mask);
++
++		/*
++		 * We have to ensure that we have at least one bit
++		 * still set in the array, since the map could have
++		 * been concurrently emptied between the first and
++		 * second reads of vec->mask.  If we hit this
++		 * condition, simply act as though we never hit this
++		 * priority level and continue on.
++		 */
++		if (cpumask_empty(lowest_mask))
++			return 0;
++	}
++
++	return 1;
++}
++
++int cpupri_find(struct cpupri *cp, struct task_struct *p,
++		struct cpumask *lowest_mask)
++{
++	return cpupri_find_fitness(cp, p, lowest_mask, NULL);
++}
++
+ /**
+- * cpupri_find - find the best (lowest-pri) CPU in the system
++ * cpupri_find_fitness - find the best (lowest-pri) CPU in the system
+  * @cp: The cpupri context
+  * @p: The task
+  * @lowest_mask: A mask to fill in with selected CPUs (or NULL)
++ * @fitness_fn: A pointer to a function to do custom checks whether the CPU
++ *              fits a specific criteria so that we only return those CPUs.
+  *
+  * Note: This function returns the recommended CPUs as calculated during the
+  * current invocation.  By the time the call returns, the CPUs may have in
+@@ -56,65 +117,59 @@ static int convert_prio(int prio)
+  *
+  * Return: (int)bool - CPUs were found
+  */
+-int cpupri_find(struct cpupri *cp, struct task_struct *p,
+-		struct cpumask *lowest_mask)
++int cpupri_find_fitness(struct cpupri *cp, struct task_struct *p,
++		struct cpumask *lowest_mask,
++		bool (*fitness_fn)(struct task_struct *p, int cpu))
+ {
+-	int idx = 0;
+ 	int task_pri = convert_prio(p->prio);
++	int idx, cpu;
+ 
+ 	BUG_ON(task_pri >= CPUPRI_NR_PRIORITIES);
+ 
+ 	for (idx = 0; idx < task_pri; idx++) {
+-		struct cpupri_vec *vec  = &cp->pri_to_cpu[idx];
+-		int skip = 0;
+-
+-		if (!atomic_read(&(vec)->count))
+-			skip = 1;
+-		/*
+-		 * When looking at the vector, we need to read the counter,
+-		 * do a memory barrier, then read the mask.
+-		 *
+-		 * Note: This is still all racey, but we can deal with it.
+-		 *  Ideally, we only want to look at masks that are set.
+-		 *
+-		 *  If a mask is not set, then the only thing wrong is that we
+-		 *  did a little more work than necessary.
+-		 *
+-		 *  If we read a zero count but the mask is set, because of the
+-		 *  memory barriers, that can only happen when the highest prio
+-		 *  task for a run queue has left the run queue, in which case,
+-		 *  it will be followed by a pull. If the task we are processing
+-		 *  fails to find a proper place to go, that pull request will
+-		 *  pull this task if the run queue is running at a lower
+-		 *  priority.
+-		 */
+-		smp_rmb();
+ 
+-		/* Need to do the rmb for every iteration */
+-		if (skip)
++		if (!__cpupri_find(cp, p, lowest_mask, idx))
+ 			continue;
+ 
+-		if (cpumask_any_and(p->cpus_ptr, vec->mask) >= nr_cpu_ids)
+-			continue;
++		if (!lowest_mask || !fitness_fn)
++			return 1;
+ 
+-		if (lowest_mask) {
+-			cpumask_and(lowest_mask, p->cpus_ptr, vec->mask);
+-
+-			/*
+-			 * We have to ensure that we have at least one bit
+-			 * still set in the array, since the map could have
+-			 * been concurrently emptied between the first and
+-			 * second reads of vec->mask.  If we hit this
+-			 * condition, simply act as though we never hit this
+-			 * priority level and continue on.
+-			 */
+-			if (cpumask_any(lowest_mask) >= nr_cpu_ids)
+-				continue;
++		/* Ensure the capacity of the CPUs fit the task */
++		for_each_cpu(cpu, lowest_mask) {
++			if (!fitness_fn(p, cpu))
++				cpumask_clear_cpu(cpu, lowest_mask);
+ 		}
+ 
++		/*
++		 * If no CPU at the current priority can fit the task
++		 * continue looking
++		 */
++		if (cpumask_empty(lowest_mask))
++			continue;
++
+ 		return 1;
+ 	}
+ 
++	/*
++	 * If we failed to find a fitting lowest_mask, kick off a new search
++	 * but without taking into account any fitness criteria this time.
++	 *
++	 * This rule favours honouring priority over fitting the task in the
++	 * correct CPU (Capacity Awareness being the only user now).
++	 * The idea is that if a higher priority task can run, then it should
++	 * run even if this ends up being on unfitting CPU.
++	 *
++	 * The cost of this trade-off is not entirely clear and will probably
++	 * be good for some workloads and bad for others.
++	 *
++	 * The main idea here is that if some CPUs were overcommitted, we try
++	 * to spread which is what the scheduler traditionally did. Sys admins
++	 * must do proper RT planning to avoid overloading the system if they
++	 * really care.
++	 */
++	if (fitness_fn)
++		return cpupri_find(cp, p, lowest_mask);
++
+ 	return 0;
+ }
+ 
+diff --git a/kernel/sched/cpupri.h b/kernel/sched/cpupri.h
+index 7dc20a323..efbb492bb 100644
+--- a/kernel/sched/cpupri.h
++++ b/kernel/sched/cpupri.h
+@@ -18,7 +18,11 @@ struct cpupri {
+ };
+ 
+ #ifdef CONFIG_SMP
+-int  cpupri_find(struct cpupri *cp, struct task_struct *p, struct cpumask *lowest_mask);
++int  cpupri_find(struct cpupri *cp, struct task_struct *p,
++		 struct cpumask *lowest_mask);
++int  cpupri_find_fitness(struct cpupri *cp, struct task_struct *p,
++			 struct cpumask *lowest_mask,
++			 bool (*fitness_fn)(struct task_struct *p, int cpu));
+ void cpupri_set(struct cpupri *cp, int cpu, int pri);
+ int  cpupri_init(struct cpupri *cp);
+ void cpupri_cleanup(struct cpupri *cp);
+diff --git a/kernel/sched/cputime.c b/kernel/sched/cputime.c
+index 46ed4e138..a147909bc 100644
+--- a/kernel/sched/cputime.c
++++ b/kernel/sched/cputime.c
+@@ -2,6 +2,7 @@
+ /*
+  * Simple CPU accounting cgroup controller
+  */
++#include <linux/cpufreq_times.h>
+ #include "sched.h"
+ 
+ #ifdef CONFIG_IRQ_TIME_ACCOUNTING
+@@ -129,6 +130,9 @@ void account_user_time(struct task_struct *p, u64 cputime)
+ 
+ 	/* Account for user time used */
+ 	acct_account_cputime(p);
++
++	/* Account power usage for user time */
++	cpufreq_acct_update_power(p, cputime);
+ }
+ 
+ /*
+@@ -173,6 +177,9 @@ void account_system_index_time(struct task_struct *p,
+ 
+ 	/* Account for system time used */
+ 	acct_account_cputime(p);
++
++	/* Account power usage for system time */
++	cpufreq_acct_update_power(p, cputime);
+ }
+ 
+ /*
+@@ -464,6 +471,7 @@ void thread_group_cputime_adjusted(struct task_struct *p, u64 *ut, u64 *st)
+ 	*ut = cputime.utime;
+ 	*st = cputime.stime;
+ }
++EXPORT_SYMBOL_GPL(thread_group_cputime_adjusted);
+ 
+ #else /* !CONFIG_VIRT_CPU_ACCOUNTING_NATIVE: */
+ 
+@@ -678,6 +686,8 @@ void thread_group_cputime_adjusted(struct task_struct *p, u64 *ut, u64 *st)
+ 	thread_group_cputime(p, &cputime);
+ 	cputime_adjust(&cputime, &p->signal->prev_cputime, ut, st);
+ }
++EXPORT_SYMBOL_GPL(thread_group_cputime_adjusted);
++
+ #endif /* !CONFIG_VIRT_CPU_ACCOUNTING_NATIVE */
+ 
+ #ifdef CONFIG_VIRT_CPU_ACCOUNTING_GEN
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index 20bf1f667..1b028e231 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -23,6 +23,7 @@
+ #include "sched.h"
+ 
+ #include <trace/events/sched.h>
++#include <trace/hooks/sched.h>
+ 
+ /*
+  * Targeted preemption latency for CPU-bound tasks:
+@@ -972,6 +973,7 @@ update_stats_enqueue_sleeper(struct cfs_rq *cfs_rq, struct sched_entity *se)
+ 			}
+ 
+ 			trace_sched_stat_blocked(tsk, delta);
++			trace_sched_blocked_reason(tsk);
+ 
+ 			/*
+ 			 * Blocking time is in units of nanosecs, so shift by
+@@ -3707,6 +3709,20 @@ static inline unsigned long task_util_est(struct task_struct *p)
+ 	return max(task_util(p), _task_util_est(p));
+ }
+ 
++#ifdef CONFIG_UCLAMP_TASK
++static inline unsigned long uclamp_task_util(struct task_struct *p)
++{
++	return clamp(task_util_est(p),
++		     uclamp_eff_value(p, UCLAMP_MIN),
++		     uclamp_eff_value(p, UCLAMP_MAX));
++}
++#else
++static inline unsigned long uclamp_task_util(struct task_struct *p)
++{
++	return task_util_est(p);
++}
++#endif
++
+ static inline void util_est_enqueue(struct cfs_rq *cfs_rq,
+ 				    struct task_struct *p)
+ {
+@@ -3764,11 +3780,22 @@ util_est_dequeue(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep)
+ 	if (ue.enqueued & UTIL_AVG_UNCHANGED)
+ 		return;
+ 
++	/*
++	 * Reset EWMA on utilization increases, the moving average is used only
++	 * to smooth utilization decreases.
++	 */
++	ue.enqueued = (task_util(p) | UTIL_AVG_UNCHANGED);
++	if (sched_feat(UTIL_EST_FASTUP)) {
++		if (ue.ewma < ue.enqueued) {
++			ue.ewma = ue.enqueued;
++			goto done;
++		}
++	}
++
+ 	/*
+ 	 * Skip update of task's estimated utilization when its EWMA is
+ 	 * already ~1% close to its last activation value.
+ 	 */
+-	ue.enqueued = (task_util(p) | UTIL_AVG_UNCHANGED);
+ 	last_ewma_diff = ue.enqueued - ue.ewma;
+ 	if (within_margin(last_ewma_diff, (SCHED_CAPACITY_SCALE / 100)))
+ 		return;
+@@ -3801,12 +3828,13 @@ util_est_dequeue(struct cfs_rq *cfs_rq, struct task_struct *p, bool task_sleep)
+ 	ue.ewma <<= UTIL_EST_WEIGHT_SHIFT;
+ 	ue.ewma  += last_ewma_diff;
+ 	ue.ewma >>= UTIL_EST_WEIGHT_SHIFT;
++done:
+ 	WRITE_ONCE(p->se.avg.util_est, ue);
+ }
+ 
+ static inline int task_fits_capacity(struct task_struct *p, long capacity)
+ {
+-	return fits_capacity(task_util_est(p), capacity);
++	return fits_capacity(uclamp_task_util(p), capacity);
+ }
+ 
+ static inline void update_misfit_status(struct task_struct *p, struct rq *rq)
+@@ -6012,6 +6040,40 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
+ 	return cpu;
+ }
+ 
++/*
++ * Scan the asym_capacity domain for idle CPUs; pick the first idle one on which
++ * the task fits. If no CPU is big enough, but there are idle ones, try to
++ * maximize capacity.
++ */
++static int
++select_idle_capacity(struct task_struct *p, struct sched_domain *sd, int target)
++{
++	unsigned long best_cap = 0;
++	int cpu, best_cpu = -1;
++	struct cpumask *cpus;
++
++	sync_entity_load_avg(&p->se);
++
++	cpus = this_cpu_cpumask_var_ptr(select_idle_mask);
++	cpumask_and(cpus, sched_domain_span(sd), p->cpus_ptr);
++
++	for_each_cpu_wrap(cpu, cpus, target) {
++		unsigned long cpu_cap = capacity_of(cpu);
++
++		if (!available_idle_cpu(cpu) && !sched_idle_cpu(cpu))
++			continue;
++		if (task_fits_capacity(p, cpu_cap))
++			return cpu;
++
++		if (cpu_cap > best_cap) {
++			best_cap = cpu_cap;
++			best_cpu = cpu;
++		}
++	}
++
++	return best_cpu;
++}
++
+ /*
+  * Try and locate an idle core/thread in the LLC cache domain.
+  */
+@@ -6020,6 +6082,28 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
+ 	struct sched_domain *sd;
+ 	int i, recent_used_cpu;
+ 
++	/*
++	 * For asymmetric CPU capacity systems, our domain of interest is
++	 * sd_asym_cpucapacity rather than sd_llc.
++	 */
++	if (static_branch_unlikely(&sched_asym_cpucapacity)) {
++		sd = rcu_dereference(per_cpu(sd_asym_cpucapacity, target));
++		/*
++		 * On an asymmetric CPU capacity system where an exclusive
++		 * cpuset defines a symmetric island (i.e. one unique
++		 * capacity_orig value through the cpuset), the key will be set
++		 * but the CPUs within that cpuset will not have a domain with
++		 * SD_ASYM_CPUCAPACITY. These should follow the usual symmetric
++		 * capacity path.
++		 */
++		if (!sd)
++			goto symmetric;
++
++		i = select_idle_capacity(p, sd, target);
++		return ((unsigned)i < nr_cpumask_bits) ? i : target;
++	}
++
++symmetric:
+ 	if (available_idle_cpu(target) || sched_idle_cpu(target))
+ 		return target;
+ 
+@@ -6205,33 +6289,6 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
+ 	return min_t(unsigned long, util, capacity_orig_of(cpu));
+ }
+ 
+-/*
+- * Disable WAKE_AFFINE in the case where task @p doesn't fit in the
+- * capacity of either the waking CPU @cpu or the previous CPU @prev_cpu.
+- *
+- * In that case WAKE_AFFINE doesn't make sense and we'll let
+- * BALANCE_WAKE sort things out.
+- */
+-static int wake_cap(struct task_struct *p, int cpu, int prev_cpu)
+-{
+-	long min_cap, max_cap;
+-
+-	if (!static_branch_unlikely(&sched_asym_cpucapacity))
+-		return 0;
+-
+-	min_cap = min(capacity_orig_of(prev_cpu), capacity_orig_of(cpu));
+-	max_cap = cpu_rq(cpu)->rd->max_cpu_capacity;
+-
+-	/* Minimum capacity is close to max, no need to abort wake_affine */
+-	if (max_cap - min_cap < max_cap >> 3)
+-		return 0;
+-
+-	/* Bring task utilization in sync with prev_cpu */
+-	sync_entity_load_avg(&p->se);
+-
+-	return !task_fits_capacity(p, min_cap);
+-}
+-
+ /*
+  * Predicts what cpu_util(@cpu) would return if @p was migrated (and enqueued)
+  * to @dst_cpu.
+@@ -6361,12 +6418,17 @@ compute_energy(struct task_struct *p, int dst_cpu, struct perf_domain *pd)
+  * other use-cases too. So, until someone finds a better way to solve this,
+  * let's keep things simple by re-using the existing slow path.
+  */
+-static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
++static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, int sync)
+ {
+ 	unsigned long prev_delta = ULONG_MAX, best_delta = ULONG_MAX;
+ 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
++	int max_spare_cap_cpu_ls = prev_cpu, best_idle_cpu = -1;
++	unsigned long max_spare_cap_ls = 0, target_cap;
+ 	unsigned long cpu_cap, util, base_energy = 0;
++	bool boosted, latency_sensitive = false;
++	unsigned int min_exit_lat = UINT_MAX;
+ 	int cpu, best_energy_cpu = prev_cpu;
++	struct cpuidle_state *idle;
+ 	struct sched_domain *sd;
+ 	struct perf_domain *pd;
+ 
+@@ -6375,6 +6437,13 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
+ 	if (!pd || READ_ONCE(rd->overutilized))
+ 		goto fail;
+ 
++	cpu = smp_processor_id();
++	if (sync && cpu_rq(cpu)->nr_running == 1 &&
++	    cpumask_test_cpu(cpu, p->cpus_ptr)) {
++		rcu_read_unlock();
++		return cpu;
++	}
++
+ 	/*
+ 	 * Energy-aware wake-up happens on the lowest sched_domain starting
+ 	 * from sd_asym_cpucapacity spanning over this_cpu and prev_cpu.
+@@ -6389,6 +6458,10 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
+ 	if (!task_util_est(p))
+ 		goto unlock;
+ 
++	latency_sensitive = uclamp_latency_sensitive(p);
++	boosted = uclamp_boosted(p);
++	target_cap = boosted ? 0 : ULONG_MAX;
++
+ 	for (; pd; pd = pd->next) {
+ 		unsigned long cur_delta, spare_cap, max_spare_cap = 0;
+ 		unsigned long base_energy_pd;
+@@ -6402,14 +6475,24 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
+ 			if (!cpumask_test_cpu(cpu, p->cpus_ptr))
+ 				continue;
+ 
+-			/* Skip CPUs that will be overutilized. */
+ 			util = cpu_util_next(cpu, p, cpu);
+ 			cpu_cap = capacity_of(cpu);
++			spare_cap = cpu_cap;
++			lsub_positive(&spare_cap, util);
++
++			/*
++			 * Skip CPUs that cannot satisfy the capacity request.
++			 * IOW, placing the task there would make the CPU
++			 * overutilized. Take uclamp into account to see how
++			 * much capacity we can get out of the CPU; this is
++			 * aligned with schedutil_cpu_util().
++			 */
++			util = uclamp_rq_util_with(cpu_rq(cpu), util, p);
+ 			if (!fits_capacity(util, cpu_cap))
+ 				continue;
+ 
+ 			/* Always use prev_cpu as a candidate. */
+-			if (cpu == prev_cpu) {
++			if (!latency_sensitive && cpu == prev_cpu) {
+ 				prev_delta = compute_energy(p, prev_cpu, pd);
+ 				prev_delta -= base_energy_pd;
+ 				best_delta = min(best_delta, prev_delta);
+@@ -6419,15 +6502,38 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
+ 			 * Find the CPU with the maximum spare capacity in
+ 			 * the performance domain
+ 			 */
+-			spare_cap = cpu_cap - util;
+ 			if (spare_cap > max_spare_cap) {
+ 				max_spare_cap = spare_cap;
+ 				max_spare_cap_cpu = cpu;
+ 			}
++
++			if (!latency_sensitive)
++				continue;
++
++			if (idle_cpu(cpu)) {
++				cpu_cap = capacity_orig_of(cpu);
++				if (boosted && cpu_cap < target_cap)
++					continue;
++				if (!boosted && cpu_cap > target_cap)
++					continue;
++				idle = idle_get_state(cpu_rq(cpu));
++				if (idle && idle->exit_latency > min_exit_lat &&
++						cpu_cap == target_cap)
++					continue;
++
++				if (idle)
++					min_exit_lat = idle->exit_latency;
++				target_cap = cpu_cap;
++				best_idle_cpu = cpu;
++			} else if (spare_cap > max_spare_cap_ls) {
++				max_spare_cap_ls = spare_cap;
++				max_spare_cap_cpu_ls = cpu;
++			}
+ 		}
+ 
+ 		/* Evaluate the energy impact of using this CPU. */
+-		if (max_spare_cap_cpu >= 0 && max_spare_cap_cpu != prev_cpu) {
++		if (!latency_sensitive && max_spare_cap_cpu >= 0 &&
++						max_spare_cap_cpu != prev_cpu) {
+ 			cur_delta = compute_energy(p, max_spare_cap_cpu, pd);
+ 			cur_delta -= base_energy_pd;
+ 			if (cur_delta < best_delta) {
+@@ -6439,6 +6545,9 @@ static int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu)
+ unlock:
+ 	rcu_read_unlock();
+ 
++	if (latency_sensitive)
++		return best_idle_cpu >= 0 ? best_idle_cpu : max_spare_cap_cpu_ls;
++
+ 	/*
+ 	 * Pick the best CPU if prev_cpu cannot be used, or if it saves at
+ 	 * least 6% of the energy used by prev_cpu.
+@@ -6477,19 +6586,24 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
+ 	int new_cpu = prev_cpu;
+ 	int want_affine = 0;
+ 	int sync = (wake_flags & WF_SYNC) && !(current->flags & PF_EXITING);
++	int target_cpu = -1;
++
++	trace_android_rvh_select_task_rq_fair(p, prev_cpu, sd_flag,
++			wake_flags, &target_cpu);
++	if (target_cpu >= 0)
++		return target_cpu;
+ 
+ 	if (sd_flag & SD_BALANCE_WAKE) {
+ 		record_wakee(p);
+ 
+ 		if (sched_energy_enabled()) {
+-			new_cpu = find_energy_efficient_cpu(p, prev_cpu);
++			new_cpu = find_energy_efficient_cpu(p, prev_cpu, sync);
+ 			if (new_cpu >= 0)
+ 				return new_cpu;
+ 			new_cpu = prev_cpu;
+ 		}
+ 
+-		want_affine = !wake_wide(p) && !wake_cap(p, cpu, prev_cpu) &&
+-			      cpumask_test_cpu(cpu, p->cpus_ptr);
++		want_affine = !wake_wide(p) && cpumask_test_cpu(cpu, p->cpus_ptr);
+ 	}
+ 
+ 	rcu_read_lock();
+@@ -7136,6 +7250,7 @@ struct lb_env {
+ 	int			new_dst_cpu;
+ 	enum cpu_idle_type	idle;
+ 	long			imbalance;
++	unsigned int		src_grp_nr_running;
+ 	/* The set of CPUs under consideration for load-balancing */
+ 	struct cpumask		*cpus;
+ 
+@@ -7250,9 +7365,14 @@ static
+ int can_migrate_task(struct task_struct *p, struct lb_env *env)
+ {
+ 	int tsk_cache_hot;
++	int can_migrate = 1;
+ 
+ 	lockdep_assert_held(&env->src_rq->lock);
+ 
++	trace_android_rvh_can_migrate_task(p, env->dst_cpu, &can_migrate);
++	if (!can_migrate)
++		return 0;
++
+ 	/*
+ 	 * We do not migrate tasks that are:
+ 	 * 1) throttled_lb_pair, or
+@@ -7780,10 +7900,9 @@ static inline void init_sd_lb_stats(struct sd_lb_stats *sds)
+ 	};
+ }
+ 
+-static unsigned long scale_rt_capacity(struct sched_domain *sd, int cpu)
++static unsigned long scale_rt_capacity(int cpu, unsigned long max)
+ {
+ 	struct rq *rq = cpu_rq(cpu);
+-	unsigned long max = arch_scale_cpu_capacity(cpu);
+ 	unsigned long used, free;
+ 	unsigned long irq;
+ 
+@@ -7803,12 +7922,47 @@ static unsigned long scale_rt_capacity(struct sched_domain *sd, int cpu)
+ 	return scale_irq_capacity(free, irq, max);
+ }
+ 
++void init_max_cpu_capacity(struct max_cpu_capacity *mcc) {
++	raw_spin_lock_init(&mcc->lock);
++	mcc->val = 0;
++	mcc->cpu = -1;
++}
++
+ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
+ {
+-	unsigned long capacity = scale_rt_capacity(sd, cpu);
++	unsigned long capacity = arch_scale_cpu_capacity(cpu);
+ 	struct sched_group *sdg = sd->groups;
++	struct max_cpu_capacity *mcc;
++	unsigned long max_capacity;
++	int max_cap_cpu;
++	unsigned long flags;
++
++	cpu_rq(cpu)->cpu_capacity_orig = capacity;
++
++	capacity *= arch_scale_max_freq_capacity(sd, cpu);
++	capacity >>= SCHED_CAPACITY_SHIFT;
++
++	mcc = &cpu_rq(cpu)->rd->max_cpu_capacity;
++
++	raw_spin_lock_irqsave(&mcc->lock, flags);
++	max_capacity = mcc->val;
++	max_cap_cpu = mcc->cpu;
++
++	if ((max_capacity > capacity && max_cap_cpu == cpu) ||
++	    (max_capacity < capacity)) {
++		mcc->val = capacity;
++		mcc->cpu = cpu;
++#ifdef CONFIG_SCHED_DEBUG
++		raw_spin_unlock_irqrestore(&mcc->lock, flags);
++		printk_deferred(KERN_INFO "CPU%d: update max cpu_capacity %lu\n",
++				cpu, capacity);
++		goto skip_unlock;
++#endif
++	}
++	raw_spin_unlock_irqrestore(&mcc->lock, flags);
+ 
+-	cpu_rq(cpu)->cpu_capacity_orig = arch_scale_cpu_capacity(cpu);
++skip_unlock: __attribute__ ((unused));
++	capacity = scale_rt_capacity(cpu, capacity);
+ 
+ 	if (!capacity)
+ 		capacity = 1;
+@@ -7912,7 +8066,7 @@ check_cpu_capacity(struct rq *rq, struct sched_domain *sd)
+ static inline int check_misfit_status(struct rq *rq, struct sched_domain *sd)
+ {
+ 	return rq->misfit_task_load &&
+-		(rq->cpu_capacity_orig < rq->rd->max_cpu_capacity ||
++		(rq->cpu_capacity_orig < rq->rd->max_cpu_capacity.val ||
+ 		 check_cpu_capacity(rq, sd));
+ }
+ 
+@@ -8315,6 +8469,8 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
+ 	if (env->sd->flags & SD_NUMA)
+ 		env->fbq_type = fbq_classify_group(&sds->busiest_stat);
+ 
++	env->src_grp_nr_running = sds->busiest_stat.sum_nr_running;
++
+ 	if (!env->sd->parent) {
+ 		struct root_domain *rd = env->dst_rq->rd;
+ 
+@@ -8443,7 +8599,22 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
+ 	capa_move /= SCHED_CAPACITY_SCALE;
+ 
+ 	/* Move if we gain throughput */
+-	if (capa_move > capa_now)
++	if (capa_move > capa_now) {
++		env->imbalance = busiest->load_per_task;
++		return;
++	}
++
++	/* We can't see throughput improvement with the load-based
++	 * method, but it is possible depending upon group size and
++	 * capacity range that there might still be an underutilized
++	 * cpu available in an asymmetric capacity system. Do one last
++	 * check just in case.
++	 */
++	if (env->sd->flags & SD_ASYM_CPUCAPACITY &&
++		busiest->group_type == group_overloaded &&
++		busiest->sum_nr_running > busiest->group_weight &&
++		local->sum_nr_running < local->group_weight &&
++		local->group_capacity < busiest->group_capacity)
+ 		env->imbalance = busiest->load_per_task;
+ }
+ 
+@@ -8512,8 +8683,18 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
+ 		(sds->avg_load - local->avg_load) * local->group_capacity
+ 	) / SCHED_CAPACITY_SCALE;
+ 
+-	/* Boost imbalance to allow misfit task to be balanced. */
+-	if (busiest->group_type == group_misfit_task) {
++	/* Boost imbalance to allow misfit task to be balanced.
++	 * Always do this if we are doing a NEWLY_IDLE balance
++	 * on the assumption that any tasks we have must not be
++	 * long-running (and hence we cannot rely upon load).
++	 * However if we are not idle, we should assume the tasks
++	 * we have are longer running and not override load-based
++	 * calculations above unless we are sure that the local
++	 * group is underutilized.
++	 */
++	if (busiest->group_type == group_misfit_task &&
++		(env->idle == CPU_NEWLY_IDLE ||
++		local->sum_nr_running < local->group_weight)) {
+ 		env->imbalance = max_t(long, env->imbalance,
+ 				       busiest->group_misfit_task_load);
+ 	}
+@@ -8556,8 +8737,12 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
+ 
+ 	if (sched_energy_enabled()) {
+ 		struct root_domain *rd = env->dst_rq->rd;
++		int out_balance = 1;
+ 
+-		if (rcu_dereference(rd->pd) && !READ_ONCE(rd->overutilized))
++		trace_android_rvh_find_busiest_group(sds.busiest, env->dst_rq,
++					&out_balance);
++		if (rcu_dereference(rd->pd) && !READ_ONCE(rd->overutilized)
++					&& out_balance)
+ 			goto out_balanced;
+ 	}
+ 
+@@ -8791,6 +8976,9 @@ static int need_active_balance(struct lb_env *env)
+ 	if (voluntary_active_balance(env))
+ 		return 1;
+ 
++	if (env->src_grp_type == group_overloaded && env->src_rq->misfit_task_load)
++		return 1;
++
+ 	return unlikely(sd->nr_balance_failed > sd->cache_nice_tries+2);
+ }
+ 
+@@ -9009,7 +9197,8 @@ static int load_balance(int this_cpu, struct rq *this_rq,
+ 		 * excessive cache_hot migrations and active balances.
+ 		 */
+ 		if (idle != CPU_NEWLY_IDLE)
+-			sd->nr_balance_failed++;
++			if (env.src_grp_nr_running > 1)
++				sd->nr_balance_failed++;
+ 
+ 		if (need_active_balance(&env)) {
+ 			unsigned long flags;
+diff --git a/kernel/sched/features.h b/kernel/sched/features.h
+index 2410db5e9..7481cd96f 100644
+--- a/kernel/sched/features.h
++++ b/kernel/sched/features.h
+@@ -89,3 +89,4 @@ SCHED_FEAT(WA_BIAS, true)
+  * UtilEstimation. Use estimated CPU utilization.
+  */
+ SCHED_FEAT(UTIL_EST, true)
++SCHED_FEAT(UTIL_EST_FASTUP, true)
+diff --git a/kernel/sched/loadavg.c b/kernel/sched/loadavg.c
+index de22da666..b1dfb50f6 100644
+--- a/kernel/sched/loadavg.c
++++ b/kernel/sched/loadavg.c
+@@ -75,6 +75,7 @@ void get_avenrun(unsigned long *loads, unsigned long offset, int shift)
+ 	loads[1] = (avenrun[1] + offset) << shift;
+ 	loads[2] = (avenrun[2] + offset) << shift;
+ }
++EXPORT_SYMBOL_GPL(get_avenrun);
+ 
+ long calc_load_fold_active(struct rq *this_rq, long adjust)
+ {
+diff --git a/kernel/sched/rt.c b/kernel/sched/rt.c
+index 5b04bba45..c3359a82a 100644
+--- a/kernel/sched/rt.c
++++ b/kernel/sched/rt.c
+@@ -7,6 +7,8 @@
+ 
+ #include "pelt.h"
+ 
++#include <trace/hooks/sched.h>
++
+ int sched_rr_timeslice = RR_TIMESLICE;
+ int sysctl_sched_rr_timeslice = (MSEC_PER_SEC / HZ) * RR_TIMESLICE;
+ /* More than 4 hours if BW_SHIFT equals 20. */
+@@ -439,6 +441,45 @@ static inline int on_rt_rq(struct sched_rt_entity *rt_se)
+ 	return rt_se->on_rq;
+ }
+ 
++#ifdef CONFIG_UCLAMP_TASK
++/*
++ * Verify the fitness of task @p to run on @cpu taking into account the uclamp
++ * settings.
++ *
++ * This check is only important for heterogeneous systems where uclamp_min value
++ * is higher than the capacity of a @cpu. For non-heterogeneous system this
++ * function will always return true.
++ *
++ * The function will return true if the capacity of the @cpu is >= the
++ * uclamp_min and false otherwise.
++ *
++ * Note that uclamp_min will be clamped to uclamp_max if uclamp_min
++ * > uclamp_max.
++ */
++static inline bool rt_task_fits_capacity(struct task_struct *p, int cpu)
++{
++	unsigned int min_cap;
++	unsigned int max_cap;
++	unsigned int cpu_cap;
++
++	/* Only heterogeneous systems can benefit from this check */
++	if (!static_branch_unlikely(&sched_asym_cpucapacity))
++		return true;
++
++	min_cap = uclamp_eff_value(p, UCLAMP_MIN);
++	max_cap = uclamp_eff_value(p, UCLAMP_MAX);
++
++	cpu_cap = capacity_orig_of(cpu);
++
++	return cpu_cap >= min(min_cap, max_cap);
++}
++#else
++static inline bool rt_task_fits_capacity(struct task_struct *p, int cpu)
++{
++	return true;
++}
++#endif
++
+ #ifdef CONFIG_RT_GROUP_SCHED
+ 
+ static inline u64 sched_rt_runtime(struct rt_rq *rt_rq)
+@@ -1393,6 +1434,13 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
+ {
+ 	struct task_struct *curr;
+ 	struct rq *rq;
++	bool test;
++	int target_cpu = -1;
++
++	trace_android_rvh_select_task_rq_rt(p, cpu, sd_flag,
++					flags, &target_cpu);
++	if (target_cpu >= 0)
++		return target_cpu;
+ 
+ 	/* For anything but wake ups, just return the task_cpu */
+ 	if (sd_flag != SD_BALANCE_WAKE && sd_flag != SD_BALANCE_FORK)
+@@ -1424,12 +1472,25 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
+ 	 *
+ 	 * This test is optimistic, if we get it wrong the load-balancer
+ 	 * will have to sort it out.
++	 *
++	 * We take into account the capacity of the CPU to ensure it fits the
++	 * requirement of the task - which is only important on heterogeneous
++	 * systems like big.LITTLE.
+ 	 */
+-	if (curr && unlikely(rt_task(curr)) &&
+-	    (curr->nr_cpus_allowed < 2 ||
+-	     curr->prio <= p->prio)) {
++	test = curr &&
++	       unlikely(rt_task(curr)) &&
++	       (curr->nr_cpus_allowed < 2 || curr->prio <= p->prio);
++
++	if (test || !rt_task_fits_capacity(p, cpu)) {
+ 		int target = find_lowest_rq(p);
+ 
++		/*
++		 * Bail out if we were forcing a migration to find a better
++		 * fitting CPU but our search failed.
++		 */
++		if (!test && target != -1 && !rt_task_fits_capacity(p, target))
++			goto out_unlock;
++
+ 		/*
+ 		 * Don't bother moving it if the destination CPU is
+ 		 * not running a lower priority task.
+@@ -1438,6 +1499,8 @@ select_task_rq_rt(struct task_struct *p, int cpu, int sd_flag, int flags)
+ 		    p->prio < cpu_rq(target)->rt.highest_prio.curr)
+ 			cpu = target;
+ 	}
++
++out_unlock:
+ 	rcu_read_unlock();
+ 
+ out:
+@@ -1458,8 +1521,8 @@ static void check_preempt_equal_prio(struct rq *rq, struct task_struct *p)
+ 	 * p is migratable, so let's not schedule it and
+ 	 * see if it is pushed or pulled somewhere else.
+ 	 */
+-	if (p->nr_cpus_allowed != 1
+-	    && cpupri_find(&rq->rd->cpupri, p, NULL))
++	if (p->nr_cpus_allowed != 1 &&
++	    cpupri_find(&rq->rd->cpupri, p, NULL))
+ 		return;
+ 
+ 	/*
+@@ -1640,6 +1703,12 @@ static int find_lowest_rq(struct task_struct *task)
+ 	struct cpumask *lowest_mask = this_cpu_cpumask_var_ptr(local_cpu_mask);
+ 	int this_cpu = smp_processor_id();
+ 	int cpu      = task_cpu(task);
++	int ret;
++	int lowest_cpu = -1;
++
++	trace_android_rvh_find_lowest_rq(task, lowest_mask, &lowest_cpu);
++	if (lowest_cpu >= 0)
++		return lowest_cpu;
+ 
+ 	/* Make sure the mask is initialized first */
+ 	if (unlikely(!lowest_mask))
+@@ -1648,7 +1717,22 @@ static int find_lowest_rq(struct task_struct *task)
+ 	if (task->nr_cpus_allowed == 1)
+ 		return -1; /* No other targets possible */
+ 
+-	if (!cpupri_find(&task_rq(task)->rd->cpupri, task, lowest_mask))
++	/*
++	 * If we're on asym system ensure we consider the different capacities
++	 * of the CPUs when searching for the lowest_mask.
++	 */
++	if (static_branch_unlikely(&sched_asym_cpucapacity)) {
++
++		ret = cpupri_find_fitness(&task_rq(task)->rd->cpupri,
++					  task, lowest_mask,
++					  rt_task_fits_capacity);
++	} else {
++
++		ret = cpupri_find(&task_rq(task)->rd->cpupri,
++				  task, lowest_mask);
++	}
++
++	if (!ret)
+ 		return -1; /* No targets found */
+ 
+ 	/*
+@@ -2152,12 +2236,14 @@ static void pull_rt_task(struct rq *this_rq)
+  */
+ static void task_woken_rt(struct rq *rq, struct task_struct *p)
+ {
+-	if (!task_running(rq, p) &&
+-	    !test_tsk_need_resched(rq->curr) &&
+-	    p->nr_cpus_allowed > 1 &&
+-	    (dl_task(rq->curr) || rt_task(rq->curr)) &&
+-	    (rq->curr->nr_cpus_allowed < 2 ||
+-	     rq->curr->prio <= p->prio))
++	bool need_to_push = !task_running(rq, p) &&
++			    !test_tsk_need_resched(rq->curr) &&
++			    p->nr_cpus_allowed > 1 &&
++			    (dl_task(rq->curr) || rt_task(rq->curr)) &&
++			    (rq->curr->nr_cpus_allowed < 2 ||
++			     rq->curr->prio <= p->prio);
++
++	if (need_to_push)
+ 		push_rt_tasks(rq);
+ }
+ 
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index 570659f1c..1243c0e36 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -405,6 +405,8 @@ struct task_group {
+ 	struct uclamp_se	uclamp_req[UCLAMP_CNT];
+ 	/* Effective clamp values used for a task group */
+ 	struct uclamp_se	uclamp[UCLAMP_CNT];
++	/* Latency-sensitive flag used for a task group */
++	unsigned int		latency_sensitive;
+ #endif
+ 
+ };
+@@ -723,6 +725,12 @@ struct perf_domain {
+ 	struct rcu_head rcu;
+ };
+ 
++struct max_cpu_capacity {
++	raw_spinlock_t lock;
++	unsigned long val;
++	int cpu;
++};
++
+ /* Scheduling group status flags */
+ #define SG_OVERLOAD		0x1 /* More than one runnable task on a CPU. */
+ #define SG_OVERUTILIZED		0x2 /* One or more CPUs are over-utilized. */
+@@ -781,7 +789,8 @@ struct root_domain {
+ 	cpumask_var_t		rto_mask;
+ 	struct cpupri		cpupri;
+ 
+-	unsigned long		max_cpu_capacity;
++	/* Maximum cpu capacity in the system. */
++	struct max_cpu_capacity max_cpu_capacity;
+ 
+ 	/*
+ 	 * NULL-terminated list of performance domains intersecting with the
+@@ -791,6 +800,7 @@ struct root_domain {
+ };
+ 
+ extern void init_defrootdomain(void);
++extern void init_max_cpu_capacity(struct max_cpu_capacity *mcc);
+ extern int sched_init_domains(const struct cpumask *cpu_map);
+ extern void rq_attach_root(struct rq *rq, struct root_domain *rd);
+ extern void sched_get_rd(struct root_domain *rd);
+@@ -1343,8 +1353,6 @@ extern void sched_ttwu_pending(void);
+ 	for (__sd = rcu_dereference_check_sched_domain(cpu_rq(cpu)->sd); \
+ 			__sd; __sd = __sd->parent)
+ 
+-#define for_each_lower_domain(sd) for (; sd; sd = sd->child)
+-
+ /**
+  * highest_flag_domain - Return highest sched_domain containing flag.
+  * @cpu:	The CPU whose highest level of sched domain is to
+@@ -1993,6 +2001,15 @@ unsigned long arch_scale_freq_capacity(int cpu)
+ }
+ #endif
+ 
++#ifndef arch_scale_max_freq_capacity
++struct sched_domain;
++static __always_inline
++unsigned long arch_scale_max_freq_capacity(struct sched_domain *sd, int cpu)
++{
++	return SCHED_CAPACITY_SCALE;
++}
++#endif
++
+ #ifdef CONFIG_SMP
+ #ifdef CONFIG_PREEMPTION
+ 
+@@ -2317,14 +2334,14 @@ static inline void cpufreq_update_util(struct rq *rq, unsigned int flags) {}
+ #endif /* CONFIG_CPU_FREQ */
+ 
+ #ifdef CONFIG_UCLAMP_TASK
+-unsigned int uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id);
++unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id);
+ 
+ static __always_inline
+-unsigned int uclamp_util_with(struct rq *rq, unsigned int util,
+-			      struct task_struct *p)
++unsigned long uclamp_rq_util_with(struct rq *rq, unsigned long util,
++				  struct task_struct *p)
+ {
+-	unsigned int min_util = READ_ONCE(rq->uclamp[UCLAMP_MIN].value);
+-	unsigned int max_util = READ_ONCE(rq->uclamp[UCLAMP_MAX].value);
++	unsigned long min_util = READ_ONCE(rq->uclamp[UCLAMP_MIN].value);
++	unsigned long max_util = READ_ONCE(rq->uclamp[UCLAMP_MAX].value);
+ 
+ 	if (p) {
+ 		min_util = max(min_util, uclamp_eff_value(p, UCLAMP_MIN));
+@@ -2342,22 +2359,42 @@ unsigned int uclamp_util_with(struct rq *rq, unsigned int util,
+ 	return clamp(util, min_util, max_util);
+ }
+ 
+-static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
++static inline bool uclamp_boosted(struct task_struct *p)
+ {
+-	return uclamp_util_with(rq, util, NULL);
++	return uclamp_eff_value(p, UCLAMP_MIN) > 0;
+ }
+ #else /* CONFIG_UCLAMP_TASK */
+-static inline unsigned int uclamp_util_with(struct rq *rq, unsigned int util,
+-					    struct task_struct *p)
++static inline
++unsigned long uclamp_rq_util_with(struct rq *rq, unsigned long util,
++				  struct task_struct *p)
+ {
+ 	return util;
+ }
+-static inline unsigned int uclamp_util(struct rq *rq, unsigned int util)
++static inline bool uclamp_boosted(struct task_struct *p)
+ {
+-	return util;
++	return false;
+ }
+ #endif /* CONFIG_UCLAMP_TASK */
+ 
++#ifdef CONFIG_UCLAMP_TASK_GROUP
++static inline bool uclamp_latency_sensitive(struct task_struct *p)
++{
++	struct cgroup_subsys_state *css = task_css(p, cpu_cgrp_id);
++	struct task_group *tg;
++
++	if (!css)
++		return false;
++	tg = container_of(css, struct task_group, css);
++
++	return tg->latency_sensitive;
++}
++#else
++static inline bool uclamp_latency_sensitive(struct task_struct *p)
++{
++	return false;
++}
++#endif /* CONFIG_UCLAMP_TASK_GROUP */
++
+ #ifdef arch_scale_freq_capacity
+ # ifndef arch_scale_freq_invariant
+ #  define arch_scale_freq_invariant()	true
+diff --git a/kernel/sched/topology.c b/kernel/sched/topology.c
+index ffaa97a8d..cd3a58cfd 100644
+--- a/kernel/sched/topology.c
++++ b/kernel/sched/topology.c
+@@ -510,6 +510,9 @@ static int init_rootdomain(struct root_domain *rd)
+ 
+ 	if (cpupri_init(&rd->cpupri) != 0)
+ 		goto free_cpudl;
++
++	init_max_cpu_capacity(&rd->max_cpu_capacity);
++
+ 	return 0;
+ 
+ free_cpudl:
+@@ -1377,18 +1380,9 @@ sd_init(struct sched_domain_topology_level *tl,
+ 	 * Convert topological properties into behaviour.
+ 	 */
+ 
+-	if (sd->flags & SD_ASYM_CPUCAPACITY) {
+-		struct sched_domain *t = sd;
+-
+-		/*
+-		 * Don't attempt to spread across CPUs of different capacities.
+-		 */
+-		if (sd->child)
+-			sd->child->flags &= ~SD_PREFER_SIBLING;
+-
+-		for_each_lower_domain(t)
+-			t->flags |= SD_BALANCE_WAKE;
+-	}
++	/* Don't attempt to spread across CPUs of different capacities. */
++	if ((sd->flags & SD_ASYM_CPUCAPACITY) && sd->child)
++		sd->child->flags &= ~SD_PREFER_SIBLING;
+ 
+ 	if (sd->flags & SD_SHARE_CPUCAPACITY) {
+ 		sd->imbalance_pct = 110;
+@@ -1987,7 +1981,6 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
+ 	enum s_alloc alloc_state = sa_none;
+ 	struct sched_domain *sd;
+ 	struct s_data d;
+-	struct rq *rq = NULL;
+ 	int i, ret = -ENOMEM;
+ 	struct sched_domain_topology_level *tl_asym;
+ 	bool has_asym = false;
+@@ -2056,13 +2049,7 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
+ 	/* Attach the domains */
+ 	rcu_read_lock();
+ 	for_each_cpu(i, cpu_map) {
+-		rq = cpu_rq(i);
+ 		sd = *per_cpu_ptr(d.sd, i);
+-
+-		/* Use READ_ONCE()/WRITE_ONCE() to avoid load/store tearing: */
+-		if (rq->cpu_capacity_orig > READ_ONCE(d.rd->max_cpu_capacity))
+-			WRITE_ONCE(d.rd->max_cpu_capacity, rq->cpu_capacity_orig);
+-
+ 		cpu_attach_domain(sd, d.rd, i);
+ 	}
+ 	rcu_read_unlock();
+@@ -2070,11 +2057,6 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
+ 	if (has_asym)
+ 		static_branch_inc_cpuslocked(&sched_asym_cpucapacity);
+ 
+-	if (rq && sched_debug_enabled) {
+-		pr_info("root domain span: %*pbl (max cpu_capacity = %lu)\n",
+-			cpumask_pr_args(cpu_map), rq->rd->max_cpu_capacity);
+-	}
+-
+ 	ret = 0;
+ error:
+ 	__free_domain_allocs(&d, alloc_state, cpu_map);
+diff --git a/kernel/scs.c b/kernel/scs.c
+new file mode 100644
+index 000000000..c8e53358e
+--- /dev/null
++++ b/kernel/scs.c
+@@ -0,0 +1,241 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Shadow Call Stack support.
++ *
++ * Copyright (C) 2019 Google LLC
++ */
++
++#include <linux/cpuhotplug.h>
++#include <linux/kasan.h>
++#include <linux/mm.h>
++#include <linux/mmzone.h>
++#include <linux/scs.h>
++#include <linux/slab.h>
++#include <linux/vmalloc.h>
++#include <linux/vmstat.h>
++#include <asm/scs.h>
++
++static inline void *__scs_base(struct task_struct *tsk)
++{
++	/*
++	 * To minimize risk the of exposure, architectures may clear a
++	 * task's thread_info::shadow_call_stack while that task is
++	 * running, and only save/restore the active shadow call stack
++	 * pointer when the usual register may be clobbered (e.g. across
++	 * context switches).
++	 *
++	 * The shadow call stack is aligned to SCS_SIZE, and grows
++	 * upwards, so we can mask out the low bits to extract the base
++	 * when the task is not running.
++	 */
++	return (void *)((unsigned long)task_scs(tsk) & ~(SCS_SIZE - 1));
++}
++
++static inline unsigned long *scs_magic(void *s)
++{
++	return (unsigned long *)(s + SCS_SIZE) - 1;
++}
++
++static inline void scs_set_magic(void *s)
++{
++	*scs_magic(s) = SCS_END_MAGIC;
++}
++
++#ifdef CONFIG_SHADOW_CALL_STACK_VMAP
++
++/* Matches NR_CACHED_STACKS for VMAP_STACK */
++#define NR_CACHED_SCS 2
++static DEFINE_PER_CPU(void *, scs_cache[NR_CACHED_SCS]);
++
++static void *scs_alloc(int node)
++{
++	int i;
++	void *s;
++
++	for (i = 0; i < NR_CACHED_SCS; i++) {
++		s = this_cpu_xchg(scs_cache[i], NULL);
++		if (s) {
++			memset(s, 0, SCS_SIZE);
++			goto out;
++		}
++	}
++
++	/*
++	 * We allocate a full page for the shadow stack, which should be
++	 * more than we need. Check the assumption nevertheless.
++	 */
++	BUILD_BUG_ON(SCS_SIZE > PAGE_SIZE);
++
++	s = __vmalloc_node_range(PAGE_SIZE, SCS_SIZE,
++				 VMALLOC_START, VMALLOC_END,
++				 GFP_SCS, PAGE_KERNEL, 0,
++				 node, __builtin_return_address(0));
++
++out:
++	if (s)
++		scs_set_magic(s);
++	/* TODO: poison for KASAN, unpoison in scs_free */
++
++	return s;
++}
++
++static void scs_free(void *s)
++{
++	int i;
++
++	for (i = 0; i < NR_CACHED_SCS; i++)
++		if (this_cpu_cmpxchg(scs_cache[i], 0, s) == NULL)
++			return;
++
++	vfree_atomic(s);
++}
++
++static struct page *__scs_page(struct task_struct *tsk)
++{
++	return vmalloc_to_page(__scs_base(tsk));
++}
++
++static int scs_cleanup(unsigned int cpu)
++{
++	int i;
++	void **cache = per_cpu_ptr(scs_cache, cpu);
++
++	for (i = 0; i < NR_CACHED_SCS; i++) {
++		vfree(cache[i]);
++		cache[i] = NULL;
++	}
++
++	return 0;
++}
++
++void __init scs_init(void)
++{
++	WARN_ON(cpuhp_setup_state(CPUHP_BP_PREPARE_DYN, "scs:scs_cache", NULL,
++			scs_cleanup) < 0);
++}
++
++#else /* !CONFIG_SHADOW_CALL_STACK_VMAP */
++
++static struct kmem_cache *scs_cache;
++
++static inline void *scs_alloc(int node)
++{
++	void *s;
++
++	s = kmem_cache_alloc_node(scs_cache, GFP_SCS, node);
++	if (s) {
++		scs_set_magic(s);
++		/*
++		 * Poison the allocation to catch unintentional accesses to
++		 * the shadow stack when KASAN is enabled.
++		 */
++		kasan_poison_object_data(scs_cache, s);
++	}
++
++	return s;
++}
++
++static inline void scs_free(void *s)
++{
++	kasan_unpoison_object_data(scs_cache, s);
++	kmem_cache_free(scs_cache, s);
++}
++
++static struct page *__scs_page(struct task_struct *tsk)
++{
++	return virt_to_page(__scs_base(tsk));
++}
++
++void __init scs_init(void)
++{
++	scs_cache = kmem_cache_create("scs_cache", SCS_SIZE, SCS_SIZE,
++				0, NULL);
++	WARN_ON(!scs_cache);
++}
++
++#endif /* CONFIG_SHADOW_CALL_STACK_VMAP */
++
++void scs_task_reset(struct task_struct *tsk)
++{
++	/*
++	 * Reset the shadow stack to the base address in case the task
++	 * is reused.
++	 */
++	task_set_scs(tsk, __scs_base(tsk));
++}
++
++static void scs_account(struct task_struct *tsk, int account)
++{
++	mod_zone_page_state(page_zone(__scs_page(tsk)), NR_KERNEL_SCS_BYTES,
++		account * SCS_SIZE);
++}
++
++int scs_prepare(struct task_struct *tsk, int node)
++{
++	void *s;
++
++	s = scs_alloc(node);
++	if (!s)
++		return -ENOMEM;
++
++	task_set_scs(tsk, s);
++	scs_account(tsk, 1);
++
++	return 0;
++}
++
++#ifdef CONFIG_DEBUG_STACK_USAGE
++static void scs_check_usage(struct task_struct *tsk)
++{
++	static unsigned long highest;
++
++	unsigned long *p = __scs_base(tsk);
++	unsigned long *end = scs_magic(p);
++	unsigned long prev, curr = highest, used = 0;
++
++	for (; p < end; ++p) {
++		if (!READ_ONCE_NOCHECK(*p))
++			break;
++		used += sizeof(*p);
++	}
++
++	while (used > curr) {
++		prev = cmpxchg_relaxed(&highest, curr, used);
++
++		if (prev == curr) {
++			pr_info("%s (%d): highest shadow stack usage: %lu bytes\n",
++				tsk->comm, task_pid_nr(tsk), used);
++			break;
++		}
++
++		curr = prev;
++	}
++}
++#else
++static inline void scs_check_usage(struct task_struct *tsk)
++{
++}
++#endif
++
++bool scs_corrupted(struct task_struct *tsk)
++{
++	unsigned long *magic = scs_magic(__scs_base(tsk));
++
++	return READ_ONCE_NOCHECK(*magic) != SCS_END_MAGIC;
++}
++
++void scs_release(struct task_struct *tsk)
++{
++	void *s;
++
++	s = __scs_base(tsk);
++	if (!s)
++		return;
++
++	WARN_ON(scs_corrupted(tsk));
++	scs_check_usage(tsk);
++
++	scs_account(tsk, -1);
++	task_set_scs(tsk, NULL);
++	scs_free(s);
++}
+diff --git a/kernel/signal.c b/kernel/signal.c
+index 595a36ab8..7a9592b4b 100644
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -1396,6 +1396,7 @@ struct sighand_struct *__lock_task_sighand(struct task_struct *tsk,
+ 
+ 	return sighand;
+ }
++EXPORT_SYMBOL_GPL(__lock_task_sighand);
+ 
+ /*
+  * send signal info to all the members of a group
+diff --git a/kernel/sys.c b/kernel/sys.c
+index a611d1d58..70660867f 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -42,6 +42,8 @@
+ #include <linux/syscore_ops.h>
+ #include <linux/version.h>
+ #include <linux/ctype.h>
++#include <linux/mm.h>
++#include <linux/mempolicy.h>
+ 
+ #include <linux/compat.h>
+ #include <linux/syscalls.h>
+@@ -2259,6 +2261,153 @@ int __weak arch_prctl_spec_ctrl_set(struct task_struct *t, unsigned long which,
+ 	return -EINVAL;
+ }
+ 
++#ifdef CONFIG_MMU
++static int prctl_update_vma_anon_name(struct vm_area_struct *vma,
++		struct vm_area_struct **prev,
++		unsigned long start, unsigned long end,
++		const char __user *name_addr)
++{
++	struct mm_struct *mm = vma->vm_mm;
++	int error = 0;
++	pgoff_t pgoff;
++
++	if (name_addr == vma_get_anon_name(vma)) {
++		*prev = vma;
++		goto out;
++	}
++
++	pgoff = vma->vm_pgoff + ((start - vma->vm_start) >> PAGE_SHIFT);
++	*prev = vma_merge(mm, *prev, start, end, vma->vm_flags, vma->anon_vma,
++				vma->vm_file, pgoff, vma_policy(vma),
++				vma->vm_userfaultfd_ctx, name_addr);
++	if (*prev) {
++		vma = *prev;
++		goto success;
++	}
++
++	*prev = vma;
++
++	if (start != vma->vm_start) {
++		error = split_vma(mm, vma, start, 1);
++		if (error)
++			goto out;
++	}
++
++	if (end != vma->vm_end) {
++		error = split_vma(mm, vma, end, 0);
++		if (error)
++			goto out;
++	}
++
++success:
++	if (!vma->vm_file)
++		vma->anon_name = name_addr;
++
++out:
++	if (error == -ENOMEM)
++		error = -EAGAIN;
++	return error;
++}
++
++static int prctl_set_vma_anon_name(unsigned long start, unsigned long end,
++			unsigned long arg)
++{
++	unsigned long tmp;
++	struct vm_area_struct *vma, *prev;
++	int unmapped_error = 0;
++	int error = -EINVAL;
++
++	/*
++	 * If the interval [start,end) covers some unmapped address
++	 * ranges, just ignore them, but return -ENOMEM at the end.
++	 * - this matches the handling in madvise.
++	 */
++	vma = find_vma_prev(current->mm, start, &prev);
++	if (vma && start > vma->vm_start)
++		prev = vma;
++
++	for (;;) {
++		/* Still start < end. */
++		error = -ENOMEM;
++		if (!vma)
++			return error;
++
++		/* Here start < (end|vma->vm_end). */
++		if (start < vma->vm_start) {
++			unmapped_error = -ENOMEM;
++			start = vma->vm_start;
++			if (start >= end)
++				return error;
++		}
++
++		/* Here vma->vm_start <= start < (end|vma->vm_end) */
++		tmp = vma->vm_end;
++		if (end < tmp)
++			tmp = end;
++
++		/* Here vma->vm_start <= start < tmp <= (end|vma->vm_end). */
++		error = prctl_update_vma_anon_name(vma, &prev, start, tmp,
++				(const char __user *)arg);
++		if (error)
++			return error;
++		start = tmp;
++		if (prev && start < prev->vm_end)
++			start = prev->vm_end;
++		error = unmapped_error;
++		if (start >= end)
++			return error;
++		if (prev)
++			vma = prev->vm_next;
++		else	/* madvise_remove dropped mmap_sem */
++			vma = find_vma(current->mm, start);
++	}
++}
++
++static int prctl_set_vma(unsigned long opt, unsigned long start,
++		unsigned long len_in, unsigned long arg)
++{
++	struct mm_struct *mm = current->mm;
++	int error;
++	unsigned long len;
++	unsigned long end;
++
++	if (start & ~PAGE_MASK)
++		return -EINVAL;
++	len = (len_in + ~PAGE_MASK) & PAGE_MASK;
++
++	/* Check to see whether len was rounded up from small -ve to zero */
++	if (len_in && !len)
++		return -EINVAL;
++
++	end = start + len;
++	if (end < start)
++		return -EINVAL;
++
++	if (end == start)
++		return 0;
++
++	down_write(&mm->mmap_sem);
++
++	switch (opt) {
++	case PR_SET_VMA_ANON_NAME:
++		error = prctl_set_vma_anon_name(start, end, arg);
++		break;
++	default:
++		error = -EINVAL;
++	}
++
++	up_write(&mm->mmap_sem);
++
++	return error;
++}
++#else /* CONFIG_MMU */
++static int prctl_set_vma(unsigned long opt, unsigned long start,
++		unsigned long len_in, unsigned long arg)
++{
++	return -EINVAL;
++}
++#endif
++
+ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
+ 		unsigned long, arg4, unsigned long, arg5)
+ {
+@@ -2471,6 +2620,9 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
+ 			return -EINVAL;
+ 		error = arch_prctl_spec_ctrl_set(me, arg2, arg3);
+ 		break;
++	case PR_SET_VMA:
++		error = prctl_set_vma(arg2, arg3, arg4, arg5);
++		break;
+ 	case PR_PAC_RESET_KEYS:
+ 		if (arg3 || arg4 || arg5)
+ 			return -EINVAL;
+diff --git a/kernel/sysctl.c b/kernel/sysctl.c
+index 70665934d..6fedc38d9 100644
+--- a/kernel/sysctl.c
++++ b/kernel/sysctl.c
+@@ -111,6 +111,7 @@ extern char core_pattern[];
+ extern unsigned int core_pipe_limit;
+ #endif
+ extern int pid_max;
++extern int extra_free_kbytes;
+ extern int pid_max_min, pid_max_max;
+ extern int percpu_pagelist_fraction;
+ extern int latencytop_enabled;
+@@ -1279,6 +1280,13 @@ static struct ctl_table kern_table[] = {
+ 		.extra2		= SYSCTL_ONE,
+ 	},
+ #endif
++	{
++		.procname	= "sunxi_dump",
++		.data		= &sunxi_dump,
++		.maxlen		= sizeof(sunxi_dump),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec,
++	},
+ #ifdef CONFIG_STACKLEAK_RUNTIME_DISABLE
+ 	{
+ 		.procname	= "stack_erasing",
+@@ -1466,7 +1474,7 @@ static struct ctl_table vm_table[] = {
+ 		.procname	= "drop_caches",
+ 		.data		= &sysctl_drop_caches,
+ 		.maxlen		= sizeof(int),
+-		.mode		= 0200,
++		.mode		= 0644,
+ 		.proc_handler	= drop_caches_sysctl_handler,
+ 		.extra1		= SYSCTL_ONE,
+ 		.extra2		= &four,
+@@ -1524,6 +1532,14 @@ static struct ctl_table vm_table[] = {
+ 		.extra1		= SYSCTL_ONE,
+ 		.extra2		= &one_thousand,
+ 	},
++	{
++		.procname	= "extra_free_kbytes",
++		.data		= &extra_free_kbytes,
++		.maxlen		= sizeof(extra_free_kbytes),
++		.mode		= 0644,
++		.proc_handler	= min_free_kbytes_sysctl_handler,
++		.extra1		= SYSCTL_ZERO,
++	},
+ 	{
+ 		.procname	= "percpu_pagelist_fraction",
+ 		.data		= &percpu_pagelist_fraction,
+diff --git a/kernel/time/tick-common.c b/kernel/time/tick-common.c
+index 59225b484..7e5d3524e 100644
+--- a/kernel/time/tick-common.c
++++ b/kernel/time/tick-common.c
+@@ -11,6 +11,7 @@
+ #include <linux/err.h>
+ #include <linux/hrtimer.h>
+ #include <linux/interrupt.h>
++#include <linux/nmi.h>
+ #include <linux/percpu.h>
+ #include <linux/profile.h>
+ #include <linux/sched.h>
+@@ -558,6 +559,7 @@ void tick_unfreeze(void)
+ 		trace_suspend_resume(TPS("timekeeping_freeze"),
+ 				     smp_processor_id(), false);
+ 	} else {
++		touch_softlockup_watchdog();
+ 		tick_resume_local();
+ 	}
+ 
+diff --git a/kernel/time/time.c b/kernel/time/time.c
+index 83f403e7a..7353f04db 100644
+--- a/kernel/time/time.c
++++ b/kernel/time/time.c
+@@ -776,6 +776,7 @@ u64 nsec_to_clock_t(u64 x)
+ 	return div_u64(x * 9, (9ull * NSEC_PER_SEC + (USER_HZ / 2)) / USER_HZ);
+ #endif
+ }
++EXPORT_SYMBOL_GPL(nsec_to_clock_t);
+ 
+ u64 jiffies64_to_nsecs(u64 j)
+ {
+diff --git a/kernel/trace/Kconfig b/kernel/trace/Kconfig
+index f3f2fc8ad..778fa287c 100644
+--- a/kernel/trace/Kconfig
++++ b/kernel/trace/Kconfig
+@@ -106,7 +106,6 @@ config PREEMPTIRQ_TRACEPOINTS
+ 
+ config TRACING
+ 	bool
+-	select DEBUG_FS
+ 	select RING_BUFFER
+ 	select STACKTRACE if STACKTRACE_SUPPORT
+ 	select TRACEPOINTS
+diff --git a/kernel/trace/ftrace.c b/kernel/trace/ftrace.c
+index 705852c17..de5276424 100644
+--- a/kernel/trace/ftrace.c
++++ b/kernel/trace/ftrace.c
+@@ -5571,9 +5571,9 @@ static int ftrace_cmp_ips(const void *a, const void *b)
+ 	return 0;
+ }
+ 
+-static int ftrace_process_locs(struct module *mod,
+-			       unsigned long *start,
+-			       unsigned long *end)
++static int __norecordmcount ftrace_process_locs(struct module *mod,
++						unsigned long *start,
++						unsigned long *end)
+ {
+ 	struct ftrace_page *start_pg;
+ 	struct ftrace_page *pg;
+diff --git a/kernel/trace/power-traces.c b/kernel/trace/power-traces.c
+index 21bb161c2..38b8024f9 100644
+--- a/kernel/trace/power-traces.c
++++ b/kernel/trace/power-traces.c
+@@ -18,4 +18,5 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(suspend_resume);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(cpu_idle);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(cpu_frequency);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(powernv_throttle);
+-
++EXPORT_TRACEPOINT_SYMBOL_GPL(device_pm_callback_start);
++EXPORT_TRACEPOINT_SYMBOL_GPL(device_pm_callback_end);
+diff --git a/kernel/trace/trace.c b/kernel/trace/trace.c
+index f9c2bdbbd..721947b99 100644
+--- a/kernel/trace/trace.c
++++ b/kernel/trace/trace.c
+@@ -5686,7 +5686,7 @@ static int tracing_set_tracer(struct trace_array *tr, const char *buf)
+ 	}
+ 
+ 	/* If trace pipe files are being read, we can't change the tracer */
+-	if (tr->trace_ref) {
++	if (tr->current_trace->ref) {
+ 		ret = -EBUSY;
+ 		goto out;
+ 	}
+@@ -5902,7 +5902,7 @@ static int tracing_open_pipe(struct inode *inode, struct file *filp)
+ 
+ 	nonseekable_open(inode, filp);
+ 
+-	tr->trace_ref++;
++	tr->current_trace->ref++;
+ out:
+ 	mutex_unlock(&trace_types_lock);
+ 	return ret;
+@@ -5921,7 +5921,7 @@ static int tracing_release_pipe(struct inode *inode, struct file *file)
+ 
+ 	mutex_lock(&trace_types_lock);
+ 
+-	tr->trace_ref--;
++	tr->current_trace->ref--;
+ 
+ 	if (iter->trace->pipe_close)
+ 		iter->trace->pipe_close(iter);
+@@ -7230,7 +7230,7 @@ static int tracing_buffers_open(struct inode *inode, struct file *filp)
+ 
+ 	filp->private_data = info;
+ 
+-	tr->trace_ref++;
++	tr->current_trace->ref++;
+ 
+ 	mutex_unlock(&trace_types_lock);
+ 
+@@ -7331,7 +7331,7 @@ static int tracing_buffers_release(struct inode *inode, struct file *file)
+ 
+ 	mutex_lock(&trace_types_lock);
+ 
+-	iter->tr->trace_ref--;
++	iter->tr->current_trace->ref--;
+ 
+ 	__trace_array_put(iter->tr);
+ 
+@@ -8470,7 +8470,7 @@ static int __remove_instance(struct trace_array *tr)
+ {
+ 	int i;
+ 
+-	if (tr->ref || (tr->current_trace && tr->trace_ref))
++	if (tr->ref || (tr->current_trace && tr->current_trace->ref))
+ 		return -EBUSY;
+ 
+ 	list_del(&tr->list);
+diff --git a/kernel/trace/trace.h b/kernel/trace/trace.h
+index 4055158c1..a3c29d5fc 100644
+--- a/kernel/trace/trace.h
++++ b/kernel/trace/trace.h
+@@ -309,7 +309,6 @@ struct trace_array {
+ 	struct trace_event_file *trace_marker_file;
+ 	cpumask_var_t		tracing_cpumask; /* only trace on set CPUs */
+ 	int			ref;
+-	int			trace_ref;
+ #ifdef CONFIG_FUNCTION_TRACER
+ 	struct ftrace_ops	*ops;
+ 	struct trace_pid_list	__rcu *function_pids;
+@@ -499,6 +498,7 @@ struct tracer {
+ 	struct tracer		*next;
+ 	struct tracer_flags	*flags;
+ 	int			enabled;
++	int			ref;
+ 	bool			print_max;
+ 	bool			allow_instances;
+ #ifdef CONFIG_TRACER_MAX_TRACE
+diff --git a/kernel/trace/trace_event_perf.c b/kernel/trace/trace_event_perf.c
+index a9dfa04ff..643e0b199 100644
+--- a/kernel/trace/trace_event_perf.c
++++ b/kernel/trace/trace_event_perf.c
+@@ -8,6 +8,7 @@
+ 
+ #include <linux/module.h>
+ #include <linux/kprobes.h>
++#include <linux/security.h>
+ #include "trace.h"
+ #include "trace_probe.h"
+ 
+@@ -26,8 +27,10 @@ static int	total_ref_count;
+ static int perf_trace_event_perm(struct trace_event_call *tp_event,
+ 				 struct perf_event *p_event)
+ {
++	int ret;
++
+ 	if (tp_event->perf_perm) {
+-		int ret = tp_event->perf_perm(tp_event, p_event);
++		ret = tp_event->perf_perm(tp_event, p_event);
+ 		if (ret)
+ 			return ret;
+ 	}
+@@ -46,8 +49,9 @@ static int perf_trace_event_perm(struct trace_event_call *tp_event,
+ 
+ 	/* The ftrace function trace is allowed only for root. */
+ 	if (ftrace_event_is_function(tp_event)) {
+-		if (perf_paranoid_tracepoint_raw() && !capable(CAP_SYS_ADMIN))
+-			return -EPERM;
++		ret = perf_allow_tracepoint(&p_event->attr);
++		if (ret)
++			return ret;
+ 
+ 		if (!is_sampling_event(p_event))
+ 			return 0;
+@@ -82,8 +86,9 @@ static int perf_trace_event_perm(struct trace_event_call *tp_event,
+ 	 * ...otherwise raw tracepoint data can be a severe data leak,
+ 	 * only allow root to have these.
+ 	 */
+-	if (perf_paranoid_tracepoint_raw() && !capable(CAP_SYS_ADMIN))
+-		return -EPERM;
++	ret = perf_allow_tracepoint(&p_event->attr);
++	if (ret)
++		return ret;
+ 
+ 	return 0;
+ }
+diff --git a/kernel/workqueue.c b/kernel/workqueue.c
+index 1a0c224af..7791fe0b9 100644
+--- a/kernel/workqueue.c
++++ b/kernel/workqueue.c
+@@ -53,6 +53,10 @@
+ 
+ #include "workqueue_internal.h"
+ 
++#include <trace/hooks/wqlockup.h>
++/* events/workqueue.h uses default TRACE_INCLUDE_PATH */
++#undef TRACE_INCLUDE_PATH
++
+ enum {
+ 	/*
+ 	 * worker_pool flags
+@@ -1627,7 +1631,9 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
+ 	struct work_struct *work = &dwork->work;
+ 
+ 	WARN_ON_ONCE(!wq);
++#ifndef CONFIG_CFI_CLANG
+ 	WARN_ON_ONCE(timer->function != delayed_work_timer_fn);
++#endif
+ 	WARN_ON_ONCE(timer_pending(timer));
+ 	WARN_ON_ONCE(!list_empty(&work->entry));
+ 
+@@ -5766,6 +5772,7 @@ static void wq_watchdog_timer_fn(struct timer_list *unused)
+ 			pr_cont_pool_info(pool);
+ 			pr_cont(" stuck for %us!\n",
+ 				jiffies_to_msecs(jiffies - pool_ts) / 1000);
++			trace_android_vh_wq_lockup_pool(pool->cpu, pool_ts);
+ 		}
+ 	}
+ 
+-- 
+2.17.1
+

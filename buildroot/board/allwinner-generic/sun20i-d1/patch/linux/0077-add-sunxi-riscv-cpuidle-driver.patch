@@ -1,0 +1,185 @@
+From 5c349186d63ab2b6f47fd4c6230c9e922fb44643 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:22:56 +0800
+Subject: [PATCH 77/93] add sunxi riscv cpuidle driver
+
+---
+ drivers/cpuidle/Kconfig         |   5 ++
+ drivers/cpuidle/Kconfig.riscv   |  14 +++++
+ drivers/cpuidle/Makefile        |   1 +
+ drivers/cpuidle/cpuidle-riscv.c | 100 ++++++++++++++++++++++++++++++++
+ drivers/cpuidle/cpuidle.c       |   2 +-
+ 5 files changed, 121 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/cpuidle/Kconfig.riscv
+ create mode 100644 drivers/cpuidle/cpuidle-riscv.c
+
+diff --git a/drivers/cpuidle/Kconfig b/drivers/cpuidle/Kconfig
+index 88727b7c0..410973adf 100644
+--- a/drivers/cpuidle/Kconfig
++++ b/drivers/cpuidle/Kconfig
+@@ -62,6 +62,11 @@ depends on PPC
+ source "drivers/cpuidle/Kconfig.powerpc"
+ endmenu
+ 
++menu "RISCV CPU Idle Drivers"
++depends on RISCV
++source "drivers/cpuidle/Kconfig.riscv"
++endmenu
++
+ config HALTPOLL_CPUIDLE
+        tristate "Halt poll cpuidle driver"
+        depends on X86 && KVM_GUEST
+diff --git a/drivers/cpuidle/Kconfig.riscv b/drivers/cpuidle/Kconfig.riscv
+new file mode 100644
+index 000000000..03e601b69
+--- /dev/null
++++ b/drivers/cpuidle/Kconfig.riscv
+@@ -0,0 +1,14 @@
++# SPDX-License-Identifier: GPL-2.0-only
++#
++# RISCV CPU Idle drivers
++#
++config RISCV_CPUIDLE
++        bool "Generic RISCV CPU idle Driver"
++        select DT_IDLE_STATES
++	select CPU_IDLE_MULTIPLE_DRIVERS
++        help
++          Select this to enable generic cpuidle driver for RISCV.
++          It provides a generic idle driver whose idle states are configured
++          at run-time through DT nodes. The CPUidle suspend backend is
++          initialized by calling the CPU operations init idle hook
++          provided by architecture code.
+diff --git a/drivers/cpuidle/Makefile b/drivers/cpuidle/Makefile
+index ee70d5cc5..10fc0374b 100644
+--- a/drivers/cpuidle/Makefile
++++ b/drivers/cpuidle/Makefile
+@@ -22,6 +22,7 @@ obj-$(CONFIG_ARM_AT91_CPUIDLE)          += cpuidle-at91.o
+ obj-$(CONFIG_ARM_EXYNOS_CPUIDLE)        += cpuidle-exynos.o
+ obj-$(CONFIG_ARM_CPUIDLE)		+= cpuidle-arm.o
+ obj-$(CONFIG_ARM_PSCI_CPUIDLE)		+= cpuidle-psci.o
++obj-$(CONFIG_RISCV_CPUIDLE)		+= cpuidle-riscv.o
+ 
+ ###############################################################################
+ # MIPS drivers
+diff --git a/drivers/cpuidle/cpuidle-riscv.c b/drivers/cpuidle/cpuidle-riscv.c
+new file mode 100644
+index 000000000..16fe74ffe
+--- /dev/null
++++ b/drivers/cpuidle/cpuidle-riscv.c
+@@ -0,0 +1,100 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ *
++ * RISCV generic CPU idle driver.
++ *
++ * Copyright (C) 2020 ALLWINNERTECH.
++ * Author: liush <liush@allwinnertech.com>
++ */
++
++#include <linux/cpuidle.h>
++#include <linux/cpumask.h>
++#include <linux/cpu_pm.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/slab.h>
++#include <linux/platform_device.h>
++#include <asm/cpuidle.h>
++#include <asm/sbi.h>
++
++#include "dt_idle_states.h"
++
++#define MAX_IDLE_STATES	2
++
++static int riscv_low_level_suspend_enter(u32 state)
++{
++	sbi_suspend(state);
++	return 0;
++}
++
++/* Actual code that puts the SoC in different idle states */
++static int riscv_enter_idle(struct cpuidle_device *dev,
++			struct cpuidle_driver *drv,
++			       int index)
++{
++	int state = 1;
++	return CPU_PM_CPU_IDLE_ENTER_PARAM(riscv_low_level_suspend_enter,
++					   index, state);
++}
++
++static struct cpuidle_driver riscv_idle_driver = {
++	.name			= "riscv_idle",
++	.owner			= THIS_MODULE,
++	.states[0]		= {
++		.enter			= riscv_enter_idle,
++		.exit_latency		= 1,
++		.target_residency	= 1,
++		.name			= "WFI",
++		.desc			= "RISCV WFI",
++	},
++	.state_count = MAX_IDLE_STATES,
++};
++
++static const struct of_device_id riscv_idle_state_match[] __initconst = {
++	{ .compatible = "riscv,idle-state",
++	  .data = riscv_enter_idle},
++	{ },
++};
++
++/* Initialize CPU idle by registering the idle states */
++static int riscv_cpuidle_probe(struct platform_device *dev)
++{
++	int ret;
++	struct cpuidle_driver *drv;
++
++	drv = kmemdup(&riscv_idle_driver, sizeof(*drv), GFP_KERNEL);
++	if (!drv)
++		return -ENOMEM;
++	drv->cpumask = (struct cpumask *)cpumask_of(0);
++
++	ret = dt_init_idle_driver(drv, riscv_idle_state_match, 1);
++	if (ret <= 0) {
++		ret = ret ? : -ENODEV;
++		goto out_kfree_drv;
++	}
++
++	ret = cpuidle_register(drv, NULL);
++	if (ret)
++		goto out_kfree_drv;
++
++	return 0;
++
++out_kfree_drv:
++	kfree(drv);
++	return ret;
++}
++
++const static struct of_device_id riscv_idle_device_ids[] = {
++	{.compatible = "riscv,idle"},
++	{},
++};
++
++static struct platform_driver riscv_cpuidle_driver = {
++	.driver = {
++		.name = "idle",
++		.of_match_table = riscv_idle_device_ids,
++	},
++	.probe = riscv_cpuidle_probe,
++};
++builtin_platform_driver(riscv_cpuidle_driver);
+diff --git a/drivers/cpuidle/cpuidle.c b/drivers/cpuidle/cpuidle.c
+index 29d2d7a21..4b5ea6d09 100644
+--- a/drivers/cpuidle/cpuidle.c
++++ b/drivers/cpuidle/cpuidle.c
+@@ -194,7 +194,7 @@ int cpuidle_enter_s2idle(struct cpuidle_driver *drv, struct cpuidle_device *dev)
+  * @drv: cpuidle driver for this cpu
+  * @index: index into the states table in @drv of the state to enter
+  */
+-int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
++int __nocfi cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
+ 			int index)
+ {
+ 	int entered_state;
+-- 
+2.17.1
+

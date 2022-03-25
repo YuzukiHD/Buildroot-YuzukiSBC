@@ -1,0 +1,2112 @@
+From 0e4ea4ccd0b47508ee9c173af190d31a61b2191c Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:26:29 +0800
+Subject: [PATCH 90/93] add sunxi basic support
+
+---
+ include/asm-generic/vmlinux.lds.h             |   9 +-
+ include/crypto/cast6.h                        |   4 +-
+ include/crypto/serpent.h                      |   4 +-
+ include/crypto/xts.h                          |   2 -
+ include/dt-bindings/clock/sun50i-a100-ccu.h   | 116 ++++++++++
+ include/dt-bindings/clock/sun50i-a100-r-ccu.h |  23 ++
+ include/dt-bindings/clock/sun50iw10-ccu.h     | 155 ++++++++++++++
+ include/dt-bindings/clock/sun50iw10-r-ccu.h   |  25 +++
+ include/dt-bindings/clock/sun50iw10-rtc.h     |  15 ++
+ include/dt-bindings/clock/sun50iw12-ccu.h     | 145 +++++++++++++
+ include/dt-bindings/clock/sun50iw12-r-ccu.h   |  32 +++
+ include/dt-bindings/clock/sun50iw12-rtc.h     |  15 ++
+ include/dt-bindings/clock/sun50iw9-ccu-rtc.h  |  15 ++
+ include/dt-bindings/clock/sun50iw9-ccu.h      | 150 +++++++++++++
+ include/dt-bindings/clock/sun50iw9-r-ccu.h    |  20 ++
+ include/dt-bindings/clock/sun55iw3-ccu.h      | 198 ++++++++++++++++++
+ include/dt-bindings/clock/sun55iw3-r-ccu.h    |  15 ++
+ include/dt-bindings/clock/sun55iw3-rtc.h      |  21 ++
+ include/dt-bindings/clock/sun8iw20-ccu.h      | 160 ++++++++++++++
+ include/dt-bindings/clock/sun8iw20-r-ccu.h    |  21 ++
+ include/dt-bindings/clock/sun8iw20-rtc.h      |  21 ++
+ include/dt-bindings/gpio/sun4i-gpio.h         |  25 +++
+ include/dt-bindings/power/r528-power.h        |   9 +
+ include/dt-bindings/power/tv303-power.h       |  11 +
+ include/dt-bindings/reset/sun50i-a100-ccu.h   |  68 ++++++
+ include/dt-bindings/reset/sun50i-a100-r-ccu.h |  18 ++
+ include/dt-bindings/reset/sun50iw10-ccu.h     |  78 +++++++
+ include/dt-bindings/reset/sun50iw10-r-ccu.h   |  18 ++
+ include/dt-bindings/reset/sun50iw12-ccu.h     |  68 ++++++
+ include/dt-bindings/reset/sun50iw12-r-ccu.h   |  22 ++
+ include/dt-bindings/reset/sun50iw9-ccu.h      |  76 +++++++
+ include/dt-bindings/reset/sun50iw9-r-ccu.h    |  14 ++
+ include/dt-bindings/reset/sun55iw3-ccu.h      |  86 ++++++++
+ include/dt-bindings/reset/sun55iw3-r-ccu.h    |  25 +++
+ include/dt-bindings/reset/sun8iw20-ccu.h      |  80 +++++++
+ include/dt-bindings/reset/sun8iw20-r-ccu.h    |  16 ++
+ 36 files changed, 1773 insertions(+), 7 deletions(-)
+ create mode 100644 include/dt-bindings/clock/sun50i-a100-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun50i-a100-r-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun50iw10-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun50iw10-r-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun50iw10-rtc.h
+ create mode 100644 include/dt-bindings/clock/sun50iw12-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun50iw12-r-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun50iw12-rtc.h
+ create mode 100644 include/dt-bindings/clock/sun50iw9-ccu-rtc.h
+ create mode 100644 include/dt-bindings/clock/sun50iw9-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun50iw9-r-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun55iw3-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun55iw3-r-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun55iw3-rtc.h
+ create mode 100644 include/dt-bindings/clock/sun8iw20-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun8iw20-r-ccu.h
+ create mode 100644 include/dt-bindings/clock/sun8iw20-rtc.h
+ create mode 100644 include/dt-bindings/gpio/sun4i-gpio.h
+ create mode 100644 include/dt-bindings/power/r528-power.h
+ create mode 100644 include/dt-bindings/power/tv303-power.h
+ create mode 100644 include/dt-bindings/reset/sun50i-a100-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun50i-a100-r-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun50iw10-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun50iw10-r-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun50iw12-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun50iw12-r-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun50iw9-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun50iw9-r-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun55iw3-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun55iw3-r-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun8iw20-ccu.h
+ create mode 100644 include/dt-bindings/reset/sun8iw20-r-ccu.h
+
+diff --git a/include/asm-generic/vmlinux.lds.h b/include/asm-generic/vmlinux.lds.h
+index f050039ca..ef257c136 100644
+--- a/include/asm-generic/vmlinux.lds.h
++++ b/include/asm-generic/vmlinux.lds.h
+@@ -63,11 +63,15 @@
+  * .data. We don't want to pull in .data..other sections, which Linux
+  * has defined. Same for text and bss.
+  *
++ * With LTO_CLANG, the linker also splits sections by default, so we need
++ * these macros to combine the sections during the final link.
++ *
+  * RODATA_MAIN is not used because existing code already defines .rodata.x
+  * sections to be brought in with rodata.
+  */
+-#ifdef CONFIG_LD_DEAD_CODE_DATA_ELIMINATION
++#if defined(CONFIG_LD_DEAD_CODE_DATA_ELIMINATION) || defined(CONFIG_LTO_CLANG)
+ #define TEXT_MAIN .text .text.[0-9a-zA-Z_]*
++#define TEXT_CFI_MAIN .text.[0-9a-zA-Z_]*.cfi
+ #define DATA_MAIN .data .data.[0-9a-zA-Z_]* .data..LPBX*
+ #define SDATA_MAIN .sdata .sdata.[0-9a-zA-Z_]*
+ #define RODATA_MAIN .rodata .rodata.[0-9a-zA-Z_]*
+@@ -75,6 +79,7 @@
+ #define SBSS_MAIN .sbss .sbss.[0-9a-zA-Z_]*
+ #else
+ #define TEXT_MAIN .text
++#define TEXT_CFI_MAIN .text.cfi
+ #define DATA_MAIN .data
+ #define SDATA_MAIN .sdata
+ #define RODATA_MAIN .rodata
+@@ -521,7 +526,9 @@
+ #define TEXT_TEXT							\
+ 		ALIGN_FUNCTION();					\
+ 		*(.text.hot TEXT_MAIN .text.fixup .text.unlikely)	\
++		*(TEXT_CFI_MAIN)					\
+ 		*(.text..refcount)					\
++		*(.text..ftrace)					\
+ 		*(.ref.text)						\
+ 	MEM_KEEP(init.text*)						\
+ 	MEM_KEEP(exit.text*)						\
+diff --git a/include/crypto/cast6.h b/include/crypto/cast6.h
+index c71f6ef47..4c8d0c72f 100644
+--- a/include/crypto/cast6.h
++++ b/include/crypto/cast6.h
+@@ -19,7 +19,7 @@ int __cast6_setkey(struct cast6_ctx *ctx, const u8 *key,
+ 		   unsigned int keylen, u32 *flags);
+ int cast6_setkey(struct crypto_tfm *tfm, const u8 *key, unsigned int keylen);
+ 
+-void __cast6_encrypt(struct cast6_ctx *ctx, u8 *dst, const u8 *src);
+-void __cast6_decrypt(struct cast6_ctx *ctx, u8 *dst, const u8 *src);
++void __cast6_encrypt(const void *ctx, u8 *dst, const u8 *src);
++void __cast6_decrypt(const void *ctx, u8 *dst, const u8 *src);
+ 
+ #endif
+diff --git a/include/crypto/serpent.h b/include/crypto/serpent.h
+index 7dd780c5d..75c7eaa20 100644
+--- a/include/crypto/serpent.h
++++ b/include/crypto/serpent.h
+@@ -22,7 +22,7 @@ int __serpent_setkey(struct serpent_ctx *ctx, const u8 *key,
+ 		     unsigned int keylen);
+ int serpent_setkey(struct crypto_tfm *tfm, const u8 *key, unsigned int keylen);
+ 
+-void __serpent_encrypt(struct serpent_ctx *ctx, u8 *dst, const u8 *src);
+-void __serpent_decrypt(struct serpent_ctx *ctx, u8 *dst, const u8 *src);
++void __serpent_encrypt(const void *ctx, u8 *dst, const u8 *src);
++void __serpent_decrypt(const void *ctx, u8 *dst, const u8 *src);
+ 
+ #endif
+diff --git a/include/crypto/xts.h b/include/crypto/xts.h
+index 75fd96ff9..15ae7fdc0 100644
+--- a/include/crypto/xts.h
++++ b/include/crypto/xts.h
+@@ -8,8 +8,6 @@
+ 
+ #define XTS_BLOCK_SIZE 16
+ 
+-#define XTS_TWEAK_CAST(x) ((void (*)(void *, u8*, const u8*))(x))
+-
+ static inline int xts_check_key(struct crypto_tfm *tfm,
+ 				const u8 *key, unsigned int keylen)
+ {
+diff --git a/include/dt-bindings/clock/sun50i-a100-ccu.h b/include/dt-bindings/clock/sun50i-a100-ccu.h
+new file mode 100644
+index 000000000..28dc36e1a
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50i-a100-ccu.h
+@@ -0,0 +1,116 @@
++/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
++/*
++ * Copyright (c) 2020 Yangtao Li <frank@allwinnertech.com>
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50I_A100_H_
++#define _DT_BINDINGS_CLK_SUN50I_A100_H_
++
++#define CLK_PLL_PERIPH0		3
++
++#define CLK_CPUX		24
++
++#define CLK_APB1		29
++
++#define CLK_MBUS		31
++#define CLK_DE			32
++#define CLK_BUS_DE		33
++#define CLK_G2D			34
++#define CLK_BUS_G2D		35
++#define CLK_GPU			36
++#define CLK_BUS_GPU		37
++#define CLK_CE			38
++#define CLK_BUS_CE		39
++#define CLK_VE			40
++#define CLK_BUS_VE		41
++#define CLK_BUS_DMA		42
++#define CLK_BUS_MSGBOX		43
++#define CLK_BUS_SPINLOCK	44
++#define CLK_BUS_HSTIMER		45
++#define CLK_AVS			46
++#define CLK_BUS_DBG		47
++#define CLK_BUS_PSI		48
++#define CLK_BUS_PWM		49
++#define CLK_BUS_IOMMU		50
++#define CLK_MBUS_DMA		51
++#define CLK_MBUS_VE		52
++#define CLK_MBUS_CE		53
++#define CLK_MBUS_NAND		54
++#define CLK_MBUS_CSI		55
++#define CLK_MBUS_ISP		56
++#define CLK_MBUS_G2D		57
++
++#define CLK_NAND0		59
++#define CLK_NAND1		60
++#define CLK_BUS_NAND		61
++#define CLK_MMC0		62
++#define CLK_MMC1		63
++#define CLK_MMC2		64
++#define CLK_MMC3		65
++#define CLK_BUS_MMC0		66
++#define CLK_BUS_MMC1		67
++#define CLK_BUS_MMC2		68
++#define CLK_BUS_UART0		69
++#define CLK_BUS_UART1		70
++#define CLK_BUS_UART2		71
++#define CLK_BUS_UART3		72
++#define CLK_BUS_UART4		73
++#define CLK_BUS_I2C0		74
++#define CLK_BUS_I2C1		75
++#define CLK_BUS_I2C2		76
++#define CLK_BUS_I2C3		77
++#define CLK_SPI0		78
++#define CLK_SPI1		79
++#define CLK_SPI2		80
++#define CLK_BUS_SPI0		81
++#define CLK_BUS_SPI1		82
++#define CLK_BUS_SPI2		83
++#define CLK_EMAC_25M		84
++#define CLK_BUS_EMAC		85
++#define CLK_IR_RX		86
++#define CLK_BUS_IR_RX		87
++#define CLK_IR_TX		88
++#define CLK_BUS_IR_TX		89
++#define CLK_BUS_GPADC		90
++#define CLK_BUS_THS		91
++#define CLK_I2S0		92
++#define CLK_I2S1		93
++#define CLK_I2S2		94
++#define CLK_I2S3		95
++#define CLK_BUS_I2S0		96
++#define CLK_BUS_I2S1		97
++#define CLK_BUS_I2S2		98
++#define CLK_BUS_I2S3		99
++#define CLK_SPDIF		100
++#define CLK_BUS_SPDIF		101
++#define CLK_DMIC		102
++#define CLK_BUS_DMIC		103
++#define CLK_AUDIO_DAC		104
++#define CLK_AUDIO_ADC		105
++#define CLK_AUDIO_4X		106
++#define CLK_BUS_AUDIO_CODEC	107
++#define CLK_USB_OHCI0		108
++#define CLK_USB_PHY0		109
++#define CLK_USB_OHCI1		110
++#define CLK_USB_PHY1		111
++#define CLK_BUS_OHCI0		112
++#define CLK_BUS_OHCI1		113
++#define CLK_BUS_EHCI0		114
++#define CLK_BUS_EHCI1		115
++#define CLK_BUS_OTG		116
++#define CLK_BUS_LRADC		117
++#define CLK_BUS_DPSS_TOP0	118
++#define CLK_BUS_DPSS_TOP1	119
++#define CLK_MIPI_DSI		120
++#define CLK_BUS_MIPI_DSI	121
++#define CLK_TCON_LCD		122
++#define CLK_BUS_TCON_LCD	123
++#define CLK_LEDC		124
++#define CLK_BUS_LEDC		125
++#define CLK_CSI_TOP		126
++#define CLK_CSI0_MCLK		127
++#define CLK_CSI1_MCLK		128
++#define CLK_BUS_CSI		129
++#define CLK_CSI_ISP		130
++
++#endif /* _DT_BINDINGS_CLK_SUN50I_A100_H_ */
+diff --git a/include/dt-bindings/clock/sun50i-a100-r-ccu.h b/include/dt-bindings/clock/sun50i-a100-r-ccu.h
+new file mode 100644
+index 000000000..07312e726
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50i-a100-r-ccu.h
+@@ -0,0 +1,23 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2020 Yangtao Li <frank@allwinnertech.com>
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50I_A100_R_CCU_H_
++#define _DT_BINDINGS_CLK_SUN50I_A100_R_CCU_H_
++
++#define CLK_R_APB1		2
++
++#define CLK_R_APB1_TIMER	4
++#define CLK_R_APB1_TWD		5
++#define CLK_R_APB1_PWM		6
++#define CLK_R_APB1_BUS_PWM	7
++#define CLK_R_APB1_PPU		8
++#define CLK_R_APB2_UART		9
++#define CLK_R_APB2_I2C0		10
++#define CLK_R_APB2_I2C1		11
++#define CLK_R_APB1_IR		12
++#define CLK_R_APB1_BUS_IR	13
++#define CLK_R_AHB_BUS_RTC	14
++
++#endif /* _DT_BINDINGS_CLK_SUN50I_A100_R_CCU_H_ */
+diff --git a/include/dt-bindings/clock/sun50iw10-ccu.h b/include/dt-bindings/clock/sun50iw10-ccu.h
+new file mode 100644
+index 000000000..7bea3904e
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50iw10-ccu.h
+@@ -0,0 +1,155 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50IW10_H_
++#define _DT_BINDINGS_CLK_SUN50IW10_H_
++
++#define CLK_OSC12M		0
++#define CLK_PLL_CPUX		1
++#define CLK_PLL_DDR0		2
++#define CLK_PLL_PERIPH0		3
++#define CLK_PLL_PERIPH0_2X	4
++#define CLK_PLL_PERIPH1		5
++#define CLK_PLL_PERIPH1_2X	6
++#define CLK_PLL_GPU		7
++#define CLK_PLL_VIDEO0		8
++#define CLK_PLL_VIDEO0_2X	9
++#define CLK_PLL_VIDEO0_4X	10
++#define CLK_PLL_VIDEO1		11
++#define CLK_PLL_VIDEO1_2X	12
++#define CLK_PLL_VIDEO1_4X	13
++#define CLK_PLL_VIDEO2		14
++#define CLK_PLL_VIDEO2_2X	15
++#define CLK_PLL_VIDEO2_4X	16
++#define CLK_PLL_VIDEO3		17
++#define CLK_PLL_VIDEO3_2X	18
++#define CLK_PLL_VIDEO3_4X	19
++#define CLK_PLL_VE		20
++#define CLK_PLL_COM		21
++#define CLK_PLL_COM_AUDIO	22
++#define CLK_PLL_AUDIO		23
++#define CLK_CPUX		24
++#define CLK_AXI			25
++#define CLK_CPUX_APB		26
++#define CLK_PSI_AHB1_AHB2	27
++#define CLK_AHB3		28
++#define CLK_APB1		29
++#define CLK_APB2		30
++#define CLK_MBUS		31
++#define CLK_DE0			32
++#define CLK_DE1			33
++#define CLK_BUS_DE0		34
++#define CLK_BUS_DE1		35
++#define CLK_EINK		36
++#define CLK_BUS_EINK		37
++#define CLK_G2D			38
++#define CLK_BUS_G2D		39
++#define CLK_EINK_PANEL		40
++#define CLK_GPU			41
++#define CLK_BUS_GPU		42
++#define CLK_CE			43
++#define CLK_BUS_CE		44
++#define CLK_VE			45
++#define CLK_BUS_VE		46
++#define CLK_BUS_DMA		47
++#define CLK_BUS_MSGBOX		48
++#define CLK_BUS_SPINLOCK	49
++#define CLK_BUS_HSTIMER		50
++#define CLK_AVS			51
++#define CLK_BUS_DBG		52
++#define CLK_BUS_PSI		53
++#define CLK_BUS_PWM		54
++#define CLK_BUS_IOMMU		55
++#define CLK_MBUS_DMA		56
++#define CLK_MBUS_VE		57
++#define CLK_MBUS_CE		58
++#define CLK_MBUS_NAND		59
++#define CLK_MBUS_CSI		60
++#define CLK_MBUS_ISP		61
++#define CLK_MBUS_G2D		62
++#define CLK_BUS_DRAM		63
++#define CLK_NAND0		64
++#define CLK_NAND1		65
++#define CLK_BUS_NAND		66
++#define CLK_MMC0		67
++#define CLK_MMC1		68
++#define CLK_MMC2		69
++#define CLK_MMC3		70
++#define CLK_BUS_MMC0		71
++#define CLK_BUS_MMC1		72
++#define CLK_BUS_MMC2		73
++#define CLK_BUS_MMC3		74
++#define CLK_BUS_UART0		75
++#define CLK_BUS_UART1		76
++#define CLK_BUS_UART2		77
++#define CLK_BUS_UART3		78
++#define CLK_BUS_UART4		79
++#define CLK_BUS_UART5		80
++#define CLK_BUS_UART6		81
++#define CLK_BUS_I2C0		82
++#define CLK_BUS_I2C1		83
++#define CLK_BUS_I2C2		84
++#define CLK_BUS_I2C3		85
++#define CLK_BUS_I2C4		86
++#define CLK_BUS_I2C5		87
++#define CLK_SPI0		88
++#define CLK_SPI1		89
++#define CLK_SPI2		90
++#define CLK_BUS_SPI0		91
++#define CLK_BUS_SPI1		92
++#define CLK_BUS_SPI2		93
++#define CLK_EMAC0_25M		94
++#define CLK_EMAC1_25M		95
++#define CLK_BUS_EMAC0		96
++#define CLK_BUS_EMAC1		97
++#define CLK_IR_RX		98
++#define CLK_BUS_IR_RX		99
++#define CLK_IR_TX		100
++#define CLK_BUS_IR_TX		101
++#define CLK_BUS_GPADC		102
++#define CLK_BUS_THS		103
++#define CLK_I2S0		104
++#define CLK_I2S1		105
++#define CLK_I2S2		106
++#define CLK_I2S3		107
++#define CLK_BUS_I2S0		108
++#define CLK_BUS_I2S1		109
++#define CLK_BUS_I2S2		110
++#define CLK_BUS_I2S3		111
++#define CLK_SPDIF		112
++#define CLK_BUS_SPDIF		113
++#define CLK_DMIC		114
++#define CLK_BUS_DMIC		115
++#define CLK_AUDIO_DAC		116
++#define CLK_AUDIO_ADC		117
++#define CLK_AUDIO_4X		118
++#define CLK_BUS_AUDIO_CODEC	119
++#define CLK_USB_OHCI0		120
++#define CLK_USB_PHY0		121
++#define CLK_USB_OHCI1		122
++#define CLK_USB_PHY1		123
++#define CLK_BUS_OHCI0		124
++#define CLK_BUS_OHCI1		125
++#define CLK_BUS_EHCI0		126
++#define CLK_BUS_EHCI1		127
++#define CLK_BUS_OTG		128
++#define CLK_BUS_LRADC		129
++#define CLK_BUS_DPSS_TOP0	130
++#define CLK_BUS_DPSS_TOP1	131
++#define CLK_MIPI_DSI		132
++#define CLK_BUS_MIPI_DSI	133
++#define CLK_TCON_LCD0		134
++#define CLK_TCON_LCD1		135
++#define CLK_BUS_TCON_LCD0	136
++#define CLK_BUS_TCON_LCD1	137
++#define CLK_LEDC		138
++#define CLK_BUS_LEDC		139
++#define CLK_CSI_TOP		140
++#define CLK_CSI0_MCLK		141
++#define CLK_CSI1_MCLK		142
++#define CLK_BUS_CSI		143
++#define CLK_CSI_ISP		144
++
++#endif /* _DT_BINDINGS_CLK_SUN50IW10_H_ */
+diff --git a/include/dt-bindings/clock/sun50iw10-r-ccu.h b/include/dt-bindings/clock/sun50iw10-r-ccu.h
+new file mode 100644
+index 000000000..22d47e003
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50iw10-r-ccu.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50IW10_R_CCU_H_
++#define _DT_BINDINGS_CLK_SUN50IW10_R_CCU_H_
++
++#define CLK_CPUS		0
++#define CLK_R_AHB		1
++#define CLK_R_APB1		2
++#define CLK_R_APB2		3
++#define CLK_R_APB1_TIMER	4
++#define CLK_R_APB1_TWD		5
++#define CLK_R_APB1_PWM		6
++#define CLK_R_APB1_BUS_PWM	7
++#define CLK_R_APB1_PPU		8
++#define CLK_R_APB2_UART		9
++#define CLK_R_APB2_I2C0		10
++#define CLK_R_APB2_I2C1		11
++#define CLK_R_APB1_IR		12
++#define CLK_R_APB1_BUS_IR	13
++#define CLK_R_AHB_BUS_RTC	14
++
++#endif /* _DT_BINDINGS_CLK_SUN50IW10_R_CCU_H_ */
+diff --git a/include/dt-bindings/clock/sun50iw10-rtc.h b/include/dt-bindings/clock/sun50iw10-rtc.h
+new file mode 100644
+index 000000000..f70614507
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50iw10-rtc.h
+@@ -0,0 +1,15 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2020 wuyan@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50IW10_RTC_H_
++#define _DT_BINDINGS_CLK_SUN50IW10_RTC_H_
++
++#define CLK_DCXO24M_OUT			0
++#define CLK_IOSC			1
++#define CLK_OSC32K			2
++#define CLK_OSC32K_OUT			3
++#define CLK_RTC_1K			4
++
++#endif /* _DT_BINDINGS_CLK_SUN50IW10_RTC_H_ */
+diff --git a/include/dt-bindings/clock/sun50iw12-ccu.h b/include/dt-bindings/clock/sun50iw12-ccu.h
+new file mode 100644
+index 000000000..00152437d
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50iw12-ccu.h
+@@ -0,0 +1,145 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50IW12_H_
++#define _DT_BINDINGS_CLK_SUN50IW12_H_
++
++#define	CLK_OSC12M		0
++#define	CLK_PLL_CPUX		1
++#define	CLK_PLL_DDR0		2
++#define	CLK_PLL_PERIPH0		3
++#define	CLK_PLL_PERIPH0_2X	4
++#define	CLK_PLL_PERIPH1		5
++#define	CLK_PLL_PERIPH1_2X	6
++#define	CLK_PLL_GPU		7
++#define	CLK_PLL_VIDEO0		8
++#define	CLK_PLL_VIDEO0_4X	9
++#define	CLK_PLL_VIDEO1		10
++#define	CLK_PLL_VIDEO1_4X	11
++#define	CLK_PLL_VIDEO2		12
++#define	CLK_PLL_VIDEO2_4X	13
++#define	CLK_PLL_VE		14
++#define	CLK_PLL_ADC		15
++#define	CLK_PLL_VIDEO3		16
++#define	CLK_PLL_VIDEO3_4X	17
++#define	CLK_PLL_AUDIO		18
++#define	CLK_CPUX		19
++#define	CLK_AXI			20
++#define	CLK_CPUX_APB		21
++#define	CLK_AHB			22
++#define	CLK_APB0		23
++#define	CLK_APB1		24
++#define	CLK_MBUS		25
++#define	CLK_MIPS		26
++#define	CLK_BUS_MIPS		27
++#define	CLK_GPU			28
++#define	CLK_BUS_GPU		29
++#define	CLK_CE			30
++#define	CLK_BUS_CE		31
++#define	CLK_VE_CORE		32
++#define	CLK_BUS_VE		33
++#define	CLK_BUS_AV1		34
++#define	CLK_BUS_VE3		35
++#define	CLK_BUS_DMA		36
++#define	CLK_MSGBOX		37
++#define	CLK_SPINLOCK		38
++#define	CLK_TIMER0		39
++#define	CLK_TIMER1		40
++#define	CLK_TIMER2		41
++#define	CLK_TIMER3		42
++#define	CLK_TIMER4		43
++#define	CLK_TIMER5		44
++#define	CLK_BUS_TIMER0		45
++#define	CLK_BUS_DBG		46
++#define	CLK_BUS_PWM		47
++#define	CLK_BUS_IOMMU		48
++#define	CLK_DRAM		49
++#define	CLK_MBUS_DMA		50
++#define	CLK_MBUS_VE3		51
++#define	CLK_MBUS_CE		52
++#define	CLK_MBUS_AV1		53
++#define	CLK_MBUS_NAND		54
++#define	CLK_BUS_DRAM		55
++#define	CLK_NAND0		56
++#define	CLK_NAND1		57
++#define	CLK_BUS_NAND		58
++#define	CLK_MMC0		59
++#define	CLK_MMC1		60
++#define	CLK_MMC2		61
++#define	CLK_BUS_MMC0		62
++#define	CLK_BUS_MMC1		63
++#define	CLK_BUS_MMC2		64
++#define	CLK_BUS_UART0		65
++#define	CLK_BUS_UART1		66
++#define	CLK_BUS_UART2		67
++#define	CLK_BUS_UART3		68
++#define	CLK_BUS_I2C0		69
++#define	CLK_BUS_I2C1		70
++#define	CLK_BUS_I2C2		71
++#define	CLK_BUS_I2C3		72
++#define	CLK_SPI0		73
++#define	CLK_SPI1		74
++#define	CLK_BUS_SPI0		75
++#define	CLK_BUS_SPI1		76
++#define	CLK_EMAC_25M		77
++#define	CLK_BUS_EMAC		78
++#define	CLK_BUS_GPADC		79
++#define	CLK_BUS_THS		80
++#define	CLK_I2S0		81
++#define	CLK_I2S1		82
++#define	CLK_I2S2		83
++#define	CLK_BUS_I2S0		84
++#define	CLK_BUS_I2S1		85
++#define	CLK_BUS_I2S2		86
++#define	CLK_SPDIF0_RX		87
++#define	CLK_SPDIF0_TX		88
++#define	CLK_SPDIF1_RX		89
++#define	CLK_SPDIF1_TX		90
++#define	CLK_BUS_SPDIF0		91
++#define	CLK_BUS_SPDIF1		92
++#define	CLK_AUDIO_HUB		93
++#define	CLK_AUDIO_CODEC_DAC	94
++#define	CLK_AUDIO_CODEC_ADC	95
++#define	CLK_BUS_AUDIO_CODEC	96
++#define	CLK_USB_OHCI0		97
++#define	CLK_USB_OHCI1		98
++#define	CLK_USB_OHCI2		99
++#define	CLK_BUS_OHCI0		100
++#define	CLK_BUS_OHCI1		101
++#define	CLK_BUS_OHCI2		102
++#define	CLK_BUS_EHCI0		103
++#define	CLK_BUS_EHCI1		104
++#define	CLK_BUS_EHCI2		105
++#define	CLK_BUS_OTG		106
++#define	CLK_BUS_LRADC		107
++#define	CLK_ADC			108
++#define	CLK_DTMB_120M		109
++#define	CLK_TVFE_1296M		110
++#define	CLK_I2H			111
++#define	CLK_CIP_TSX		112
++#define	CLK_CIP_MCX		113
++#define	CLK_CIP_TSP		114
++#define	CLK_TSA_TSP		115
++#define	CLK_CIP27		116
++#define	CLK_CIP_MTS0		117
++#define	CLK_AUDIO_CPU		118
++#define	CLK_AUDIO_UMAC		119
++#define	CLK_AUDIO_IHB		120
++#define	CLK_TSA432		121
++#define	CLK_MPG0		122
++#define	CLK_MPG1		123
++#define	CLK_BUS_DEMOD		124
++#define	CLK_TCD3		125
++#define	CLK_VINCAP_DMA		126
++#define	CLK_BUS_HDMI_AUDIO	127
++#define	CLK_BUS_CAP_300M	128
++#define	CLK_HDMI_AUDIO		129
++#define	CLK_BUS_TVCAP		130
++#define	CLK_DEINT		131
++#define	CLK_SVP_DTL		132
++#define	CLK_AFBD		133
++#define	CLK_BUS_DISP		134
++
++#endif /* _DT_BINDINGS_CLK_SUN50IW12_H_ */
+diff --git a/include/dt-bindings/clock/sun50iw12-r-ccu.h b/include/dt-bindings/clock/sun50iw12-r-ccu.h
+new file mode 100644
+index 000000000..bb3b4f194
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50iw12-r-ccu.h
+@@ -0,0 +1,32 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50IW12_R_CCU_H_
++#define _DT_BINDINGS_CLK_SUN50IW12_R_CCU_H_
++
++#define	CLK_CPUS		0
++#define	CLK_R_AHB		1
++#define	CLK_R_APB0		2
++#define	CLK_R_APB1		3
++#define	CLK_R_APB0_TIMER0	4
++#define	CLK_R_APB0_TIMER1	5
++#define	CLK_R_APB0_TIMER2	6
++#define CLK_R_APB0_BUS_TIMER0	7
++#define	CLK_R_APB0_EDID		8
++#define	CLK_R_APB0_BUS_WDT1	9
++#define	CLK_R_APB0_PWM		10
++#define	CLK_R_APB0_BUS_PWM	11
++#define	CLK_R_APB1_BUS_UART	12
++#define	CLK_R_APB1_BUS_I2C0	13
++#define	CLK_R_APB1_BUS_I2C1	14
++#define	CLK_R_APB1_BUS_PPU	15
++#define	CLK_R_APB1_BUS_TZMA	16
++#define	CLK_R_CPUS_BUS_BIST	17
++#define	CLK_R_APB0_IR		18
++#define	CLK_R_APB0_BUS_IR	19
++#define	CLK_R_AHB_BUS_RTC	20
++#define	CLK_R_AHB_BUS_CPUCFG	21
++
++#endif /* _DT_BINDINGS_CLK_SUN50IW12_R_CCU_H_ */
+diff --git a/include/dt-bindings/clock/sun50iw12-rtc.h b/include/dt-bindings/clock/sun50iw12-rtc.h
+new file mode 100644
+index 000000000..3e583b9bb
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50iw12-rtc.h
+@@ -0,0 +1,15 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2020 wuyan@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50IW12_RTC_H_
++#define _DT_BINDINGS_CLK_SUN50IW12_RTC_H_
++
++#define CLK_DCXO24M_OUT			0
++#define CLK_IOSC			1
++#define CLK_OSC32K			2
++#define CLK_OSC32K_OUT			3
++#define CLK_RTC_1K			4
++
++#endif /* _DT_BINDINGS_CLK_SUN50IW10_RTC_H_ */
+diff --git a/include/dt-bindings/clock/sun50iw9-ccu-rtc.h b/include/dt-bindings/clock/sun50iw9-ccu-rtc.h
+new file mode 100644
+index 000000000..c51a1451b
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50iw9-ccu-rtc.h
+@@ -0,0 +1,15 @@
++/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
++/*
++ * Copyright (C) 2020 lvda@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50IW9_CCU_RTC_H_
++#define _DT_BINDINGS_CLK_SUN50IW9_CCU_RTC_H_
++
++#define CLK_RTC_1K			0
++#define CLK_PLL_PERIPHO_2X_32K		1
++#define CLK_DCXO_32K			2
++#define CLK_DCXO_32K_OUT		3
++#define CLK_OSC32K_OUT			4
++
++#endif /* _DT_BINDINGS_CLK_SUN50IW9_RTC_H_ */
+diff --git a/include/dt-bindings/clock/sun50iw9-ccu.h b/include/dt-bindings/clock/sun50iw9-ccu.h
+new file mode 100644
+index 000000000..fb8cf490e
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50iw9-ccu.h
+@@ -0,0 +1,150 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50IW9_H_
++#define _DT_BINDINGS_CLK_SUN50IW9_H_
++
++#define CLK_OSC12M		0
++#define CLK_PLL_CPUX		1
++#define CLK_PLL_DDR0		2
++#define CLK_PLL_DDR1		3
++#define CLK_PLL_PERIPH0		4
++#define CLK_PLL_PERIPH0_2X	5
++#define CLK_PLL_PERIPH1		6
++#define CLK_PLL_PERIPH1_2X	7
++#define CLK_PLL_GPU		8
++#define CLK_PLL_VIDEO0		9
++#define CLK_PLL_VIDEO0_4X	10
++#define CLK_PLL_VIDEO1		11
++#define CLK_PLL_VIDEO1_4X	12
++#define CLK_PLL_VIDEO2		13
++#define CLK_PLL_VIDEO2_4X	14
++#define CLK_PLL_VE		15
++#define CLK_PLL_DE		16
++#define CLK_PLL_AUDIO		17
++#define CLK_PLL_AUDIO_2X	18
++#define CLK_PLL_AUDIO_4X	19
++#define CLK_PLL_CSI		20
++#define CLK_CPUX		21
++#define CLK_AXI			22
++#define CLK_CPUX_APB		23
++#define CLK_PSI_AHB1_AHB2	24
++#define CLK_AHB3		25
++#define CLK_APB1		26
++#define CLK_APB2		27
++#define CLK_MBUS		28
++#define CLK_DE			29
++#define CLK_BUS_DE		30
++#define CLK_DI			31
++#define CLK_BUS_DI		32
++#define CLK_G2D			33
++#define CLK_BUS_G2D		34
++#define CLK_GPU0		35
++#define CLK_GPU1		36
++#define CLK_BUS_GPU		37
++#define CLK_CE			38
++#define CLK_BUS_CE		39
++#define CLK_VE			40
++#define CLK_BUS_VE		41
++#define CLK_BUS_DMA		42
++#define CLK_BUS_HSTIMER		43
++#define CLK_AVS			44
++#define CLK_BUS_DBG		45
++#define CLK_BUS_PSI		46
++#define CLK_BUS_PWM		47
++#define CLK_BUS_IOMMU		48
++#define CLK_DRAM		49
++#define CLK_MBUS_DMA		50
++#define CLK_MBUS_VE		51
++#define CLK_MBUS_CE		52
++#define CLK_MBUS_TS		53
++#define CLK_MBUS_NAND		54
++#define CLK_MBUS_CSI		55
++#define CLK_MBUS_G2D		56
++#define CLK_BUS_DRAM		57
++#define CLK_NAND0		58
++#define CLK_NAND1		59
++#define CLK_BUS_NAND		60
++#define CLK_MMC0		61
++#define CLK_MMC1		62
++#define CLK_MMC2		63
++#define CLK_BUS_MMC0		64
++#define CLK_BUS_MMC1		65
++#define CLK_BUS_MMC2		66
++#define CLK_BUS_UART0		67
++#define CLK_BUS_UART1		68
++#define CLK_BUS_UART2		69
++#define CLK_BUS_UART3		70
++#define CLK_BUS_UART4		71
++#define CLK_BUS_UART5		72
++#define CLK_BUS_I2C0		73
++#define CLK_BUS_I2C1		74
++#define CLK_BUS_I2C2		75
++#define CLK_BUS_I2C3		76
++#define CLK_BUS_I2C4		77
++#define CLK_BUS_SCR		78
++#define CLK_SPI0		79
++#define CLK_SPI1		80
++#define CLK_BUS_SPI0		81
++#define CLK_BUS_SPI1		82
++#define CLK_EMAC_25M		83
++#define CLK_BUS_EMAC0		84
++#define CLK_BUS_EMAC1		85
++#define CLK_TS			86
++#define CLK_BUS_TS		87
++#define CLK_BUS_GPADC		88
++#define CLK_BUS_THS		89
++#define CLK_SPDIF		90
++#define CLK_BUS_SPDIF		91
++#define CLK_DMIC		92
++#define CLK_BUS_DMIC		93
++#define CLK_AUDIO		94
++#define CLK_AUDIO_4X		95
++#define CLK_BUS_AUDIO_CODEC	96
++#define CLK_AUDIO_HUB		97
++#define CLK_BUS_AUDIO_HUB	98
++#define CLK_USB_OHCI0		99
++#define CLK_USB_PHY0		100
++#define CLK_USB_OHCI1		101
++#define CLK_USB_PHY1		102
++#define CLK_USB_OHCI2		103
++#define CLK_USB_PHY2		104
++#define CLK_USB_OHCI3		105
++#define CLK_USB_PHY3		106
++#define CLK_BUS_OHCI0		107
++#define CLK_BUS_OHCI1		108
++#define CLK_BUS_OHCI2		109
++#define CLK_BUS_OHCI3		110
++#define CLK_BUS_EHCI0		111
++#define CLK_BUS_EHCI1		112
++#define CLK_BUS_EHCI2		113
++#define CLK_BUS_EHCI3		114
++#define CLK_BUS_OTG		115
++#define CLK_BUS_LRADC		116
++#define CLK_HDMI		117
++#define CLK_HDMI_SLOW		118
++#define CLK_PLL_PERIPH0_2X_DIV	119
++#define CLK_HDMI_CEC		120
++#define CLK_BUS_HDMI		121
++#define CLK_BUS_DISPLAY_IF_TOP	122
++#define CLK_TCON_LCD0		123
++#define CLK_TCON_LCD1		124
++#define CLK_BUS_TCON_LCD0	125
++#define CLK_BUS_TCON_LCD1	126
++#define CLK_TCON_TV0		127
++#define CLK_TCON_TV1		128
++#define CLK_BUS_TCON_TV0	129
++#define CLK_BUS_TCON_TV1	130
++#define CLK_TVE			131
++#define CLK_BUS_TVE		132
++#define CLK_BUS_TVE_TOP		133
++#define CLK_CSI_TOP		134
++#define CLK_CSI0_MCLK		135
++#define CLK_CSI1_MCLK		136
++#define CLK_BUS_CSI		137
++#define CLK_HDMI_HDCP		138
++#define CLK_BUS_HDMI_HDCP	139
++
++#endif /* _DT_BINDINGS_CLK_SUN50IW9_H_ */
+diff --git a/include/dt-bindings/clock/sun50iw9-r-ccu.h b/include/dt-bindings/clock/sun50iw9-r-ccu.h
+new file mode 100644
+index 000000000..acf2f8385
+--- /dev/null
++++ b/include/dt-bindings/clock/sun50iw9-r-ccu.h
+@@ -0,0 +1,20 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN50IW9_R_CCU_H_
++#define _DT_BINDINGS_CLK_SUN50IW9_R_CCU_H_
++
++#define CLK_R_CPUS		0
++#define CLK_R_AHB		1
++#define CLK_R_APB1		2
++#define CLK_R_APB2		3
++#define CLK_R_APB1_TWD		4
++#define CLK_R_APB2_I2C		5
++#define CLK_R_APB2_CAN		6
++#define CLK_R_APB1_IR		7
++#define CLK_R_APB1_BUS_IR	8
++#define CLK_R_AHB_BUS_RTC	9
++
++#endif /* _DT_BINDINGS_CLK_SUN50IW9_R_CCU_H_ */
+diff --git a/include/dt-bindings/clock/sun55iw3-ccu.h b/include/dt-bindings/clock/sun55iw3-ccu.h
+new file mode 100644
+index 000000000..2fbd2c85e
+--- /dev/null
++++ b/include/dt-bindings/clock/sun55iw3-ccu.h
+@@ -0,0 +1,198 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2021 liujuan1@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN55IW3_H_
++#define _DT_BINDINGS_CLK_SUN55IW3_H_
++
++#define CLK_PLL_CPU0		0
++#define CLK_PLL_DDR		1
++#define CLK_PLL_PERI0_PARENT	2
++#define CLK_PLL_PERI0_800M	3
++#define CLK_PLL_PERI0_480M	4
++#define CLK_PLL_PERI1_PARENT	5
++#define CLK_PLL_PERI1_800M	6
++#define CLK_PLL_PERI1_480M	7
++#define CLK_PLL_GPU		8
++#define CLK_PLL_VIDEO0_2X	9
++#define CLK_PLL_VIDEO0_1X	10
++#define CLK_PLL_VIDEO1_2X	11
++#define CLK_PLL_VIDEO1_1X	12
++#define CLK_PLL_VIDEO2_2X	13
++#define CLK_PLL_VIDEO2_1X	14
++#define CLK_PLL_VE		15
++#define CLK_PLL_VIDEO3_2X	16
++#define CLK_PLL_VIDEO3_1X	17
++#define CLK_PLL_NPU_2X		18
++#define CLK_PLL_NPU_1X		19
++#define CLK_CPU			20
++#define CLK_CPU_AXI		21
++#define CLK_CPU_APB		22
++#define CLK_CPU_PERI		23
++#define CLK_TRACE		24
++#define CLK_DSU_PARENTS		25
++#define CLK_AHB			26
++#define CLK_APB0		27
++#define CLK_APB1		28
++#define CLK_MBUS		29
++#define CLK_NSI			30
++#define CLK_GIC			31
++#define CLK_DE			32
++#define CLK_DE0			33
++#define CLK_DI			34
++#define CLK_BUS_DI		35
++#define CLK_G2D			36
++#define CLK_BUS_G2D		37
++#define CLK_CPU_CORE		38
++#define CLK_GPU			39
++#define CLK_CE			40
++#define CLK_CE_SYS		41
++#define CLK_BUS_CE		42
++#define CLK_VE			43
++#define CLK_BUS_VE		44
++#define CLK_NPU			45
++#define CLK_DMA			46
++#define CLK_MSGBOX1		47
++#define CLK_MSGBOX0		48
++#define CLK_SPINLOCK		49
++#define CLK_TIMER		50
++#define CLK_DBGSYS		51
++#define CLK_PWM			52
++#define CLK_IOMMU		53
++#define CLK_TIMER0		54
++#define CLK_TIMER1		55
++#define CLK_TIMER2		56
++#define CLK_TIMER3		57
++#define CLK_TIMER4		58
++#define CLK_TIMER5		59
++#define CLK_DRAM		60
++#define CLK_NAND_MBUS_GATE	61
++#define CLK_NPU_MBUS_GATE	62
++#define CLK_VID_IN_MBUS_GATE	63
++#define CLK_VID_OUT_MBUS_GATE	64
++#define CLK_CE_MBUS_GATE	65
++#define CLK_VE_MBUS_GATE	66
++#define CLK_DMA_MBUS_GATE	67
++#define CLK_BUS_DRAM		68
++#define CLK_NAND0		69
++#define CLK_NAND0_CLK0		70
++#define CLK_NAND0_CLK1		71
++#define CLK_SMHC0		72
++#define CLK_SMHC1		73
++#define CLK_SMHC2		74
++#define CLK_BUS_SMHC2		75
++#define CLK_BUS_SMHC1		76
++#define CLK_BUS_SMHC0		77
++#define CLK_SYSDAP		78
++#define CLK_UART7		79
++#define CLK_UART6		80
++#define CLK_UART5		81
++#define CLK_UART4		82
++#define CLK_UART3		83
++#define CLK_UART2		84
++#define CLK_BUS_UART1		85
++#define CLK_BUS_UART0		86
++#define CLK_TWI5		87
++#define CLK_TWI4		88
++#define CLK_TWI3		89
++#define CLK_TWI2		90
++#define CLK_TWI1		91
++#define CLK_TWI0		92
++#define CLK_CAN0		93
++#define CLK_SPI0		94
++#define CLK_SPI1		95
++#define CLK_SPI2		96
++#define CLK_SPIF		97
++#define CLK_BUS_SPIF		98
++#define CLK_BUS_SPI2		99
++#define CLK_BUS_SPI1		100
++#define CLK_BUS_SPI0		101
++#define CLK_GMAC0_25M		102
++#define CLK_GMAC0_25M_CLK_SRC	103
++#define CLK_GMAC1_25M		104
++#define CLK_GMAC1_25M_CLK_SRC	105
++#define CLK_GMAC1		106
++#define CLK_GMAC0		107
++#define CLK_IRRX		108
++#define CLK_BUS_IRRX		109
++#define CLK_IRTX		110
++#define CLK_BUS_IRTX		111
++#define CLK_GPADC_24M		112
++#define CLK_GPADC		113
++#define CLK_THS			114
++#define CLK_USB			115
++#define CLK_USB0		116
++#define CLK_USB1		117
++#define CLK_USBOTG0		118
++#define CLK_USBEHCI1		119
++#define CLK_USBEHCI0		120
++#define CLK_USBOHCI1		121
++#define CLK_USBOHCI0		122
++#define CLK_LRADC		123
++#define CLK_PCIE_REF_ALT	124
++#define CLK_PCIE_REF		125
++#define CLK_PCIE		126
++#define CLK_DPSS_TOP0		127
++#define CLK_DPSS_TOP1		128
++#define CLK_HDMI_24M		129
++#define CLK_HDMI_CEC		130
++#define CLK_HDMI		131
++#define CLK_DSI0		132
++#define CLK_DSI1		133
++#define CLK_BUS_DSI1		134
++#define CLK_BUS_DSI0		135
++#define CLK_VO0_TCONLCD0	136
++#define CLK_VO0_TCONLCD1	137
++#define CLK_VO1_TCONLCD0	138
++#define CLK_COMBPHY0		139
++#define CLK_COMBPHY1		140
++#define CLK_BUS_VO1_TCONLCD0	141
++#define CLK_BUS_VO0_TCONLCD1	142
++#define CLK_BUS_VO0_TCONLCD0	143
++#define CLK_TCONTV		144
++#define CLK_TCONTV1		145
++#define CLK_BUS_TCONTV1		146
++#define CLK_BUS_TCONTV		147
++#define CLK_LEDC		148
++#define CLK_EDP			149
++#define CLK_BUS_LEDC		150
++#define CLK_CSI			151
++#define CLK_CSI_MASTER0		152
++#define CLK_CSI_MASTER1		153
++#define CLK_CSI_MASTER2		154
++#define CLK_CSI_MASTER3		155
++#define CLK_BUS_CSI		156
++#define CLK_ISP			157
++#define CLK_DSP			158
++#define CLK_CPUS_HCLK_GATE	159
++#define CLK_SPIF_MBUS_AHB_GATE	160
++#define CLK_GMAC1_MBUS_AHB_GATE	161
++#define CLK_GMAC0_MBUS_AHB_GATE	162
++#define CLK_SMHC2_MBUS_AHB_GATE	163
++#define CLK_SMHC1_MBUS_AHB_GATE	164
++#define CLK_SMHC0_MBUS_AHB_GATE	165
++#define CLK_USB_MBUS_AHB_GATE	166
++#define CLK_GMAC1_AHB_GATE	167
++#define CLK_GMAC0_AHB_GATE	168
++#define CLK_SMHC2_AHB_GATE	169
++#define CLK_SMHC1_AHB_GATE	170
++#define CLK_SMHC0_AHB_GATE	171
++#define CLK_USB_AHB_GATE	172
++#define CLK_VID_OUT_AHB_GATE	173
++#define CLK_VID_IN_AHB_GATE	174
++#define CLK_VE_AHB_GATE		175
++#define CLK_NPU_AHB_GATE	176
++#define CLK_FANOUT_25M		177
++#define CLK_FANOUT_16M		178
++#define CLK_FANOUT_12M		179
++#define CLK_FANOUT_24M		180
++#define CLK_CLK27M_FANOUT	181
++#define CLK_CLK_FANOUT		182
++#define CLK_FANOUT2		183
++#define CLK_FANOUT1		184
++#define CLK_FANOUT0		185
++
++#define CLK_MAX_NO		CLK_FANOUT0
++
++#endif /* _DT_BINDINGS_CLK_SUN55IW3_H_ */
+diff --git a/include/dt-bindings/clock/sun55iw3-r-ccu.h b/include/dt-bindings/clock/sun55iw3-r-ccu.h
+new file mode 100644
+index 000000000..d535f8c31
+--- /dev/null
++++ b/include/dt-bindings/clock/sun55iw3-r-ccu.h
+@@ -0,0 +1,15 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2021 liujuan1@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN55IW3_R_CCU_H_
++#define _DT_BINDINGS_CLK_SUN55IW3_R_CCU_H_
++
++#define CLK_R_TIMER0		0
++#define CLK_R_TIMER1		1
++#define CLK_R_TIMER2		2
++
++#define CLK_R_MAX_NO		CLK_R_TIMER2
++
++#endif /* _DT_BINDINGS_CLK_SUN55IW3_R_CCU_H_ */
+diff --git a/include/dt-bindings/clock/sun55iw3-rtc.h b/include/dt-bindings/clock/sun55iw3-rtc.h
+new file mode 100644
+index 000000000..7fe6390a4
+--- /dev/null
++++ b/include/dt-bindings/clock/sun55iw3-rtc.h
+@@ -0,0 +1,21 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2021 liujuan1@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN55IW3_RTC_H_
++#define _DT_BINDINGS_CLK_SUN55IW3_RTC_H_
++
++#define CLK_IOSC		0
++#define CLK_EXT32K_GATE		1
++#define CLK_IOSC_DIV32K		2
++#define CLK_OSC32K		3
++#define CLK_DCXO24M_DIV32K	4
++#define CLK_RTC32K		5
++#define CLK_RTC_1K		6
++#define CLK_RTC_32K_FANOUT	7
++#define CLK_RTC_SPI		8
++
++#define CLK_RTC_MAX_NO		CLK_RTC_SPI
++
++#endif /* _DT_BINDINGS_CLK_SUN55IW3_RTC_H_ */
+diff --git a/include/dt-bindings/clock/sun8iw20-ccu.h b/include/dt-bindings/clock/sun8iw20-ccu.h
+new file mode 100644
+index 000000000..6c1ce9b32
+--- /dev/null
++++ b/include/dt-bindings/clock/sun8iw20-ccu.h
+@@ -0,0 +1,160 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2020 huangzhenwei@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN8IW20_H_
++#define _DT_BINDINGS_CLK_SUN8IW20_H_
++
++#define CLK_OSC12M		0
++#define CLK_PLL_CPUX		1
++#define CLK_PLL_DDR0		2
++#define CLK_PLL_PERIPH0_PARENT	3
++#define CLK_PLL_PERIPH0		4
++#define CLK_PLL_PERIPH0_2X	5
++#define CLK_PLL_PERIPH0_800M	6
++#define CLK_PLL_PERIPH0_DIV3	7
++#define CLK_PLL_VIDEO0		8
++#define CLK_PLL_VIDEO0_2X	9
++#define CLK_PLL_VIDEO0_4X	10
++#define CLK_PLL_VIDEO1		11
++#define CLK_PLL_VIDEO1_2X	12
++#define CLK_PLL_VIDEO1_4X	13
++#define CLK_PLL_VE		14
++#define CLK_PLL_AUDIO0		15
++#define CLK_PLL_AUDIO0_2X	16
++#define CLK_PLL_AUDIO0_4X	17
++#define CLK_PLL_AUDIO1		18
++#define CLK_PLL_AUDIO1_DIV2	19
++#define CLK_PLL_AUDIO1_DIV5	20
++#define CLK_PLL_CPUX_DIV	21
++#define CLK_CPUX		22
++#define CLK_AXI			23
++#define CLK_APB			24
++#define CLK_PSI_AHB		25
++#define CLK_APB0		26
++#define CLK_APB1		27
++#define CLK_MBUS		28
++#define CLK_DE0			29
++#define CLK_BUS_DE0		30
++#define CLK_DI			31
++#define CLK_BUS_DI		32
++#define CLK_G2D			33
++#define CLK_BUS_G2D		34
++#define CLK_CE			35
++#define CLK_BUS_CE		36
++#define CLK_VE			37
++#define CLK_BUS_VE		38
++#define CLK_BUS_DMA		39
++#define CLK_BUS_MSGBOX0		40
++#define CLK_BUS_MSGBOX1		41
++#define CLK_BUS_MSGBOX2		42
++#define CLK_BUS_SPINLOCK	43
++#define CLK_BUS_HSTIMER		44
++#define CLK_AVS			45
++#define CLK_BUS_DBG		46
++#define CLK_BUS_PWM		47
++#define CLK_BUS_IOMMU		48
++#define CLK_DRAM		49
++#define CLK_MBUS_DMA		50
++#define CLK_MBUS_VE		51
++#define CLK_MBUS_CE		52
++#define CLK_MBUS_TVIN		53
++#define CLK_MBUS_CSI		54
++#define CLK_MBUS_G2D		55
++#define CLK_BUS_DRAM		56
++#define CLK_MMC0		57
++#define CLK_MMC1		58
++#define CLK_MMC2		59
++#define CLK_BUS_MMC0		60
++#define CLK_BUS_MMC1		61
++#define CLK_BUS_MMC2		62
++#define CLK_BUS_UART0		63
++#define CLK_BUS_UART1		64
++#define CLK_BUS_UART2		65
++#define CLK_BUS_UART3		66
++#define CLK_BUS_UART4		67
++#define CLK_BUS_UART5		68
++#define CLK_BUS_I2C0		69
++#define CLK_BUS_I2C1		70
++#define CLK_BUS_I2C2		71
++#define CLK_BUS_I2C3		72
++#define CLK_BUS_CAN0		73
++#define CLK_BUS_CAN1		74
++#define CLK_SPI0		75
++#define CLK_SPI1		76
++#define CLK_BUS_SPI0		77
++#define CLK_BUS_SPI1		78
++#define CLK_EMAC0_25M		79
++#define CLK_BUS_EMAC0		80
++#define CLK_IR_TX		81
++#define CLK_BUS_IR_TX		82
++#define CLK_BUS_GPADC		83
++#define CLK_BUS_THS		84
++#define CLK_I2S0		85
++#define CLK_I2S1		86
++#define CLK_I2S2		87
++#define CLK_I2S2_ASRC		88
++#define CLK_BUS_I2S0		89
++#define CLK_BUS_I2S1		90
++#define CLK_BUS_I2S2		91
++#define CLK_SPDIF_TX		92
++#define CLK_SPDIF_RX		93
++#define CLK_BUS_SPDIF		94
++#define CLK_DMIC		95
++#define CLK_BUS_DMIC		96
++#define CLK_AUDIO_DAC		97
++#define CLK_AUDIO_ADC		98
++#define CLK_BUS_AUDIO_CODEC	99
++#define CLK_USB_OHCI0		100
++#define CLK_USB_OHCI1		101
++#define CLK_BUS_OHCI0		102
++#define CLK_BUS_OHCI1		103
++#define CLK_BUS_EHCI0		104
++#define CLK_BUS_EHCI1		105
++#define CLK_BUS_OTG		106
++#define CLK_BUS_LRADC		107
++#define CLK_BUS_DPSS_TOP0	108
++#define CLK_HDMI_24M		109
++#define CLK_HDMI_CEC		110
++#define CLK_HDMI_CEC_32K	111
++#define CLK_BUS_HDMI		112
++#define CLK_MIPI_DSI		113
++#define CLK_BUS_MIPI_DSI	114
++#define CLK_TCON_LCD0		115
++#define CLK_BUS_TCON_LCD0	116
++#define CLK_TCON_TV		117
++#define CLK_BUS_TCON_TV		118
++#define CLK_TVE			119
++#define CLK_BUS_TVE		120
++#define CLK_BUS_TVE_TOP		121
++#define CLK_TVD			122
++#define CLK_BUS_TVD		123
++#define CLK_BUS_TVD_TOP		124
++#define CLK_LEDC		125
++#define CLK_BUS_LEDC		126
++#define CLK_CSI_TOP		127
++#define CLK_CSI0_MCLK		128
++#define CLK_BUS_CSI		129
++#define CLK_TPADC		130
++#define CLK_BUS_TPADC		131
++#define CLK_BUS_TZMA		132
++#define CLK_DSP			133
++#define CLK_BUS_DSP_CFG		134
++#define CLK_RISCV		135
++#define CLK_RISCV_AXI		136
++#define CLK_BUS_RISCV_CFG	137
++#define CLK_FANOUT_24M		138
++#define CLK_FANOUT_12M		139
++#define CLK_FANOUT_16M		140
++#define CLK_FANOUT_25M		141
++#define CLK_FANOUT_32K		142
++#define CLK_FANOUT_27M		143
++#define CLK_FANOUT_PCLK		144
++#define CLK_FANOUT0_OUT		145
++#define CLK_FANOUT1_OUT		146
++#define CLK_FANOUT2_OUT		147
++
++#define CLK_MAX_NO		CLK_FANOUT2_OUT
++
++#endif /* _DT_BINDINGS_CLK_SUN8IW20_H_ */
+diff --git a/include/dt-bindings/clock/sun8iw20-r-ccu.h b/include/dt-bindings/clock/sun8iw20-r-ccu.h
+new file mode 100644
+index 000000000..9c8dcd07f
+--- /dev/null
++++ b/include/dt-bindings/clock/sun8iw20-r-ccu.h
+@@ -0,0 +1,21 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2020 huangzhenwei@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN8IW20_R_CCU_H_
++#define _DT_BINDINGS_CLK_SUN8IW20_R_CCU_H_
++
++#define CLK_R_AHB		0
++#define CLK_R_APB0		1
++#define CLK_R_APB0_TIMER	2
++#define CLK_R_APB0_TWD		3
++#define CLK_R_PPU		4
++#define CLK_R_APB0_IRRX		5
++#define CLK_R_APB0_BUS_IRRX	6
++#define CLK_R_AHB_BUS_RTC	7
++#define CLK_R_APB0_CPUCFG	8
++
++#define CLK_R_MAX_NO		CLK_R_APB0_CPUCFG
++
++#endif /* _DT_BINDINGS_CLK_SUN8IW20_R_CCU_H_ */
+diff --git a/include/dt-bindings/clock/sun8iw20-rtc.h b/include/dt-bindings/clock/sun8iw20-rtc.h
+new file mode 100644
+index 000000000..0204a1b6f
+--- /dev/null
++++ b/include/dt-bindings/clock/sun8iw20-rtc.h
+@@ -0,0 +1,21 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2020 wuyan@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_CLK_SUN8IW20_RTC_H_
++#define _DT_BINDINGS_CLK_SUN8IW20_RTC_H_
++
++#define CLK_IOSC		0
++#define CLK_EXT32K_GATE		1
++#define CLK_IOSC_DIV32K		2
++#define CLK_OSC32K		3
++#define CLK_DCXO24M_DIV32K	4
++#define CLK_RTC32K		5
++#define CLK_RTC_1K		6
++#define CLK_RTC_32K_FANOUT	7
++#define CLK_RTC_SPI		8
++
++#define CLK_RTC_MAX_NO		CLK_RTC_SPI
++
++#endif /* _DT_BINDINGS_CLK_SUN8IW20_RTC_H_ */
+diff --git a/include/dt-bindings/gpio/sun4i-gpio.h b/include/dt-bindings/gpio/sun4i-gpio.h
+new file mode 100644
+index 000000000..36181d0c9
+--- /dev/null
++++ b/include/dt-bindings/gpio/sun4i-gpio.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Author: frank@allwinner.com
++ */
++
++#ifndef __DT_SUN4I_GPIO_H
++#define __DT_SUN4I_GPIO_H
++
++/* pio */
++#define  PA	0
++#define  PB	1
++#define  PC	2
++#define  PD	3
++#define  PE	4
++#define  PF	5
++#define  PG	6
++#define  PH	7
++#define  PI	8
++
++/* r pio */
++#define  PL	0
++#define  PM	1
++#define  PN	2
++
++#endif /* __DT_SUN4I_GPIO_H */
+diff --git a/include/dt-bindings/power/r528-power.h b/include/dt-bindings/power/r528-power.h
+new file mode 100644
+index 000000000..e3de44ae7
+--- /dev/null
++++ b/include/dt-bindings/power/r528-power.h
+@@ -0,0 +1,9 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __DT_BINDINGS_POWER_R528_H__
++#define __DT_BINDINGS_POWER_R528_H__
++
++#define R528_PD_CPU		0
++#define R528_PD_VE		1
++#define R528_PD_DSP		2
++
++#endif
+diff --git a/include/dt-bindings/power/tv303-power.h b/include/dt-bindings/power/tv303-power.h
+new file mode 100644
+index 000000000..964d6a971
+--- /dev/null
++++ b/include/dt-bindings/power/tv303-power.h
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __DT_BINDINGS_POWER_TV303_H__
++#define __DT_BINDINGS_POWER_TV303_H__
++
++#define TV303_PD_GPU		0
++#define TV303_PD_TVFE		1
++#define TV303_PD_TVCAP		2
++#define TV303_PD_VE			3
++#define TV303_PD_AV1		4
++
++#endif
+diff --git a/include/dt-bindings/reset/sun50i-a100-ccu.h b/include/dt-bindings/reset/sun50i-a100-ccu.h
+new file mode 100644
+index 000000000..55c0ada99
+--- /dev/null
++++ b/include/dt-bindings/reset/sun50i-a100-ccu.h
+@@ -0,0 +1,68 @@
++/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
++/*
++ * Copyright (c) 2020 Yangtao Li <frank@allwinnertech.com>
++ */
++
++#ifndef _DT_BINDINGS_RESET_SUN50I_A100_H_
++#define _DT_BINDINGS_RESET_SUN50I_A100_H_
++
++#define RST_MBUS		0
++#define RST_BUS_DE		1
++#define RST_BUS_G2D		2
++#define RST_BUS_GPU		3
++#define RST_BUS_CE		4
++#define RST_BUS_VE		5
++#define RST_BUS_DMA		6
++#define RST_BUS_MSGBOX		7
++#define RST_BUS_SPINLOCK	8
++#define RST_BUS_HSTIMER		9
++#define RST_BUS_DBG		10
++#define RST_BUS_PSI		11
++#define RST_BUS_PWM		12
++#define RST_BUS_DRAM		13
++#define RST_BUS_NAND		14
++#define RST_BUS_MMC0		15
++#define RST_BUS_MMC1		16
++#define RST_BUS_MMC2		17
++#define RST_BUS_UART0		18
++#define RST_BUS_UART1		19
++#define RST_BUS_UART2		20
++#define RST_BUS_UART3		21
++#define RST_BUS_UART4		22
++#define RST_BUS_I2C0		23
++#define RST_BUS_I2C1		24
++#define RST_BUS_I2C2		25
++#define RST_BUS_I2C3		26
++#define RST_BUS_SPI0		27
++#define RST_BUS_SPI1		28
++#define RST_BUS_SPI2		29
++#define RST_BUS_EMAC		30
++#define RST_BUS_IR_RX		31
++#define RST_BUS_IR_TX		32
++#define RST_BUS_GPADC		33
++#define RST_BUS_THS		34
++#define RST_BUS_I2S0		35
++#define RST_BUS_I2S1		36
++#define RST_BUS_I2S2		37
++#define RST_BUS_I2S3		38
++#define RST_BUS_SPDIF		39
++#define RST_BUS_DMIC		40
++#define RST_BUS_AUDIO_CODEC	41
++#define RST_USB_PHY0		42
++#define RST_USB_PHY1		43
++#define RST_BUS_OHCI0		44
++#define RST_BUS_OHCI1		45
++#define RST_BUS_EHCI0		46
++#define RST_BUS_EHCI1		47
++#define RST_BUS_OTG		48
++#define RST_BUS_LRADC		49
++#define RST_BUS_DPSS_TOP0	50
++#define RST_BUS_DPSS_TOP1	51
++#define RST_BUS_MIPI_DSI	52
++#define RST_BUS_TCON_LCD	53
++#define RST_BUS_LVDS		54
++#define RST_BUS_LEDC		55
++#define RST_BUS_CSI		56
++#define RST_BUS_CSI_ISP		57
++
++#endif /* _DT_BINDINGS_RESET_SUN50I_A100_H_ */
+diff --git a/include/dt-bindings/reset/sun50i-a100-r-ccu.h b/include/dt-bindings/reset/sun50i-a100-r-ccu.h
+new file mode 100644
+index 000000000..737bf6f66
+--- /dev/null
++++ b/include/dt-bindings/reset/sun50i-a100-r-ccu.h
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
++/*
++ * Copyright (c) 2020 Yangtao Li <frank@allwinnertech.com>
++ */
++
++#ifndef _DT_BINDINGS_RST_SUN50I_A100_R_CCU_H_
++#define _DT_BINDINGS_RST_SUN50I_A100_R_CCU_H_
++
++#define RST_R_APB1_TIMER	0
++#define RST_R_APB1_BUS_PWM	1
++#define RST_R_APB1_PPU		2
++#define RST_R_APB2_UART		3
++#define RST_R_APB2_I2C0		4
++#define RST_R_APB2_I2C1		5
++#define RST_R_APB1_BUS_IR	6
++#define RST_R_AHB_BUS_RTC	7
++
++#endif /* _DT_BINDINGS_RST_SUN50I_A100_R_CCU_H_ */
+diff --git a/include/dt-bindings/reset/sun50iw10-ccu.h b/include/dt-bindings/reset/sun50iw10-ccu.h
+new file mode 100644
+index 000000000..a126e7398
+--- /dev/null
++++ b/include/dt-bindings/reset/sun50iw10-ccu.h
+@@ -0,0 +1,78 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (c) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RESET_SUN50IW10_H_
++#define _DT_BINDINGS_RESET_SUN50IW10_H_
++
++#define RST_MBUS		0
++#define RST_BUS_DE0		1
++#define RST_BUS_DE1		2
++#define RST_BUS_EINK		3
++#define RST_BUS_G2D		4
++#define RST_BUS_GPU		5
++#define RST_BUS_CE		6
++#define RST_BUS_VE		7
++#define RST_BUS_DMA		8
++#define RST_BUS_MSGBOX		9
++#define RST_BUS_SPINLOCK	10
++#define RST_BUS_HSTIMER		11
++#define RST_BUS_DBG		12
++#define RST_BUS_PSI		13
++#define RST_BUS_PWM		14
++#define RST_BUS_DRAM		15
++#define RST_BUS_NAND		16
++#define RST_BUS_MMC0		17
++#define RST_BUS_MMC1		18
++#define RST_BUS_MMC2		19
++#define RST_BUS_MMC3		20
++#define RST_BUS_UART0		21
++#define RST_BUS_UART1		22
++#define RST_BUS_UART2		23
++#define RST_BUS_UART3		24
++#define RST_BUS_UART4		25
++#define RST_BUS_UART5		26
++#define RST_BUS_UART6		27
++#define RST_BUS_I2C0		28
++#define RST_BUS_I2C1		29
++#define RST_BUS_I2C2		30
++#define RST_BUS_I2C3		31
++#define RST_BUS_I2C4		32
++#define RST_BUS_I2C5		33
++#define RST_BUS_SPI0		34
++#define RST_BUS_SPI1		35
++#define RST_BUS_SPI2		36
++#define RST_BUS_EMAC0		37
++#define RST_BUS_EMAC1		38
++#define RST_BUS_IR_RX		39
++#define RST_BUS_IR_TX		40
++#define RST_BUS_GPADC		41
++#define RST_BUS_THS		42
++#define RST_BUS_I2S0		43
++#define RST_BUS_I2S1		44
++#define RST_BUS_I2S2		45
++#define RST_BUS_I2S3		46
++#define RST_BUS_SPDIF		47
++#define RST_BUS_DMIC		48
++#define RST_BUS_AUDIO_CODEC	49
++#define RST_USB_PHY0		50
++#define RST_USB_PHY1		51
++#define RST_BUS_OHCI0		52
++#define RST_BUS_OHCI1		53
++#define RST_BUS_EHCI0		54
++#define RST_BUS_EHCI1		55
++#define RST_BUS_OTG		56
++#define RST_BUS_LRADC		57
++#define RST_BUS_DPSS_TOP0	58
++#define RST_BUS_DPSS_TOP1	59
++#define RST_BUS_MIPI_DSI	60
++#define RST_BUS_TCON_LCD0	61
++#define RST_BUS_TCON_LCD1	62
++#define RST_BUS_LVDS0		63
++#define RST_BUS_LVDS1		64
++#define RST_BUS_LEDC		65
++#define RST_BUS_CSI		66
++#define RST_BUS_CSI_ISP		67
++
++#endif /* _DT_BINDINGS_RESET_SUN50IW10_H_ */
+diff --git a/include/dt-bindings/reset/sun50iw10-r-ccu.h b/include/dt-bindings/reset/sun50iw10-r-ccu.h
+new file mode 100644
+index 000000000..58e4929e1
+--- /dev/null
++++ b/include/dt-bindings/reset/sun50iw10-r-ccu.h
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
++/*
++ * Copyright (C) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RST_SUN50IW10_R_CCU_H_
++#define _DT_BINDINGS_RST_SUN50IW10_R_CCU_H_
++
++#define RST_R_APB1_TIMER	0
++#define RST_R_APB1_BUS_PWM	1
++#define RST_R_APB1_PPU		2
++#define RST_R_APB2_UART		3
++#define RST_R_APB2_I2C0		4
++#define RST_R_APB2_I2C1		5
++#define RST_R_APB1_BUS_IR	6
++#define RST_R_AHB_BUS_RTC	7
++
++#endif /* _DT_BINDINGS_RST_SUN50IW10_R_CCU_H_ */
+diff --git a/include/dt-bindings/reset/sun50iw12-ccu.h b/include/dt-bindings/reset/sun50iw12-ccu.h
+new file mode 100644
+index 000000000..242e86655
+--- /dev/null
++++ b/include/dt-bindings/reset/sun50iw12-ccu.h
+@@ -0,0 +1,68 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RESET_SUN50IW12_H_
++#define _DT_BINDINGS_RESET_SUN50IW12_H_
++
++#define	RST_MBUS		0
++#define	RST_BUS_MIPS		1
++#define	RST_BUS_MIPS_COLD	2
++#define	RST_BUS_MIPS_SOFT	3
++#define	RST_BUS_GPU		4
++#define	RST_BUS_CE		5
++#define	RST_BUS_CE_SYS		6
++#define	RST_BUS_VE		7
++#define	RST_BUS_AV1		8
++#define	RST_BUS_VE3		9
++#define	RST_BUS_DMA		10
++#define	RST_BUS_MSGBOX		11
++#define	RST_BUS_SPINLOCK	12
++#define	RST_BUS_TIMER0		13
++#define	RST_BUS_DBGSYS		14
++#define	RST_BUS_PWM		15
++#define	RST_BUS_DRAM_MODULE	16
++#define	RST_BUS_DRAM		17
++#define	RST_BUS_NAND		18
++#define	RST_BUS_MMC0		19
++#define	RST_BUS_MMC1		20
++#define	RST_BUS_MMC2		21
++#define	RST_BUS_UART0		22
++#define	RST_BUS_UART1		23
++#define	RST_BUS_UART2		24
++#define	RST_BUS_UART3		25
++#define	RST_BUS_UART4		26
++#define	RST_BUS_I2C0		27
++#define	RST_BUS_I2C1		28
++#define	RST_BUS_I2C2		29
++#define	RST_BUS_I2C3		30
++#define	RST_BUS_SPI0		31
++#define	RST_BUS_SPI1		32
++#define	RST_BUS_EMAC		33
++#define	RST_BUS_GPADC		34
++#define	RST_BUS_THS		35
++#define	RST_BUS_I2S0		36
++#define	RST_BUS_I2S1		37
++#define	RST_BUS_I2S2		38
++#define	RST_BUS_SPDIF0		39
++#define	RST_BUS_SPDIF1		40
++#define	RST_BUS_AUDIO_HUB	41
++#define	RST_BUS_AUDIO_CODEC	42
++#define	RST_USB_PHY0		43
++#define	RST_USB_PHY1		44
++#define	RST_USB_PHY2		45
++#define	RST_BUS_OHCI0		46
++#define	RST_BUS_OHCI1		47
++#define	RST_BUS_OHCI2		48
++#define	RST_BUS_EHCI0		49
++#define	RST_BUS_EHCI1		50
++#define	RST_BUS_EHCI2		51
++#define	RST_BUS_OTG		52
++#define	RST_BUS_LRADC		53
++#define	RST_BUS_LVDS		54
++#define	RST_BUS_DEMOD		55
++#define	RST_BUS_TVCAP		56
++#define	RST_BUS_DISP		57
++
++#endif /* _DT_BINDINGS_RESET_SUN50IW12_H_ */
+diff --git a/include/dt-bindings/reset/sun50iw12-r-ccu.h b/include/dt-bindings/reset/sun50iw12-r-ccu.h
+new file mode 100644
+index 000000000..120e94cb5
+--- /dev/null
++++ b/include/dt-bindings/reset/sun50iw12-r-ccu.h
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
++/*
++ * Copyright (C) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RST_SUN50IW12_R_CCU_H_
++#define _DT_BINDINGS_RST_SUN50IW12_R_CCU_H_
++
++#define	RST_R_APB0_BUS_TIMER0	0
++#define	RST_R_APB0_BUS_EDID	1
++#define	RST_R_APB0_BUS_PWM	2
++#define	RST_R_APB1_BUS_UART0	3
++#define	RST_R_APB1_BUS_I2C0	4
++#define	RST_R_APB1_BUS_I2C1	5
++#define	RST_R_APB1_BUS_PPU	6
++#define	RST_R_APB0_BUS_IR_RX	7
++#define	RST_R_AHB_BUS_RTC	8
++#define	RST_R_AHB_BUS_CPUCFG	9
++#define	RST_R_MODULE		10
++
++
++#endif /* _DT_BINDINGS_RST_SUN50IW12_R_CCU_H_ */
+diff --git a/include/dt-bindings/reset/sun50iw9-ccu.h b/include/dt-bindings/reset/sun50iw9-ccu.h
+new file mode 100644
+index 000000000..81d7a892e
+--- /dev/null
++++ b/include/dt-bindings/reset/sun50iw9-ccu.h
+@@ -0,0 +1,76 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (c) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RESET_SUN50IW9_H_
++#define _DT_BINDINGS_RESET_SUN50IW9_H_
++
++#define RST_MBUS		0
++#define RST_BUS_DE		1
++#define RST_BUS_DI		2
++#define RST_BUS_G2D		3
++#define RST_BUS_GPU		4
++#define RST_BUS_CE		5
++#define RST_BUS_VE		6
++#define RST_BUS_DMA		7
++#define RST_BUS_HSTIMER		8
++#define RST_BUS_DBG		9
++#define RST_BUS_PSI		10
++#define RST_BUS_PWM		11
++#define RST_BUS_DRAM		12
++#define RST_BUS_NAND		13
++#define RST_BUS_MMC0		14
++#define RST_BUS_MMC1		15
++#define RST_BUS_MMC2		16
++#define RST_BUS_UART0		17
++#define RST_BUS_UART1		18
++#define RST_BUS_UART2		19
++#define RST_BUS_UART3		20
++#define RST_BUS_UART4		21
++#define RST_BUS_UART5		22
++#define RST_BUS_I2C0		23
++#define RST_BUS_I2C1		24
++#define RST_BUS_I2C2		25
++#define RST_BUS_I2C3		26
++#define RST_BUS_I2C4		27
++#define RST_BUS_SCR		28
++#define RST_BUS_SPI0		29
++#define RST_BUS_SPI1		30
++#define RST_BUS_EMAC0		31
++#define RST_BUS_EMAC1		32
++#define RST_BUS_TS		33
++#define RST_BUS_GPADC		34
++#define RST_BUS_THS		35
++#define RST_BUS_SPDIF		36
++#define RST_BUS_DMIC		37
++#define RST_BUS_AUDIO_CODEC	38
++#define RST_BUS_AUDIO_HUB	39
++#define RST_USB_PHY0		40
++#define RST_USB_PHY1		41
++#define RST_USB_PHY2		42
++#define RST_USB_PHY3		43
++#define RST_BUS_OHCI0		44
++#define RST_BUS_OHCI1		45
++#define RST_BUS_OHCI2		46
++#define RST_BUS_OHCI3		47
++#define RST_BUS_EHCI0		48
++#define RST_BUS_EHCI1		49
++#define RST_BUS_EHCI2		50
++#define RST_BUS_EHCI3		51
++#define RST_BUS_OTG		52
++#define RST_BUS_LRADC		53
++#define RST_BUS_HDMI_MAIN	54
++#define RST_BUS_HDMI_SUB	55
++#define RST_BUS_DISPLAY_IF_TOP	56
++#define RST_BUS_TCON_LCD0	57
++#define RST_BUS_TCON_LCD1	58
++#define RST_BUS_TCON_TV0	59
++#define RST_BUS_TCON_TV1	60
++#define RST_BUS_LVDS		61
++#define RST_BUS_TVE_TOP		62
++#define RST_BUS_TVE		63
++#define RST_BUS_CSI		64
++#define RST_BUS_HDMI_HDCP	65
++
++#endif /* _DT_BINDINGS_RESET_SUN50IW9_H_ */
+diff --git a/include/dt-bindings/reset/sun50iw9-r-ccu.h b/include/dt-bindings/reset/sun50iw9-r-ccu.h
+new file mode 100644
+index 000000000..c353b1757
+--- /dev/null
++++ b/include/dt-bindings/reset/sun50iw9-r-ccu.h
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
++/*
++ * Copyright (C) 2020 frank@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RST_SUN50IW9_R_CCU_H_
++#define _DT_BINDINGS_RST_SUN50IW9_R_CCU_H_
++
++#define RST_R_APB1_TWD		0
++#define RST_R_APB2_I2C		1
++#define RST_R_APB2_CAN		2
++#define RST_R_APB1_BUS_IR	3
++
++#endif /* _DT_BINDINGS_RST_SUN50IW9_R_CCU_H_ */
+diff --git a/include/dt-bindings/reset/sun55iw3-ccu.h b/include/dt-bindings/reset/sun55iw3-ccu.h
+new file mode 100644
+index 000000000..b0e8e31fa
+--- /dev/null
++++ b/include/dt-bindings/reset/sun55iw3-ccu.h
+@@ -0,0 +1,86 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (c) 2021 liujuan1@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RESET_SUN55IW3_H_
++#define _DT_BINDINGS_RESET_SUN55IW3_H_
++
++#define RST_MBUS		0
++#define RST_BUS_NSI		1
++#define RST_BUS_DE0		2
++#define RST_BUS_DI		3
++#define RST_BUS_G2D		4
++#define RST_BUS_GPU		5
++#define RST_BUS_CE_SY		6
++#define RST_BUS_CE		7
++#define RST_BUS_VE		8
++#define RST_BUS_DMA		9
++#define RST_BUS_MSGBOX1		10
++#define RST_BUS_MSGBOX0		11
++#define RST_BUS_SPINLOCK	12
++#define RST_BUS_TIME		13
++#define RST_BUS_DBGSY		14
++#define RST_BUS_PWM		15
++#define RST_BUS_DRAM		16
++#define RST_BUS_NAND0		17
++#define RST_BUS_SMHC2		18
++#define RST_BUS_SMHC1		19
++#define RST_BUS_SMHC0		20
++#define RST_BUS_SYSDAP		21
++#define RST_BUS_UART7		22
++#define RST_BUS_UART6		23
++#define RST_BUS_UART5		24
++#define RST_BUS_UART4		25
++#define RST_BUS_UART3		26
++#define RST_BUS_UART2		27
++#define RST_BUS_UART1		28
++#define RST_BUS_UART0		29
++#define RST_BUS_TWI5		30
++#define RST_BUS_TWI4		31
++#define RST_BUS_TWI3		32
++#define RST_BUS_TWI2		33
++#define RST_BUS_TWI1		34
++#define RST_BUS_TWI0		35
++#define RST_BUS_CAN0		36
++#define RST_BUS_SPIF		37
++#define RST_BUS_SPI2		38
++#define RST_BUS_SPI1		39
++#define RST_BUS_SPI0		40
++#define RST_BUS_GMAC1		41
++#define RST_BUS_GMAC0		42
++#define RST_BUS_IRRX		43
++#define RST_BUS_IRTX		44
++#define RST_BUS_GPADC		45
++#define RST_BUS_TH		46
++#define RST_USB_PHY0_RSTN	47
++#define RST_USB_PHY1_RSTN	48
++#define RST_USB_2_PHY		49
++#define RST_USB_2		50
++#define RST_USB_OTG0		51
++#define RST_USB_EHCI1		52
++#define RST_USB_EHCI0		53
++#define RST_USB_OHCI1		54
++#define RST_USB_OHCI0		55
++#define RST_BUS_LRADC		56
++#define RST_BUS_PCIE_PE		57
++#define RST_BUS_PCIE_POWER_UP	58
++#define RST_BUS_PCIE		59
++#define RST_BUS_DPSS_TOP0	60
++#define RST_BUS_DPSS_TOP1	61
++#define RST_BUS_HDMI_SUB	62
++#define RST_BUS_HDMI_MAIN	63
++#define RST_BUS_DSI1		64
++#define RST_BUS_DSI0		65
++#define RST_BUS_VO1_TCONLCD0	66
++#define RST_BUS_VO0_TCONLCD1	67
++#define RST_BUS_VO0_TCONLCD0	68
++#define RST_BUS_TCONTV1		69
++#define RST_BUS_TCONTV		70
++#define RST_BUS_LVDS1		71
++#define RST_BUS_LVDS0		72
++#define RST_BUS_LEDC		73
++#define RST_BUS_CSI		74
++#define RST_BUS_ISP		75
++
++#endif /* _DT_BINDINGS_RESET_SUN55IW3_H_ */
+diff --git a/include/dt-bindings/reset/sun55iw3-r-ccu.h b/include/dt-bindings/reset/sun55iw3-r-ccu.h
+new file mode 100644
+index 000000000..f64615c98
+--- /dev/null
++++ b/include/dt-bindings/reset/sun55iw3-r-ccu.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
++/*
++ * Copyright (C) 2021 liujuan1@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RST_SUN55IW3_R_CCU_H_
++#define _DT_BINDINGS_RST_SUN55IW3_R_CCU_H_
++
++#define RST_R_TIMER		0
++#define RST_R_PWM		1
++#define RST_R_CAN		2
++#define RST_R_SPI		3
++#define RST_R_SPLOCK		4
++#define RST_R_MBOX		5
++#define RST_R_UART1		6
++#define RST_R_UART0		7
++#define RST_R_TWI1		8
++#define RST_R_TWI0		9
++#define RST_R_PPU1		10
++#define RST_R_PPU		11
++#define RST_R_IRRX		12
++#define RST_R_RTC		13
++#define RST_R_CPUCFG		14
++
++#endif /* _DT_BINDINGS_RST_SUN55IW3_R_CCU_H_ */
+diff --git a/include/dt-bindings/reset/sun8iw20-ccu.h b/include/dt-bindings/reset/sun8iw20-ccu.h
+new file mode 100644
+index 000000000..a911d47b4
+--- /dev/null
++++ b/include/dt-bindings/reset/sun8iw20-ccu.h
+@@ -0,0 +1,80 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (c) 2020 huangzhenwei@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RESET_SUN8IW20_H_
++#define _DT_BINDINGS_RESET_SUN8IW20_H_
++
++#define RST_MBUS		0
++#define RST_BUS_DE0		1
++#define RST_BUS_DI		2
++#define RST_BUS_G2D		3
++#define RST_BUS_CE		4
++#define RST_BUS_VE		5
++#define RST_BUS_DMA		6
++#define RST_BUS_MSGBOX0		7
++#define RST_BUS_MSGBOX1		8
++#define RST_BUS_MSGBOX2		9
++#define RST_BUS_SPINLOCK	10
++#define RST_BUS_HSTIMER		11
++#define RST_BUS_DBG		12
++#define RST_BUS_PWM		13
++#define RST_BUS_DRAM		14
++#define RST_BUS_MMC0		15
++#define RST_BUS_MMC1		16
++#define RST_BUS_MMC2		17
++#define RST_BUS_UART0		18
++#define RST_BUS_UART1		19
++#define RST_BUS_UART2		20
++#define RST_BUS_UART3		21
++#define RST_BUS_UART4		22
++#define RST_BUS_UART5		23
++#define RST_BUS_I2C0		24
++#define RST_BUS_I2C1		25
++#define RST_BUS_I2C2		26
++#define RST_BUS_I2C3		27
++#define RST_BUS_CAN0		28
++#define RST_BUS_CAN1		29
++#define RST_BUS_SPI0		30
++#define RST_BUS_SPI1		31
++#define RST_BUS_EMAC0		32
++#define RST_BUS_IR_TX		33
++#define RST_BUS_GPADC		34
++#define RST_BUS_THS		35
++#define RST_BUS_I2S0		36
++#define RST_BUS_I2S1		37
++#define RST_BUS_I2S2		38
++#define RST_BUS_SPDIF		39
++#define RST_BUS_DMIC		40
++#define RST_BUS_AUDIO_CODEC	41
++#define RST_USB_PHY0		42
++#define RST_USB_PHY1		43
++#define RST_BUS_OHCI0		44
++#define RST_BUS_OHCI1		45
++#define RST_BUS_EHCI0		46
++#define RST_BUS_EHCI1		47
++#define RST_BUS_OTG		48
++#define RST_BUS_LRADC		49
++#define RST_BUS_DPSS_TOP0	50
++#define RST_BUS_HDMI_SUB	51
++#define RST_BUS_HDMI_MAIN	52
++#define RST_BUS_MIPI_DSI	53
++#define RST_BUS_TCON_LCD0	54
++#define RST_BUS_TCON_TV		55
++#define RST_BUS_LVDS0		56
++#define RST_BUS_TVE		57
++#define RST_BUS_TVE_TOP		58
++#define RST_BUS_TVD		59
++#define RST_BUS_TVD_TOP		60
++#define RST_BUS_LEDC		61
++#define RST_BUS_CSI		62
++#define RST_BUS_TPADC		63
++#define RST_BUS_DSP		64
++#define RST_BUS_DSP_CFG		65
++#define RST_BUS_DSP_DBG		66
++#define RST_BUS_RISCV_CFG	67
++#define RST_BUS_RISCV_SOFT	69
++#define RST_BUS_RISCV_CPU_SOFT	70
++
++#endif /* _DT_BINDINGS_RESET_SUN8IW20_H_ */
+diff --git a/include/dt-bindings/reset/sun8iw20-r-ccu.h b/include/dt-bindings/reset/sun8iw20-r-ccu.h
+new file mode 100644
+index 000000000..e2caf414f
+--- /dev/null
++++ b/include/dt-bindings/reset/sun8iw20-r-ccu.h
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: (GPL-2.0+ or MIT) */
++/*
++ * Copyright (C) 2020 huangzhenwei@allwinnertech.com
++ */
++
++#ifndef _DT_BINDINGS_RST_SUN8IW20_R_CCU_H_
++#define _DT_BINDINGS_RST_SUN8IW20_R_CCU_H_
++
++#define RST_R_APB0_TIMER	0
++#define RST_R_APB0_TWD		1
++#define RST_R_PPU		2
++#define RST_R_APB0_BUS_IRRX	3
++#define RST_R_AHB_BUS_RTC	4
++#define RST_R_APB0_CPUCFG	5
++
++#endif /* _DT_BINDINGS_RST_SUN8IW20_R_CCU_H_ */
+-- 
+2.17.1
+

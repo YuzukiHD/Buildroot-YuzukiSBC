@@ -1,0 +1,3036 @@
+From 688a5aeea0c451aaf4be9bb5db1c784907c993ec Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 16:34:25 +0800
+Subject: [PATCH 03/93] block: add sun20i support
+
+---
+ block/Kconfig               |  19 +-
+ block/Makefile              |   3 +
+ block/bio-crypt-ctx.c       | 142 ++++++++
+ block/bio.c                 |  21 +-
+ block/blk-core.c            |  28 +-
+ block/blk-crypto-fallback.c | 645 +++++++++++++++++++++++++++++++++++
+ block/blk-crypto-internal.h |  67 ++++
+ block/blk-crypto.c          | 306 +++++++++++++++++
+ block/blk-merge.c           |  13 +-
+ block/blk-mq-virtio.c       |   3 +
+ block/blk-pm.c              |  41 +--
+ block/blk-zoned.c           | 502 ++++++++++++---------------
+ block/bounce.c              |  12 +-
+ block/ioctl.c               |   7 +-
+ block/keyslot-manager.c     | 663 ++++++++++++++++++++++++++++++++++++
+ block/partition-generic.c   |  74 +---
+ 16 files changed, 2150 insertions(+), 396 deletions(-)
+ create mode 100644 block/bio-crypt-ctx.c
+ create mode 100644 block/blk-crypto-fallback.c
+ create mode 100644 block/blk-crypto-internal.h
+ create mode 100644 block/blk-crypto.c
+ create mode 100644 block/keyslot-manager.c
+
+diff --git a/block/Kconfig b/block/Kconfig
+index 41c0917ce..0b651f313 100644
+--- a/block/Kconfig
++++ b/block/Kconfig
+@@ -177,6 +177,23 @@ config BLK_SED_OPAL
+ 	Enabling this option enables users to setup/unlock/lock
+ 	Locking ranges for SED devices using the Opal protocol.
+ 
++config BLK_INLINE_ENCRYPTION
++	bool "Enable inline encryption support in block layer"
++	help
++	  Build the blk-crypto subsystem. Enabling this lets the
++	  block layer handle encryption, so users can take
++	  advantage of inline encryption hardware if present.
++
++config BLK_INLINE_ENCRYPTION_FALLBACK
++	bool "Enable crypto API fallback for blk-crypto"
++	depends on BLK_INLINE_ENCRYPTION
++	select CRYPTO
++	select CRYPTO_BLKCIPHER
++	help
++	  Enabling this lets the block layer handle inline encryption
++	  by falling back to the kernel crypto API when inline
++	  encryption hardware is not present.
++
+ menu "Partition Types"
+ 
+ source "block/partitions/Kconfig"
+@@ -196,7 +213,7 @@ config BLK_MQ_PCI
+ 	default y
+ 
+ config BLK_MQ_VIRTIO
+-	bool
++	tristate
+ 	depends on BLOCK && VIRTIO
+ 	default y
+ 
+diff --git a/block/Makefile b/block/Makefile
+index 9ef57ace9..9bfd4c9f9 100644
+--- a/block/Makefile
++++ b/block/Makefile
+@@ -36,3 +36,6 @@ obj-$(CONFIG_BLK_DEBUG_FS)	+= blk-mq-debugfs.o
+ obj-$(CONFIG_BLK_DEBUG_FS_ZONED)+= blk-mq-debugfs-zoned.o
+ obj-$(CONFIG_BLK_SED_OPAL)	+= sed-opal.o
+ obj-$(CONFIG_BLK_PM)		+= blk-pm.o
++obj-$(CONFIG_BLK_INLINE_ENCRYPTION)	+= keyslot-manager.o bio-crypt-ctx.o \
++					   blk-crypto.o
++obj-$(CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK)	+= blk-crypto-fallback.o
+\ No newline at end of file
+diff --git a/block/bio-crypt-ctx.c b/block/bio-crypt-ctx.c
+new file mode 100644
+index 000000000..75008b2af
+--- /dev/null
++++ b/block/bio-crypt-ctx.c
+@@ -0,0 +1,142 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright 2019 Google LLC
++ */
++
++#include <linux/bio.h>
++#include <linux/blkdev.h>
++#include <linux/keyslot-manager.h>
++#include <linux/module.h>
++#include <linux/slab.h>
++
++#include "blk-crypto-internal.h"
++
++static int num_prealloc_crypt_ctxs = 128;
++
++module_param(num_prealloc_crypt_ctxs, int, 0444);
++MODULE_PARM_DESC(num_prealloc_crypt_ctxs,
++		"Number of bio crypto contexts to preallocate");
++
++static struct kmem_cache *bio_crypt_ctx_cache;
++static mempool_t *bio_crypt_ctx_pool;
++
++int __init bio_crypt_ctx_init(void)
++{
++	size_t i;
++
++	bio_crypt_ctx_cache = KMEM_CACHE(bio_crypt_ctx, 0);
++	if (!bio_crypt_ctx_cache)
++		return -ENOMEM;
++
++	bio_crypt_ctx_pool = mempool_create_slab_pool(num_prealloc_crypt_ctxs,
++						      bio_crypt_ctx_cache);
++	if (!bio_crypt_ctx_pool)
++		return -ENOMEM;
++
++	/* This is assumed in various places. */
++	BUILD_BUG_ON(BLK_ENCRYPTION_MODE_INVALID != 0);
++
++	/* Sanity check that no algorithm exceeds the defined limits. */
++	for (i = 0; i < BLK_ENCRYPTION_MODE_MAX; i++) {
++		BUG_ON(blk_crypto_modes[i].keysize > BLK_CRYPTO_MAX_KEY_SIZE);
++		BUG_ON(blk_crypto_modes[i].ivsize > BLK_CRYPTO_MAX_IV_SIZE);
++	}
++
++	return 0;
++}
++
++struct bio_crypt_ctx *bio_crypt_alloc_ctx(gfp_t gfp_mask)
++{
++	return mempool_alloc(bio_crypt_ctx_pool, gfp_mask);
++}
++EXPORT_SYMBOL_GPL(bio_crypt_alloc_ctx);
++
++void bio_crypt_free_ctx(struct bio *bio)
++{
++	mempool_free(bio->bi_crypt_context, bio_crypt_ctx_pool);
++	bio->bi_crypt_context = NULL;
++}
++
++void bio_crypt_clone(struct bio *dst, struct bio *src, gfp_t gfp_mask)
++{
++	const struct bio_crypt_ctx *src_bc = src->bi_crypt_context;
++
++	bio_clone_skip_dm_default_key(dst, src);
++
++	/*
++	 * If a bio is fallback_crypted, then it will be decrypted when
++	 * bio_endio is called. As we only want the data to be decrypted once,
++	 * copies of the bio must not have have a crypt context.
++	 */
++	if (!src_bc || bio_crypt_fallback_crypted(src_bc))
++		return;
++
++	dst->bi_crypt_context = bio_crypt_alloc_ctx(gfp_mask);
++	*dst->bi_crypt_context = *src_bc;
++
++	if (src_bc->bc_keyslot >= 0)
++		keyslot_manager_get_slot(src_bc->bc_ksm, src_bc->bc_keyslot);
++}
++EXPORT_SYMBOL_GPL(bio_crypt_clone);
++
++bool bio_crypt_should_process(struct request *rq)
++{
++	struct bio *bio = rq->bio;
++
++	if (!bio || !bio->bi_crypt_context)
++		return false;
++
++	return rq->q->ksm == bio->bi_crypt_context->bc_ksm;
++}
++EXPORT_SYMBOL_GPL(bio_crypt_should_process);
++
++/*
++ * Checks that two bio crypt contexts are compatible - i.e. that
++ * they are mergeable except for data_unit_num continuity.
++ */
++bool bio_crypt_ctx_compatible(struct bio *b_1, struct bio *b_2)
++{
++	struct bio_crypt_ctx *bc1 = b_1->bi_crypt_context;
++	struct bio_crypt_ctx *bc2 = b_2->bi_crypt_context;
++
++	if (!bc1)
++		return !bc2;
++	return bc2 && bc1->bc_key == bc2->bc_key;
++}
++
++/*
++ * Checks that two bio crypt contexts are compatible, and also
++ * that their data_unit_nums are continuous (and can hence be merged)
++ * in the order b_1 followed by b_2.
++ */
++bool bio_crypt_ctx_mergeable(struct bio *b_1, unsigned int b1_bytes,
++			     struct bio *b_2)
++{
++	struct bio_crypt_ctx *bc1 = b_1->bi_crypt_context;
++	struct bio_crypt_ctx *bc2 = b_2->bi_crypt_context;
++
++	if (!bio_crypt_ctx_compatible(b_1, b_2))
++		return false;
++
++	return !bc1 || bio_crypt_dun_is_contiguous(bc1, b1_bytes, bc2->bc_dun);
++}
++
++void bio_crypt_ctx_release_keyslot(struct bio_crypt_ctx *bc)
++{
++	keyslot_manager_put_slot(bc->bc_ksm, bc->bc_keyslot);
++	bc->bc_ksm = NULL;
++	bc->bc_keyslot = -1;
++}
++
++int bio_crypt_ctx_acquire_keyslot(struct bio_crypt_ctx *bc,
++				  struct keyslot_manager *ksm)
++{
++	int slot = keyslot_manager_get_slot_for_key(ksm, bc->bc_key);
++
++	if (slot < 0)
++		return slot;
++
++	bc->bc_keyslot = slot;
++	bc->bc_ksm = ksm;
++	return 0;
++}
+diff --git a/block/bio.c b/block/bio.c
+index 94d697217..0bc56d824 100644
+--- a/block/bio.c
++++ b/block/bio.c
+@@ -17,6 +17,7 @@
+ #include <linux/cgroup.h>
+ #include <linux/blk-cgroup.h>
+ #include <linux/highmem.h>
++#include <linux/blk-crypto.h>
+ 
+ #include <trace/events/block.h>
+ #include "blk.h"
+@@ -234,6 +235,8 @@ void bio_uninit(struct bio *bio)
+ {
+ 	bio_disassociate_blkg(bio);
+ 
++	bio_crypt_free_ctx(bio);
++
+ 	if (bio_integrity(bio))
+ 		bio_integrity_free(bio);
+ }
+@@ -664,15 +667,12 @@ struct bio *bio_clone_fast(struct bio *bio, gfp_t gfp_mask, struct bio_set *bs)
+ 
+ 	__bio_clone_fast(b, bio);
+ 
+-	if (bio_integrity(bio)) {
+-		int ret;
+-
+-		ret = bio_integrity_clone(b, bio, gfp_mask);
++	bio_crypt_clone(b, bio, gfp_mask);
+ 
+-		if (ret < 0) {
+-			bio_put(b);
+-			return NULL;
+-		}
++	if (bio_integrity(bio) &&
++	    bio_integrity_clone(b, bio, gfp_mask) < 0) {
++		bio_put(b);
++		return NULL;
+ 	}
+ 
+ 	return b;
+@@ -1046,6 +1046,7 @@ void bio_advance(struct bio *bio, unsigned bytes)
+ 	if (bio_integrity(bio))
+ 		bio_integrity_advance(bio, bytes);
+ 
++	bio_crypt_advance(bio, bytes);
+ 	bio_advance_iter(bio, &bio->bi_iter, bytes);
+ }
+ EXPORT_SYMBOL(bio_advance);
+@@ -1840,6 +1841,10 @@ void bio_endio(struct bio *bio)
+ again:
+ 	if (!bio_remaining_done(bio))
+ 		return;
++
++	if (!blk_crypto_endio(bio))
++		return;
++
+ 	if (!bio_integrity_endio(bio))
+ 		return;
+ 
+diff --git a/block/blk-core.c b/block/blk-core.c
+index d5e668ec7..b70d5350a 100644
+--- a/block/blk-core.c
++++ b/block/blk-core.c
+@@ -38,6 +38,7 @@
+ #include <linux/debugfs.h>
+ #include <linux/bpf.h>
+ #include <linux/psi.h>
++#include <linux/blk-crypto.h>
+ 
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/block.h>
+@@ -132,6 +133,9 @@ static const char *const blk_op_name[] = {
+ 	REQ_OP_NAME(SECURE_ERASE),
+ 	REQ_OP_NAME(ZONE_RESET),
+ 	REQ_OP_NAME(ZONE_RESET_ALL),
++	REQ_OP_NAME(ZONE_OPEN),
++	REQ_OP_NAME(ZONE_CLOSE),
++	REQ_OP_NAME(ZONE_FINISH),
+ 	REQ_OP_NAME(WRITE_SAME),
+ 	REQ_OP_NAME(WRITE_ZEROES),
+ 	REQ_OP_NAME(SCSI_IN),
+@@ -848,11 +852,7 @@ static inline int blk_partition_remap(struct bio *bio)
+ 	if (unlikely(bio_check_ro(bio, p)))
+ 		goto out;
+ 
+-	/*
+-	 * Zone reset does not include bi_size so bio_sectors() is always 0.
+-	 * Include a test for the reset op code and perform the remap if needed.
+-	 */
+-	if (bio_sectors(bio) || bio_op(bio) == REQ_OP_ZONE_RESET) {
++	if (bio_sectors(bio)) {
+ 		if (bio_check_eod(bio, part_nr_sects_read(p)))
+ 			goto out;
+ 		bio->bi_iter.bi_sector += p->start_sect;
+@@ -936,6 +936,9 @@ generic_make_request_checks(struct bio *bio)
+ 			goto not_supported;
+ 		break;
+ 	case REQ_OP_ZONE_RESET:
++	case REQ_OP_ZONE_OPEN:
++	case REQ_OP_ZONE_CLOSE:
++	case REQ_OP_ZONE_FINISH:
+ 		if (!blk_queue_is_zoned(q))
+ 			goto not_supported;
+ 		break;
+@@ -1061,7 +1064,9 @@ blk_qc_t generic_make_request(struct bio *bio)
+ 			/* Create a fresh bio_list for all subordinate requests */
+ 			bio_list_on_stack[1] = bio_list_on_stack[0];
+ 			bio_list_init(&bio_list_on_stack[0]);
+-			ret = q->make_request_fn(q, bio);
++
++			if (!blk_crypto_submit_bio(&bio))
++				ret = q->make_request_fn(q, bio);
+ 
+ 			blk_queue_exit(q);
+ 
+@@ -1109,7 +1114,7 @@ blk_qc_t direct_make_request(struct bio *bio)
+ {
+ 	struct request_queue *q = bio->bi_disk->queue;
+ 	bool nowait = bio->bi_opf & REQ_NOWAIT;
+-	blk_qc_t ret;
++	blk_qc_t ret = BLK_QC_T_NONE;
+ 
+ 	if (!generic_make_request_checks(bio))
+ 		return BLK_QC_T_NONE;
+@@ -1123,7 +1128,8 @@ blk_qc_t direct_make_request(struct bio *bio)
+ 		return BLK_QC_T_NONE;
+ 	}
+ 
+-	ret = q->make_request_fn(q, bio);
++	if (!blk_crypto_submit_bio(&bio))
++		ret = q->make_request_fn(q, bio);
+ 	blk_queue_exit(q);
+ 	return ret;
+ }
+@@ -1807,5 +1813,11 @@ int __init blk_dev_init(void)
+ 	blk_debugfs_root = debugfs_create_dir("block", NULL);
+ #endif
+ 
++	if (bio_crypt_ctx_init() < 0)
++		panic("Failed to allocate mem for bio crypt ctxs\n");
++
++	if (blk_crypto_fallback_init() < 0)
++		panic("Failed to init blk-crypto-fallback\n");
++
+ 	return 0;
+ }
+diff --git a/block/blk-crypto-fallback.c b/block/blk-crypto-fallback.c
+new file mode 100644
+index 000000000..d6c57887d
+--- /dev/null
++++ b/block/blk-crypto-fallback.c
+@@ -0,0 +1,645 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright 2019 Google LLC
++ */
++
++/*
++ * Refer to Documentation/block/inline-encryption.rst for detailed explanation.
++ */
++
++#define pr_fmt(fmt) "blk-crypto-fallback: " fmt
++
++#include <crypto/skcipher.h>
++#include <linux/blk-cgroup.h>
++#include <linux/blk-crypto.h>
++#include <linux/crypto.h>
++#include <linux/keyslot-manager.h>
++#include <linux/mempool.h>
++#include <linux/module.h>
++#include <linux/random.h>
++
++#include "blk-crypto-internal.h"
++
++static unsigned int num_prealloc_bounce_pg = 32;
++module_param(num_prealloc_bounce_pg, uint, 0);
++MODULE_PARM_DESC(num_prealloc_bounce_pg,
++		 "Number of preallocated bounce pages for the blk-crypto crypto API fallback");
++
++static unsigned int blk_crypto_num_keyslots = 100;
++module_param_named(num_keyslots, blk_crypto_num_keyslots, uint, 0);
++MODULE_PARM_DESC(num_keyslots,
++		 "Number of keyslots for the blk-crypto crypto API fallback");
++
++static unsigned int num_prealloc_fallback_crypt_ctxs = 128;
++module_param(num_prealloc_fallback_crypt_ctxs, uint, 0);
++MODULE_PARM_DESC(num_prealloc_crypt_fallback_ctxs,
++		 "Number of preallocated bio fallback crypto contexts for blk-crypto to use during crypto API fallback");
++
++struct bio_fallback_crypt_ctx {
++	struct bio_crypt_ctx crypt_ctx;
++	/*
++	 * Copy of the bvec_iter when this bio was submitted.
++	 * We only want to en/decrypt the part of the bio as described by the
++	 * bvec_iter upon submission because bio might be split before being
++	 * resubmitted
++	 */
++	struct bvec_iter crypt_iter;
++	u64 fallback_dun[BLK_CRYPTO_DUN_ARRAY_SIZE];
++};
++
++/* The following few vars are only used during the crypto API fallback */
++static struct kmem_cache *bio_fallback_crypt_ctx_cache;
++static mempool_t *bio_fallback_crypt_ctx_pool;
++
++/*
++ * Allocating a crypto tfm during I/O can deadlock, so we have to preallocate
++ * all of a mode's tfms when that mode starts being used. Since each mode may
++ * need all the keyslots at some point, each mode needs its own tfm for each
++ * keyslot; thus, a keyslot may contain tfms for multiple modes.  However, to
++ * match the behavior of real inline encryption hardware (which only supports a
++ * single encryption context per keyslot), we only allow one tfm per keyslot to
++ * be used at a time - the rest of the unused tfms have their keys cleared.
++ */
++static DEFINE_MUTEX(tfms_init_lock);
++static bool tfms_inited[BLK_ENCRYPTION_MODE_MAX];
++
++struct blk_crypto_decrypt_work {
++	struct work_struct work;
++	struct bio *bio;
++};
++
++static struct blk_crypto_keyslot {
++	struct crypto_skcipher *tfm;
++	enum blk_crypto_mode_num crypto_mode;
++	struct crypto_skcipher *tfms[BLK_ENCRYPTION_MODE_MAX];
++} *blk_crypto_keyslots;
++
++/* The following few vars are only used during the crypto API fallback */
++static struct keyslot_manager *blk_crypto_ksm;
++static struct workqueue_struct *blk_crypto_wq;
++static mempool_t *blk_crypto_bounce_page_pool;
++static struct kmem_cache *blk_crypto_decrypt_work_cache;
++
++bool bio_crypt_fallback_crypted(const struct bio_crypt_ctx *bc)
++{
++	return bc && bc->bc_ksm == blk_crypto_ksm;
++}
++
++/*
++ * This is the key we set when evicting a keyslot. This *should* be the all 0's
++ * key, but AES-XTS rejects that key, so we use some random bytes instead.
++ */
++static u8 blank_key[BLK_CRYPTO_MAX_KEY_SIZE];
++
++static void blk_crypto_evict_keyslot(unsigned int slot)
++{
++	struct blk_crypto_keyslot *slotp = &blk_crypto_keyslots[slot];
++	enum blk_crypto_mode_num crypto_mode = slotp->crypto_mode;
++	int err;
++
++	WARN_ON(slotp->crypto_mode == BLK_ENCRYPTION_MODE_INVALID);
++
++	/* Clear the key in the skcipher */
++	err = crypto_skcipher_setkey(slotp->tfms[crypto_mode], blank_key,
++				     blk_crypto_modes[crypto_mode].keysize);
++	WARN_ON(err);
++	slotp->crypto_mode = BLK_ENCRYPTION_MODE_INVALID;
++}
++
++static int blk_crypto_keyslot_program(struct keyslot_manager *ksm,
++				      const struct blk_crypto_key *key,
++				      unsigned int slot)
++{
++	struct blk_crypto_keyslot *slotp = &blk_crypto_keyslots[slot];
++	const enum blk_crypto_mode_num crypto_mode = key->crypto_mode;
++	int err;
++
++	if (crypto_mode != slotp->crypto_mode &&
++	    slotp->crypto_mode != BLK_ENCRYPTION_MODE_INVALID) {
++		blk_crypto_evict_keyslot(slot);
++	}
++
++	if (!slotp->tfms[crypto_mode])
++		return -ENOMEM;
++	slotp->crypto_mode = crypto_mode;
++	err = crypto_skcipher_setkey(slotp->tfms[crypto_mode], key->raw,
++				     key->size);
++	if (err) {
++		blk_crypto_evict_keyslot(slot);
++		return err;
++	}
++	return 0;
++}
++
++static int blk_crypto_keyslot_evict(struct keyslot_manager *ksm,
++				    const struct blk_crypto_key *key,
++				    unsigned int slot)
++{
++	blk_crypto_evict_keyslot(slot);
++	return 0;
++}
++
++/*
++ * The crypto API fallback KSM ops - only used for a bio when it specifies a
++ * blk_crypto_mode for which we failed to get a keyslot in the device's inline
++ * encryption hardware (which probably means the device doesn't have inline
++ * encryption hardware that supports that crypto mode).
++ */
++static const struct keyslot_mgmt_ll_ops blk_crypto_ksm_ll_ops = {
++	.keyslot_program	= blk_crypto_keyslot_program,
++	.keyslot_evict		= blk_crypto_keyslot_evict,
++};
++
++static void blk_crypto_encrypt_endio(struct bio *enc_bio)
++{
++	struct bio *src_bio = enc_bio->bi_private;
++	int i;
++
++	for (i = 0; i < enc_bio->bi_vcnt; i++)
++		mempool_free(enc_bio->bi_io_vec[i].bv_page,
++			     blk_crypto_bounce_page_pool);
++
++	src_bio->bi_status = enc_bio->bi_status;
++
++	bio_put(enc_bio);
++	bio_endio(src_bio);
++}
++
++static struct bio *blk_crypto_clone_bio(struct bio *bio_src)
++{
++	struct bvec_iter iter;
++	struct bio_vec bv;
++	struct bio *bio;
++
++	bio = bio_alloc_bioset(GFP_NOIO, bio_segments(bio_src), NULL);
++	if (!bio)
++		return NULL;
++	bio->bi_disk		= bio_src->bi_disk;
++	bio->bi_opf		= bio_src->bi_opf;
++	bio->bi_ioprio		= bio_src->bi_ioprio;
++	bio->bi_write_hint	= bio_src->bi_write_hint;
++	bio->bi_iter.bi_sector	= bio_src->bi_iter.bi_sector;
++	bio->bi_iter.bi_size	= bio_src->bi_iter.bi_size;
++
++	bio_for_each_segment(bv, bio_src, iter)
++		bio->bi_io_vec[bio->bi_vcnt++] = bv;
++
++	if (bio_integrity(bio_src) &&
++	    bio_integrity_clone(bio, bio_src, GFP_NOIO) < 0) {
++		bio_put(bio);
++		return NULL;
++	}
++
++	bio_clone_blkg_association(bio, bio_src);
++	blkcg_bio_issue_init(bio);
++
++	bio_clone_skip_dm_default_key(bio, bio_src);
++
++	return bio;
++}
++
++static int blk_crypto_alloc_cipher_req(struct bio *src_bio,
++				       struct skcipher_request **ciph_req_ret,
++				       struct crypto_wait *wait)
++{
++	struct skcipher_request *ciph_req;
++	const struct blk_crypto_keyslot *slotp;
++
++	slotp = &blk_crypto_keyslots[src_bio->bi_crypt_context->bc_keyslot];
++	ciph_req = skcipher_request_alloc(slotp->tfms[slotp->crypto_mode],
++					  GFP_NOIO);
++	if (!ciph_req) {
++		src_bio->bi_status = BLK_STS_RESOURCE;
++		return -ENOMEM;
++	}
++
++	skcipher_request_set_callback(ciph_req,
++				      CRYPTO_TFM_REQ_MAY_BACKLOG |
++				      CRYPTO_TFM_REQ_MAY_SLEEP,
++				      crypto_req_done, wait);
++	*ciph_req_ret = ciph_req;
++	return 0;
++}
++
++static int blk_crypto_split_bio_if_needed(struct bio **bio_ptr)
++{
++	struct bio *bio = *bio_ptr;
++	unsigned int i = 0;
++	unsigned int num_sectors = 0;
++	struct bio_vec bv;
++	struct bvec_iter iter;
++
++	bio_for_each_segment(bv, bio, iter) {
++		num_sectors += bv.bv_len >> SECTOR_SHIFT;
++		if (++i == BIO_MAX_PAGES)
++			break;
++	}
++	if (num_sectors < bio_sectors(bio)) {
++		struct bio *split_bio;
++
++		split_bio = bio_split(bio, num_sectors, GFP_NOIO, NULL);
++		if (!split_bio) {
++			bio->bi_status = BLK_STS_RESOURCE;
++			return -ENOMEM;
++		}
++		bio_chain(split_bio, bio);
++		generic_make_request(bio);
++		*bio_ptr = split_bio;
++	}
++	return 0;
++}
++
++union blk_crypto_iv {
++	__le64 dun[BLK_CRYPTO_DUN_ARRAY_SIZE];
++	u8 bytes[BLK_CRYPTO_MAX_IV_SIZE];
++};
++
++static void blk_crypto_dun_to_iv(const u64 dun[BLK_CRYPTO_DUN_ARRAY_SIZE],
++				 union blk_crypto_iv *iv)
++{
++	int i;
++
++	for (i = 0; i < BLK_CRYPTO_DUN_ARRAY_SIZE; i++)
++		iv->dun[i] = cpu_to_le64(dun[i]);
++}
++
++/*
++ * The crypto API fallback's encryption routine.
++ * Allocate a bounce bio for encryption, encrypt the input bio using crypto API,
++ * and replace *bio_ptr with the bounce bio. May split input bio if it's too
++ * large.
++ */
++static int blk_crypto_encrypt_bio(struct bio **bio_ptr)
++{
++	struct bio *src_bio;
++	struct skcipher_request *ciph_req = NULL;
++	DECLARE_CRYPTO_WAIT(wait);
++	u64 curr_dun[BLK_CRYPTO_DUN_ARRAY_SIZE];
++	union blk_crypto_iv iv;
++	struct scatterlist src, dst;
++	struct bio *enc_bio;
++	unsigned int i, j;
++	int data_unit_size;
++	struct bio_crypt_ctx *bc;
++	int err = 0;
++
++	/* Split the bio if it's too big for single page bvec */
++	err = blk_crypto_split_bio_if_needed(bio_ptr);
++	if (err)
++		return err;
++
++	src_bio = *bio_ptr;
++	bc = src_bio->bi_crypt_context;
++	data_unit_size = bc->bc_key->data_unit_size;
++
++	/* Allocate bounce bio for encryption */
++	enc_bio = blk_crypto_clone_bio(src_bio);
++	if (!enc_bio) {
++		src_bio->bi_status = BLK_STS_RESOURCE;
++		return -ENOMEM;
++	}
++
++	/*
++	 * Use the crypto API fallback keyslot manager to get a crypto_skcipher
++	 * for the algorithm and key specified for this bio.
++	 */
++	err = bio_crypt_ctx_acquire_keyslot(bc, blk_crypto_ksm);
++	if (err) {
++		src_bio->bi_status = BLK_STS_IOERR;
++		goto out_put_enc_bio;
++	}
++
++	/* and then allocate an skcipher_request for it */
++	err = blk_crypto_alloc_cipher_req(src_bio, &ciph_req, &wait);
++	if (err)
++		goto out_release_keyslot;
++
++	memcpy(curr_dun, bc->bc_dun, sizeof(curr_dun));
++	sg_init_table(&src, 1);
++	sg_init_table(&dst, 1);
++
++	skcipher_request_set_crypt(ciph_req, &src, &dst, data_unit_size,
++				   iv.bytes);
++
++	/* Encrypt each page in the bounce bio */
++	for (i = 0; i < enc_bio->bi_vcnt; i++) {
++		struct bio_vec *enc_bvec = &enc_bio->bi_io_vec[i];
++		struct page *plaintext_page = enc_bvec->bv_page;
++		struct page *ciphertext_page =
++			mempool_alloc(blk_crypto_bounce_page_pool, GFP_NOIO);
++
++		enc_bvec->bv_page = ciphertext_page;
++
++		if (!ciphertext_page) {
++			src_bio->bi_status = BLK_STS_RESOURCE;
++			err = -ENOMEM;
++			goto out_free_bounce_pages;
++		}
++
++		sg_set_page(&src, plaintext_page, data_unit_size,
++			    enc_bvec->bv_offset);
++		sg_set_page(&dst, ciphertext_page, data_unit_size,
++			    enc_bvec->bv_offset);
++
++		/* Encrypt each data unit in this page */
++		for (j = 0; j < enc_bvec->bv_len; j += data_unit_size) {
++			blk_crypto_dun_to_iv(curr_dun, &iv);
++			err = crypto_wait_req(crypto_skcipher_encrypt(ciph_req),
++					      &wait);
++			if (err) {
++				i++;
++				src_bio->bi_status = BLK_STS_RESOURCE;
++				goto out_free_bounce_pages;
++			}
++			bio_crypt_dun_increment(curr_dun, 1);
++			src.offset += data_unit_size;
++			dst.offset += data_unit_size;
++		}
++	}
++
++	enc_bio->bi_private = src_bio;
++	enc_bio->bi_end_io = blk_crypto_encrypt_endio;
++	*bio_ptr = enc_bio;
++
++	enc_bio = NULL;
++	err = 0;
++	goto out_free_ciph_req;
++
++out_free_bounce_pages:
++	while (i > 0)
++		mempool_free(enc_bio->bi_io_vec[--i].bv_page,
++			     blk_crypto_bounce_page_pool);
++out_free_ciph_req:
++	skcipher_request_free(ciph_req);
++out_release_keyslot:
++	bio_crypt_ctx_release_keyslot(bc);
++out_put_enc_bio:
++	if (enc_bio)
++		bio_put(enc_bio);
++
++	return err;
++}
++
++static void blk_crypto_free_fallback_crypt_ctx(struct bio *bio)
++{
++	mempool_free(container_of(bio->bi_crypt_context,
++				  struct bio_fallback_crypt_ctx,
++				  crypt_ctx),
++		     bio_fallback_crypt_ctx_pool);
++	bio->bi_crypt_context = NULL;
++}
++
++/*
++ * The crypto API fallback's main decryption routine.
++ * Decrypts input bio in place.
++ */
++static void blk_crypto_decrypt_bio(struct work_struct *work)
++{
++	struct blk_crypto_decrypt_work *decrypt_work =
++		container_of(work, struct blk_crypto_decrypt_work, work);
++	struct bio *bio = decrypt_work->bio;
++	struct skcipher_request *ciph_req = NULL;
++	DECLARE_CRYPTO_WAIT(wait);
++	struct bio_vec bv;
++	struct bvec_iter iter;
++	u64 curr_dun[BLK_CRYPTO_DUN_ARRAY_SIZE];
++	union blk_crypto_iv iv;
++	struct scatterlist sg;
++	struct bio_crypt_ctx *bc = bio->bi_crypt_context;
++	struct bio_fallback_crypt_ctx *f_ctx =
++		container_of(bc, struct bio_fallback_crypt_ctx, crypt_ctx);
++	const int data_unit_size = bc->bc_key->data_unit_size;
++	unsigned int i;
++	int err;
++
++	/*
++	 * Use the crypto API fallback keyslot manager to get a crypto_skcipher
++	 * for the algorithm and key specified for this bio.
++	 */
++	if (bio_crypt_ctx_acquire_keyslot(bc, blk_crypto_ksm)) {
++		bio->bi_status = BLK_STS_RESOURCE;
++		goto out_no_keyslot;
++	}
++
++	/* and then allocate an skcipher_request for it */
++	err = blk_crypto_alloc_cipher_req(bio, &ciph_req, &wait);
++	if (err)
++		goto out;
++
++	memcpy(curr_dun, f_ctx->fallback_dun, sizeof(curr_dun));
++	sg_init_table(&sg, 1);
++	skcipher_request_set_crypt(ciph_req, &sg, &sg, data_unit_size,
++				   iv.bytes);
++
++	/* Decrypt each segment in the bio */
++	__bio_for_each_segment(bv, bio, iter, f_ctx->crypt_iter) {
++		struct page *page = bv.bv_page;
++
++		sg_set_page(&sg, page, data_unit_size, bv.bv_offset);
++
++		/* Decrypt each data unit in the segment */
++		for (i = 0; i < bv.bv_len; i += data_unit_size) {
++			blk_crypto_dun_to_iv(curr_dun, &iv);
++			if (crypto_wait_req(crypto_skcipher_decrypt(ciph_req),
++					    &wait)) {
++				bio->bi_status = BLK_STS_IOERR;
++				goto out;
++			}
++			bio_crypt_dun_increment(curr_dun, 1);
++			sg.offset += data_unit_size;
++		}
++	}
++
++out:
++	skcipher_request_free(ciph_req);
++	bio_crypt_ctx_release_keyslot(bc);
++out_no_keyslot:
++	kmem_cache_free(blk_crypto_decrypt_work_cache, decrypt_work);
++	blk_crypto_free_fallback_crypt_ctx(bio);
++	bio_endio(bio);
++}
++
++/*
++ * Queue bio for decryption.
++ * Returns true iff bio was queued for decryption.
++ */
++bool blk_crypto_queue_decrypt_bio(struct bio *bio)
++{
++	struct blk_crypto_decrypt_work *decrypt_work;
++
++	/* If there was an IO error, don't queue for decrypt. */
++	if (bio->bi_status)
++		goto out;
++
++	decrypt_work = kmem_cache_zalloc(blk_crypto_decrypt_work_cache,
++					 GFP_ATOMIC);
++	if (!decrypt_work) {
++		bio->bi_status = BLK_STS_RESOURCE;
++		goto out;
++	}
++
++	INIT_WORK(&decrypt_work->work, blk_crypto_decrypt_bio);
++	decrypt_work->bio = bio;
++	queue_work(blk_crypto_wq, &decrypt_work->work);
++
++	return true;
++out:
++	blk_crypto_free_fallback_crypt_ctx(bio);
++	return false;
++}
++
++/*
++ * Prepare blk-crypto-fallback for the specified crypto mode.
++ * Returns -ENOPKG if the needed crypto API support is missing.
++ */
++int blk_crypto_fallback_start_using_mode(enum blk_crypto_mode_num mode_num)
++{
++	const char *cipher_str = blk_crypto_modes[mode_num].cipher_str;
++	struct blk_crypto_keyslot *slotp;
++	unsigned int i;
++	int err = 0;
++
++	/*
++	 * Fast path
++	 * Ensure that updates to blk_crypto_keyslots[i].tfms[mode_num]
++	 * for each i are visible before we try to access them.
++	 */
++	if (likely(smp_load_acquire(&tfms_inited[mode_num])))
++		return 0;
++
++	mutex_lock(&tfms_init_lock);
++	if (likely(tfms_inited[mode_num]))
++		goto out;
++
++	for (i = 0; i < blk_crypto_num_keyslots; i++) {
++		slotp = &blk_crypto_keyslots[i];
++		slotp->tfms[mode_num] = crypto_alloc_skcipher(cipher_str, 0, 0);
++		if (IS_ERR(slotp->tfms[mode_num])) {
++			err = PTR_ERR(slotp->tfms[mode_num]);
++			if (err == -ENOENT) {
++				pr_warn_once("Missing crypto API support for \"%s\"\n",
++					     cipher_str);
++				err = -ENOPKG;
++			}
++			slotp->tfms[mode_num] = NULL;
++			goto out_free_tfms;
++		}
++
++		crypto_skcipher_set_flags(slotp->tfms[mode_num],
++					  CRYPTO_TFM_REQ_FORBID_WEAK_KEYS);
++	}
++
++	/*
++	 * Ensure that updates to blk_crypto_keyslots[i].tfms[mode_num]
++	 * for each i are visible before we set tfms_inited[mode_num].
++	 */
++	smp_store_release(&tfms_inited[mode_num], true);
++	goto out;
++
++out_free_tfms:
++	for (i = 0; i < blk_crypto_num_keyslots; i++) {
++		slotp = &blk_crypto_keyslots[i];
++		crypto_free_skcipher(slotp->tfms[mode_num]);
++		slotp->tfms[mode_num] = NULL;
++	}
++out:
++	mutex_unlock(&tfms_init_lock);
++	return err;
++}
++
++int blk_crypto_fallback_evict_key(const struct blk_crypto_key *key)
++{
++	return keyslot_manager_evict_key(blk_crypto_ksm, key);
++}
++
++int blk_crypto_fallback_submit_bio(struct bio **bio_ptr)
++{
++	struct bio *bio = *bio_ptr;
++	struct bio_crypt_ctx *bc = bio->bi_crypt_context;
++	struct bio_fallback_crypt_ctx *f_ctx;
++
++	if (bc->bc_key->is_hw_wrapped) {
++		pr_warn_once("HW wrapped key cannot be used with fallback.\n");
++		bio->bi_status = BLK_STS_NOTSUPP;
++		return -EOPNOTSUPP;
++	}
++
++	if (!tfms_inited[bc->bc_key->crypto_mode]) {
++		bio->bi_status = BLK_STS_IOERR;
++		return -EIO;
++	}
++
++	if (bio_data_dir(bio) == WRITE)
++		return blk_crypto_encrypt_bio(bio_ptr);
++
++	/*
++	 * Mark bio as fallback crypted and replace the bio_crypt_ctx with
++	 * another one contained in a bio_fallback_crypt_ctx, so that the
++	 * fallback has space to store the info it needs for decryption.
++	 */
++	bc->bc_ksm = blk_crypto_ksm;
++	f_ctx = mempool_alloc(bio_fallback_crypt_ctx_pool, GFP_NOIO);
++	f_ctx->crypt_ctx = *bc;
++	memcpy(f_ctx->fallback_dun, bc->bc_dun, sizeof(f_ctx->fallback_dun));
++	f_ctx->crypt_iter = bio->bi_iter;
++
++	bio_crypt_free_ctx(bio);
++	bio->bi_crypt_context = &f_ctx->crypt_ctx;
++
++	return 0;
++}
++
++int __init blk_crypto_fallback_init(void)
++{
++	int i;
++	unsigned int crypto_mode_supported[BLK_ENCRYPTION_MODE_MAX];
++
++	prandom_bytes(blank_key, BLK_CRYPTO_MAX_KEY_SIZE);
++
++	/* All blk-crypto modes have a crypto API fallback. */
++	for (i = 0; i < BLK_ENCRYPTION_MODE_MAX; i++)
++		crypto_mode_supported[i] = 0xFFFFFFFF;
++	crypto_mode_supported[BLK_ENCRYPTION_MODE_INVALID] = 0;
++
++	blk_crypto_ksm = keyslot_manager_create(
++				NULL, blk_crypto_num_keyslots,
++				&blk_crypto_ksm_ll_ops,
++				BLK_CRYPTO_FEATURE_STANDARD_KEYS,
++				crypto_mode_supported, NULL);
++	if (!blk_crypto_ksm)
++		return -ENOMEM;
++
++	blk_crypto_wq = alloc_workqueue("blk_crypto_wq",
++					WQ_UNBOUND | WQ_HIGHPRI |
++					WQ_MEM_RECLAIM, num_online_cpus());
++	if (!blk_crypto_wq)
++		return -ENOMEM;
++
++	blk_crypto_keyslots = kcalloc(blk_crypto_num_keyslots,
++				      sizeof(blk_crypto_keyslots[0]),
++				      GFP_KERNEL);
++	if (!blk_crypto_keyslots)
++		return -ENOMEM;
++
++	blk_crypto_bounce_page_pool =
++		mempool_create_page_pool(num_prealloc_bounce_pg, 0);
++	if (!blk_crypto_bounce_page_pool)
++		return -ENOMEM;
++
++	blk_crypto_decrypt_work_cache = KMEM_CACHE(blk_crypto_decrypt_work,
++						   SLAB_RECLAIM_ACCOUNT);
++	if (!blk_crypto_decrypt_work_cache)
++		return -ENOMEM;
++
++	bio_fallback_crypt_ctx_cache = KMEM_CACHE(bio_fallback_crypt_ctx, 0);
++	if (!bio_fallback_crypt_ctx_cache)
++		return -ENOMEM;
++
++	bio_fallback_crypt_ctx_pool =
++		mempool_create_slab_pool(num_prealloc_fallback_crypt_ctxs,
++					 bio_fallback_crypt_ctx_cache);
++	if (!bio_fallback_crypt_ctx_pool)
++		return -ENOMEM;
++
++	return 0;
++}
+diff --git a/block/blk-crypto-internal.h b/block/blk-crypto-internal.h
+new file mode 100644
+index 000000000..4da998c80
+--- /dev/null
++++ b/block/blk-crypto-internal.h
+@@ -0,0 +1,67 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright 2019 Google LLC
++ */
++
++#ifndef __LINUX_BLK_CRYPTO_INTERNAL_H
++#define __LINUX_BLK_CRYPTO_INTERNAL_H
++
++#include <linux/bio.h>
++
++/* Represents a crypto mode supported by blk-crypto  */
++struct blk_crypto_mode {
++	const char *cipher_str; /* crypto API name (for fallback case) */
++	unsigned int keysize; /* key size in bytes */
++	unsigned int ivsize; /* iv size in bytes */
++};
++
++extern const struct blk_crypto_mode blk_crypto_modes[];
++
++#ifdef CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK
++
++int blk_crypto_fallback_start_using_mode(enum blk_crypto_mode_num mode_num);
++
++int blk_crypto_fallback_submit_bio(struct bio **bio_ptr);
++
++bool blk_crypto_queue_decrypt_bio(struct bio *bio);
++
++int blk_crypto_fallback_evict_key(const struct blk_crypto_key *key);
++
++bool bio_crypt_fallback_crypted(const struct bio_crypt_ctx *bc);
++
++#else /* CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK */
++
++static inline int
++blk_crypto_fallback_start_using_mode(enum blk_crypto_mode_num mode_num)
++{
++	pr_warn_once("crypto API fallback is disabled\n");
++	return -ENOPKG;
++}
++
++static inline bool bio_crypt_fallback_crypted(const struct bio_crypt_ctx *bc)
++{
++	return false;
++}
++
++static inline int blk_crypto_fallback_submit_bio(struct bio **bio_ptr)
++{
++	pr_warn_once("crypto API fallback disabled; failing request\n");
++	(*bio_ptr)->bi_status = BLK_STS_NOTSUPP;
++	return -EIO;
++}
++
++static inline bool blk_crypto_queue_decrypt_bio(struct bio *bio)
++{
++	WARN_ON(1);
++	return false;
++}
++
++static inline int
++blk_crypto_fallback_evict_key(const struct blk_crypto_key *key)
++{
++	return 0;
++}
++
++#endif /* CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK */
++
++#endif /* __LINUX_BLK_CRYPTO_INTERNAL_H */
+diff --git a/block/blk-crypto.c b/block/blk-crypto.c
+new file mode 100644
+index 000000000..e07a37cf8
+--- /dev/null
++++ b/block/blk-crypto.c
+@@ -0,0 +1,306 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright 2019 Google LLC
++ */
++
++/*
++ * Refer to Documentation/block/inline-encryption.rst for detailed explanation.
++ */
++
++#define pr_fmt(fmt) "blk-crypto: " fmt
++
++#include <linux/blk-crypto.h>
++#include <linux/blkdev.h>
++#include <linux/keyslot-manager.h>
++#include <linux/random.h>
++#include <linux/siphash.h>
++
++#include "blk-crypto-internal.h"
++
++const struct blk_crypto_mode blk_crypto_modes[] = {
++	[BLK_ENCRYPTION_MODE_AES_256_XTS] = {
++		.cipher_str = "xts(aes)",
++		.keysize = 64,
++		.ivsize = 16,
++	},
++	[BLK_ENCRYPTION_MODE_AES_128_CBC_ESSIV] = {
++		.cipher_str = "essiv(cbc(aes),sha256)",
++		.keysize = 16,
++		.ivsize = 16,
++	},
++	[BLK_ENCRYPTION_MODE_ADIANTUM] = {
++		.cipher_str = "adiantum(xchacha12,aes)",
++		.keysize = 32,
++		.ivsize = 32,
++	},
++};
++
++/* Check that all I/O segments are data unit aligned */
++static int bio_crypt_check_alignment(struct bio *bio)
++{
++	const unsigned int data_unit_size =
++				bio->bi_crypt_context->bc_key->data_unit_size;
++	struct bvec_iter iter;
++	struct bio_vec bv;
++
++	bio_for_each_segment(bv, bio, iter) {
++		if (!IS_ALIGNED(bv.bv_len | bv.bv_offset, data_unit_size))
++			return -EIO;
++	}
++	return 0;
++}
++
++/**
++ * blk_crypto_submit_bio - handle submitting bio for inline encryption
++ *
++ * @bio_ptr: pointer to original bio pointer
++ *
++ * If the bio doesn't have inline encryption enabled or the submitter already
++ * specified a keyslot for the target device, do nothing.  Else, a raw key must
++ * have been provided, so acquire a device keyslot for it if supported.  Else,
++ * use the crypto API fallback.
++ *
++ * When the crypto API fallback is used for encryption, blk-crypto may choose to
++ * split the bio into 2 - the first one that will continue to be processed and
++ * the second one that will be resubmitted via generic_make_request.
++ * A bounce bio will be allocated to encrypt the contents of the aforementioned
++ * "first one", and *bio_ptr will be updated to this bounce bio.
++ *
++ * Return: 0 if bio submission should continue; nonzero if bio_endio() was
++ *	   already called so bio submission should abort.
++ */
++int blk_crypto_submit_bio(struct bio **bio_ptr)
++{
++	struct bio *bio = *bio_ptr;
++	struct request_queue *q;
++	struct bio_crypt_ctx *bc = bio->bi_crypt_context;
++	int err;
++
++	if (!bc || !bio_has_data(bio))
++		return 0;
++
++	/*
++	 * When a read bio is marked for fallback decryption, its bi_iter is
++	 * saved so that when we decrypt the bio later, we know what part of it
++	 * was marked for fallback decryption (when the bio is passed down after
++	 * blk_crypto_submit bio, it may be split or advanced so we cannot rely
++	 * on the bi_iter while decrypting in blk_crypto_endio)
++	 */
++	if (bio_crypt_fallback_crypted(bc))
++		return 0;
++
++	err = bio_crypt_check_alignment(bio);
++	if (err) {
++		bio->bi_status = BLK_STS_IOERR;
++		goto out;
++	}
++
++	q = bio->bi_disk->queue;
++
++	if (bc->bc_ksm) {
++		/* Key already programmed into device? */
++		if (q->ksm == bc->bc_ksm)
++			return 0;
++
++		/* Nope, release the existing keyslot. */
++		bio_crypt_ctx_release_keyslot(bc);
++	}
++
++	/* Get device keyslot if supported */
++	if (keyslot_manager_crypto_mode_supported(q->ksm,
++				bc->bc_key->crypto_mode,
++				blk_crypto_key_dun_bytes(bc->bc_key),
++				bc->bc_key->data_unit_size,
++				bc->bc_key->is_hw_wrapped)) {
++		err = bio_crypt_ctx_acquire_keyslot(bc, q->ksm);
++		if (!err)
++			return 0;
++
++		pr_warn_once("Failed to acquire keyslot for %s (err=%d).  Falling back to crypto API.\n",
++			     bio->bi_disk->disk_name, err);
++	}
++
++	/* Fallback to crypto API */
++	err = blk_crypto_fallback_submit_bio(bio_ptr);
++	if (err)
++		goto out;
++
++	return 0;
++out:
++	bio_endio(*bio_ptr);
++	return err;
++}
++
++/**
++ * blk_crypto_endio - clean up bio w.r.t inline encryption during bio_endio
++ *
++ * @bio: the bio to clean up
++ *
++ * If blk_crypto_submit_bio decided to fallback to crypto API for this bio,
++ * we queue the bio for decryption into a workqueue and return false,
++ * and call bio_endio(bio) at a later time (after the bio has been decrypted).
++ *
++ * If the bio is not to be decrypted by the crypto API, this function releases
++ * the reference to the keyslot that blk_crypto_submit_bio got.
++ *
++ * Return: true if bio_endio should continue; false otherwise (bio_endio will
++ * be called again when bio has been decrypted).
++ */
++bool blk_crypto_endio(struct bio *bio)
++{
++	struct bio_crypt_ctx *bc = bio->bi_crypt_context;
++
++	if (!bc)
++		return true;
++
++	if (bio_crypt_fallback_crypted(bc)) {
++		/*
++		 * The only bios who's crypto is handled by the blk-crypto
++		 * fallback when they reach here are those with
++		 * bio_data_dir(bio) == READ, since WRITE bios that are
++		 * encrypted by the crypto API fallback are handled by
++		 * blk_crypto_encrypt_endio().
++		 */
++		return !blk_crypto_queue_decrypt_bio(bio);
++	}
++
++	if (bc->bc_keyslot >= 0)
++		bio_crypt_ctx_release_keyslot(bc);
++
++	return true;
++}
++
++/**
++ * blk_crypto_init_key() - Prepare a key for use with blk-crypto
++ * @blk_key: Pointer to the blk_crypto_key to initialize.
++ * @raw_key: Pointer to the raw key.
++ * @raw_key_size: Size of raw key.  Must be at least the required size for the
++ *                chosen @crypto_mode; see blk_crypto_modes[].  (It's allowed
++ *                to be longer than the mode's actual key size, in order to
++ *                support inline encryption hardware that accepts wrapped keys.
++ *                @is_hw_wrapped has to be set for such keys)
++ * @is_hw_wrapped: Denotes @raw_key is wrapped.
++ * @crypto_mode: identifier for the encryption algorithm to use
++ * @dun_bytes: number of bytes that will be used to specify the DUN when this
++ *	       key is used
++ * @data_unit_size: the data unit size to use for en/decryption
++ *
++ * Return: The blk_crypto_key that was prepared, or an ERR_PTR() on error.  When
++ *	   done using the key, it must be freed with blk_crypto_free_key().
++ */
++int blk_crypto_init_key(struct blk_crypto_key *blk_key,
++			const u8 *raw_key, unsigned int raw_key_size,
++			bool is_hw_wrapped,
++			enum blk_crypto_mode_num crypto_mode,
++			unsigned int dun_bytes,
++			unsigned int data_unit_size)
++{
++	const struct blk_crypto_mode *mode;
++	static siphash_key_t hash_key;
++	u32 hash;
++
++	memset(blk_key, 0, sizeof(*blk_key));
++
++	if (crypto_mode >= ARRAY_SIZE(blk_crypto_modes))
++		return -EINVAL;
++
++	BUILD_BUG_ON(BLK_CRYPTO_MAX_WRAPPED_KEY_SIZE < BLK_CRYPTO_MAX_KEY_SIZE);
++
++	mode = &blk_crypto_modes[crypto_mode];
++	if (is_hw_wrapped) {
++		if (raw_key_size < mode->keysize ||
++		    raw_key_size > BLK_CRYPTO_MAX_WRAPPED_KEY_SIZE)
++			return -EINVAL;
++	} else {
++		if (raw_key_size != mode->keysize)
++			return -EINVAL;
++	}
++
++	if (dun_bytes <= 0 || dun_bytes > BLK_CRYPTO_MAX_IV_SIZE)
++		return -EINVAL;
++
++	if (!is_power_of_2(data_unit_size))
++		return -EINVAL;
++
++	blk_key->crypto_mode = crypto_mode;
++	blk_key->data_unit_size = data_unit_size;
++	blk_key->data_unit_size_bits = ilog2(data_unit_size);
++	blk_key->size = raw_key_size;
++	blk_key->is_hw_wrapped = is_hw_wrapped;
++	memcpy(blk_key->raw, raw_key, raw_key_size);
++
++	/*
++	 * The keyslot manager uses the SipHash of the key to implement O(1) key
++	 * lookups while avoiding leaking information about the keys.  It's
++	 * precomputed here so that it only needs to be computed once per key.
++	 */
++	get_random_once(&hash_key, sizeof(hash_key));
++	hash = (u32)siphash(raw_key, raw_key_size, &hash_key);
++	blk_crypto_key_set_hash_and_dun_bytes(blk_key, hash, dun_bytes);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(blk_crypto_init_key);
++
++/**
++ * blk_crypto_start_using_mode() - Start using blk-crypto on a device
++ * @crypto_mode: the crypto mode that will be used
++ * @dun_bytes: number of bytes that will be used to specify the DUN
++ * @data_unit_size: the data unit size that will be used
++ * @is_hw_wrapped_key: whether the key will be hardware-wrapped
++ * @q: the request queue for the device
++ *
++ * Upper layers must call this function to ensure that either the hardware
++ * supports the needed crypto settings, or the crypto API fallback has
++ * transforms for the needed mode allocated and ready to go.
++ *
++ * Return: 0 on success; -ENOPKG if the hardware doesn't support the crypto
++ *	   settings and blk-crypto-fallback is either disabled or the needed
++ *	   algorithm is disabled in the crypto API; or another -errno code.
++ */
++int blk_crypto_start_using_mode(enum blk_crypto_mode_num crypto_mode,
++				unsigned int dun_bytes,
++				unsigned int data_unit_size,
++				bool is_hw_wrapped_key,
++				struct request_queue *q)
++{
++	if (keyslot_manager_crypto_mode_supported(q->ksm, crypto_mode,
++						  dun_bytes, data_unit_size,
++						  is_hw_wrapped_key))
++		return 0;
++	if (is_hw_wrapped_key) {
++		pr_warn_once("hardware doesn't support wrapped keys\n");
++		return -EOPNOTSUPP;
++	}
++	return blk_crypto_fallback_start_using_mode(crypto_mode);
++}
++EXPORT_SYMBOL_GPL(blk_crypto_start_using_mode);
++
++/**
++ * blk_crypto_evict_key() - Evict a key from any inline encryption hardware
++ *			    it may have been programmed into
++ * @q: The request queue who's keyslot manager this key might have been
++ *     programmed into
++ * @key: The key to evict
++ *
++ * Upper layers (filesystems) should call this function to ensure that a key
++ * is evicted from hardware that it might have been programmed into. This
++ * will call keyslot_manager_evict_key on the queue's keyslot manager, if one
++ * exists, and supports the crypto algorithm with the specified data unit size.
++ * Otherwise, it will evict the key from the blk-crypto-fallback's ksm.
++ *
++ * Return: 0 on success, -err on error.
++ */
++int blk_crypto_evict_key(struct request_queue *q,
++			 const struct blk_crypto_key *key)
++{
++	if (q->ksm &&
++	    keyslot_manager_crypto_mode_supported(q->ksm, key->crypto_mode,
++						  blk_crypto_key_dun_bytes(key),
++						  key->data_unit_size,
++						  key->is_hw_wrapped))
++		return keyslot_manager_evict_key(q->ksm, key);
++
++	return blk_crypto_fallback_evict_key(key);
++}
++EXPORT_SYMBOL_GPL(blk_crypto_evict_key);
+diff --git a/block/blk-merge.c b/block/blk-merge.c
+index 93cff719b..897169440 100644
+--- a/block/blk-merge.c
++++ b/block/blk-merge.c
+@@ -154,7 +154,7 @@ static inline unsigned get_max_io_size(struct request_queue *q,
+ 	if (max_sectors > start_offset)
+ 		return max_sectors - start_offset;
+ 
+-	return sectors & (lbs - 1);
++	return sectors & ~(lbs - 1);
+ }
+ 
+ static inline unsigned get_max_segment_size(const struct request_queue *q,
+@@ -586,6 +586,8 @@ int ll_back_merge_fn(struct request *req, struct bio *bio, unsigned int nr_segs)
+ 		req_set_nomerge(req->q, req);
+ 		return 0;
+ 	}
++	if (!bio_crypt_ctx_mergeable(req->bio, blk_rq_bytes(req), bio))
++		return 0;
+ 
+ 	return ll_new_hw_segment(req, bio, nr_segs);
+ }
+@@ -602,6 +604,8 @@ int ll_front_merge_fn(struct request *req, struct bio *bio, unsigned int nr_segs
+ 		req_set_nomerge(req->q, req);
+ 		return 0;
+ 	}
++	if (!bio_crypt_ctx_mergeable(bio, bio->bi_iter.bi_size, req->bio))
++		return 0;
+ 
+ 	return ll_new_hw_segment(req, bio, nr_segs);
+ }
+@@ -646,6 +650,9 @@ static int ll_merge_requests_fn(struct request_queue *q, struct request *req,
+ 	if (blk_integrity_merge_rq(q, req, next) == false)
+ 		return 0;
+ 
++	if (!bio_crypt_ctx_mergeable(req->bio, blk_rq_bytes(req), next->bio))
++		return 0;
++
+ 	/* Merge is OK... */
+ 	req->nr_phys_segments = total_phys_segments;
+ 	return 1;
+@@ -885,6 +892,10 @@ bool blk_rq_merge_ok(struct request *rq, struct bio *bio)
+ 	if (rq->ioprio != bio_prio(bio))
+ 		return false;
+ 
++	/* Only merge if the crypt contexts are compatible */
++	if (!bio_crypt_ctx_compatible(bio, rq->bio))
++		return false;
++
+ 	return true;
+ }
+ 
+diff --git a/block/blk-mq-virtio.c b/block/blk-mq-virtio.c
+index 488341628..d2808e1cb 100644
+--- a/block/blk-mq-virtio.c
++++ b/block/blk-mq-virtio.c
+@@ -44,3 +44,6 @@ int blk_mq_virtio_map_queues(struct blk_mq_queue_map *qmap,
+ 	return blk_mq_map_queues(qmap);
+ }
+ EXPORT_SYMBOL_GPL(blk_mq_virtio_map_queues);
++
++MODULE_DESCRIPTION("Virtio Device Default Queue Mapping");
++MODULE_LICENSE("GPL v2");
+diff --git a/block/blk-pm.c b/block/blk-pm.c
+index 1adc1cd74..b85234d75 100644
+--- a/block/blk-pm.c
++++ b/block/blk-pm.c
+@@ -164,9 +164,8 @@ EXPORT_SYMBOL(blk_pre_runtime_resume);
+  *
+  * Description:
+  *    Update the queue's runtime status according to the return value of the
+- *    device's runtime_resume function. If it is successfully resumed, process
+- *    the requests that are queued into the device's queue when it is resuming
+- *    and then mark last busy and initiate autosuspend for it.
++ *    device's runtime_resume function. If the resume was successful, call
++ *    blk_set_runtime_active() to do the real work of restarting the queue.
+  *
+  *    This function should be called near the end of the device's
+  *    runtime_resume callback.
+@@ -175,19 +174,13 @@ void blk_post_runtime_resume(struct request_queue *q, int err)
+ {
+ 	if (!q->dev)
+ 		return;
+-
+-	spin_lock_irq(&q->queue_lock);
+ 	if (!err) {
+-		q->rpm_status = RPM_ACTIVE;
+-		pm_runtime_mark_last_busy(q->dev);
+-		pm_request_autosuspend(q->dev);
++		blk_set_runtime_active(q);
+ 	} else {
++		spin_lock_irq(&q->queue_lock);
+ 		q->rpm_status = RPM_SUSPENDED;
++		spin_unlock_irq(&q->queue_lock);
+ 	}
+-	spin_unlock_irq(&q->queue_lock);
+-
+-	if (!err)
+-		blk_clear_pm_only(q);
+ }
+ EXPORT_SYMBOL(blk_post_runtime_resume);
+ 
+@@ -204,15 +197,25 @@ EXPORT_SYMBOL(blk_post_runtime_resume);
+  * This function can be used in driver's resume hook to correct queue
+  * runtime PM status and re-enable peeking requests from the queue. It
+  * should be called before first request is added to the queue.
++ *
++ * This function is also called by blk_post_runtime_resume() for successful
++ * runtime resumes.  It does everything necessary to restart the queue.
+  */
+ void blk_set_runtime_active(struct request_queue *q)
+ {
+-	if (q->dev) {
+-		spin_lock_irq(&q->queue_lock);
+-		q->rpm_status = RPM_ACTIVE;
+-		pm_runtime_mark_last_busy(q->dev);
+-		pm_request_autosuspend(q->dev);
+-		spin_unlock_irq(&q->queue_lock);
+-	}
++	int old_status;
++
++	if (!q->dev)
++		return;
++
++	spin_lock_irq(&q->queue_lock);
++	old_status = q->rpm_status;
++	q->rpm_status = RPM_ACTIVE;
++	pm_runtime_mark_last_busy(q->dev);
++	pm_request_autosuspend(q->dev);
++	spin_unlock_irq(&q->queue_lock);
++
++	if (old_status != RPM_ACTIVE)
++		blk_clear_pm_only(q);
+ }
+ EXPORT_SYMBOL(blk_set_runtime_active);
+diff --git a/block/blk-zoned.c b/block/blk-zoned.c
+index 4bc5f2602..d00fcfd71 100644
+--- a/block/blk-zoned.c
++++ b/block/blk-zoned.c
+@@ -70,195 +70,98 @@ void __blk_req_zone_write_unlock(struct request *rq)
+ }
+ EXPORT_SYMBOL_GPL(__blk_req_zone_write_unlock);
+ 
+-static inline unsigned int __blkdev_nr_zones(struct request_queue *q,
+-					     sector_t nr_sectors)
+-{
+-	sector_t zone_sectors = blk_queue_zone_sectors(q);
+-
+-	return (nr_sectors + zone_sectors - 1) >> ilog2(zone_sectors);
+-}
+-
+ /**
+  * blkdev_nr_zones - Get number of zones
+- * @bdev:	Target block device
++ * @disk:	Target gendisk
+  *
+- * Description:
+- *    Return the total number of zones of a zoned block device.
+- *    For a regular block device, the number of zones is always 0.
++ * Return the total number of zones of a zoned block device.  For a block
++ * device without zone capabilities, the number of zones is always 0.
+  */
+-unsigned int blkdev_nr_zones(struct block_device *bdev)
++unsigned int blkdev_nr_zones(struct gendisk *disk)
+ {
+-	struct request_queue *q = bdev_get_queue(bdev);
++	sector_t zone_sectors = blk_queue_zone_sectors(disk->queue);
+ 
+-	if (!blk_queue_is_zoned(q))
++	if (!blk_queue_is_zoned(disk->queue))
+ 		return 0;
+-
+-	return __blkdev_nr_zones(q, bdev->bd_part->nr_sects);
++	return (get_capacity(disk) + zone_sectors - 1) >> ilog2(zone_sectors);
+ }
+ EXPORT_SYMBOL_GPL(blkdev_nr_zones);
+ 
+-/*
+- * Check that a zone report belongs to this partition, and if yes, fix its start
+- * sector and write pointer and return true. Return false otherwise.
+- */
+-static bool blkdev_report_zone(struct block_device *bdev, struct blk_zone *rep)
+-{
+-	sector_t offset = get_start_sect(bdev);
+-
+-	if (rep->start < offset)
+-		return false;
+-
+-	rep->start -= offset;
+-	if (rep->start + rep->len > bdev->bd_part->nr_sects)
+-		return false;
+-
+-	if (rep->type == BLK_ZONE_TYPE_CONVENTIONAL)
+-		rep->wp = rep->start + rep->len;
+-	else
+-		rep->wp -= offset;
+-	return true;
+-}
+-
+-static int blk_report_zones(struct gendisk *disk, sector_t sector,
+-			    struct blk_zone *zones, unsigned int *nr_zones)
+-{
+-	struct request_queue *q = disk->queue;
+-	unsigned int z = 0, n, nrz = *nr_zones;
+-	sector_t capacity = get_capacity(disk);
+-	int ret;
+-
+-	while (z < nrz && sector < capacity) {
+-		n = nrz - z;
+-		ret = disk->fops->report_zones(disk, sector, &zones[z], &n);
+-		if (ret)
+-			return ret;
+-		if (!n)
+-			break;
+-		sector += blk_queue_zone_sectors(q) * n;
+-		z += n;
+-	}
+-
+-	WARN_ON(z > *nr_zones);
+-	*nr_zones = z;
+-
+-	return 0;
+-}
+-
+ /**
+  * blkdev_report_zones - Get zones information
+  * @bdev:	Target block device
+  * @sector:	Sector from which to report zones
+- * @zones:	Array of zone structures where to return the zones information
+- * @nr_zones:	Number of zone structures in the zone array
++ * @nr_zones:	Maximum number of zones to report
++ * @cb:		Callback function called for each reported zone
++ * @data:	Private data for the callback
+  *
+  * Description:
+- *    Get zone information starting from the zone containing @sector.
+- *    The number of zone information reported may be less than the number
+- *    requested by @nr_zones. The number of zones actually reported is
+- *    returned in @nr_zones.
+- *    The caller must use memalloc_noXX_save/restore() calls to control
+- *    memory allocations done within this function (zone array and command
+- *    buffer allocation by the device driver).
++ *    Get zone information starting from the zone containing @sector for at most
++ *    @nr_zones, and call @cb for each zone reported by the device.
++ *    To report all zones in a device starting from @sector, the BLK_ALL_ZONES
++ *    constant can be passed to @nr_zones.
++ *    Returns the number of zones reported by the device, or a negative errno
++ *    value in case of failure.
++ *
++ *    Note: The caller must use memalloc_noXX_save/restore() calls to control
++ *    memory allocations done within this function.
+  */
+ int blkdev_report_zones(struct block_device *bdev, sector_t sector,
+-			struct blk_zone *zones, unsigned int *nr_zones)
++			unsigned int nr_zones, report_zones_cb cb, void *data)
+ {
+-	struct request_queue *q = bdev_get_queue(bdev);
+-	unsigned int i, nrz;
+-	int ret;
+-
+-	if (!blk_queue_is_zoned(q))
+-		return -EOPNOTSUPP;
++	struct gendisk *disk = bdev->bd_disk;
++	sector_t capacity = get_capacity(disk);
+ 
+-	/*
+-	 * A block device that advertized itself as zoned must have a
+-	 * report_zones method. If it does not have one defined, the device
+-	 * driver has a bug. So warn about that.
+-	 */
+-	if (WARN_ON_ONCE(!bdev->bd_disk->fops->report_zones))
++	if (!blk_queue_is_zoned(bdev_get_queue(bdev)) ||
++	    WARN_ON_ONCE(!disk->fops->report_zones))
+ 		return -EOPNOTSUPP;
+ 
+-	if (!*nr_zones || sector >= bdev->bd_part->nr_sects) {
+-		*nr_zones = 0;
++	if (!nr_zones || sector >= capacity)
+ 		return 0;
+-	}
+-
+-	nrz = min(*nr_zones,
+-		  __blkdev_nr_zones(q, bdev->bd_part->nr_sects - sector));
+-	ret = blk_report_zones(bdev->bd_disk, get_start_sect(bdev) + sector,
+-			       zones, &nrz);
+-	if (ret)
+-		return ret;
+-
+-	for (i = 0; i < nrz; i++) {
+-		if (!blkdev_report_zone(bdev, zones))
+-			break;
+-		zones++;
+-	}
+-
+-	*nr_zones = i;
+ 
+-	return 0;
++	return disk->fops->report_zones(disk, sector, nr_zones, cb, data);
+ }
+ EXPORT_SYMBOL_GPL(blkdev_report_zones);
+ 
+-/*
+- * Special case of zone reset operation to reset all zones in one command,
+- * useful for applications like mkfs.
+- */
+-static int __blkdev_reset_all_zones(struct block_device *bdev, gfp_t gfp_mask)
+-{
+-	struct bio *bio = bio_alloc(gfp_mask, 0);
+-	int ret;
+-
+-	/* across the zones operations, don't need any sectors */
+-	bio_set_dev(bio, bdev);
+-	bio_set_op_attrs(bio, REQ_OP_ZONE_RESET_ALL, 0);
+-
+-	ret = submit_bio_wait(bio);
+-	bio_put(bio);
+-
+-	return ret;
+-}
+-
+ static inline bool blkdev_allow_reset_all_zones(struct block_device *bdev,
++						sector_t sector,
+ 						sector_t nr_sectors)
+ {
+ 	if (!blk_queue_zone_resetall(bdev_get_queue(bdev)))
+ 		return false;
+ 
+-	if (nr_sectors != part_nr_sects_read(bdev->bd_part))
+-		return false;
+ 	/*
+-	 * REQ_OP_ZONE_RESET_ALL can be executed only if the block device is
+-	 * the entire disk, that is, if the blocks device start offset is 0 and
+-	 * its capacity is the same as the entire disk.
++	 * REQ_OP_ZONE_RESET_ALL can be executed only if the number of sectors
++	 * of the applicable zone range is the entire disk.
+ 	 */
+-	return get_start_sect(bdev) == 0 &&
+-	       part_nr_sects_read(bdev->bd_part) == get_capacity(bdev->bd_disk);
++	return !sector && nr_sectors == get_capacity(bdev->bd_disk);
+ }
+ 
+ /**
+- * blkdev_reset_zones - Reset zones write pointer
++ * blkdev_zone_mgmt - Execute a zone management operation on a range of zones
+  * @bdev:	Target block device
+- * @sector:	Start sector of the first zone to reset
+- * @nr_sectors:	Number of sectors, at least the length of one zone
++ * @op:		Operation to be performed on the zones
++ * @sector:	Start sector of the first zone to operate on
++ * @nr_sectors:	Number of sectors, should be at least the length of one zone and
++ *		must be zone size aligned.
+  * @gfp_mask:	Memory allocation flags (for bio_alloc)
+  *
+  * Description:
+- *    Reset the write pointer of the zones contained in the range
++ *    Perform the specified operation on the range of zones specified by
+  *    @sector..@sector+@nr_sectors. Specifying the entire disk sector range
+  *    is valid, but the specified range should not contain conventional zones.
++ *    The operation to execute on each zone can be a zone reset, open, close
++ *    or finish request.
+  */
+-int blkdev_reset_zones(struct block_device *bdev,
+-		       sector_t sector, sector_t nr_sectors,
+-		       gfp_t gfp_mask)
++int blkdev_zone_mgmt(struct block_device *bdev, enum req_opf op,
++		     sector_t sector, sector_t nr_sectors,
++		     gfp_t gfp_mask)
+ {
+ 	struct request_queue *q = bdev_get_queue(bdev);
+-	sector_t zone_sectors;
++	sector_t zone_sectors = blk_queue_zone_sectors(q);
++	sector_t capacity = get_capacity(bdev->bd_disk);
+ 	sector_t end_sector = sector + nr_sectors;
+ 	struct bio *bio = NULL;
+-	struct blk_plug plug;
+ 	int ret;
+ 
+ 	if (!blk_queue_is_zoned(q))
+@@ -267,45 +170,62 @@ int blkdev_reset_zones(struct block_device *bdev,
+ 	if (bdev_read_only(bdev))
+ 		return -EPERM;
+ 
+-	if (!nr_sectors || end_sector > bdev->bd_part->nr_sects)
++	if (!op_is_zone_mgmt(op))
++		return -EOPNOTSUPP;
++
++	if (!nr_sectors || end_sector > capacity)
+ 		/* Out of range */
+ 		return -EINVAL;
+ 
+-	if (blkdev_allow_reset_all_zones(bdev, nr_sectors))
+-		return  __blkdev_reset_all_zones(bdev, gfp_mask);
+-
+ 	/* Check alignment (handle eventual smaller last zone) */
+-	zone_sectors = blk_queue_zone_sectors(q);
+ 	if (sector & (zone_sectors - 1))
+ 		return -EINVAL;
+ 
+-	if ((nr_sectors & (zone_sectors - 1)) &&
+-	    end_sector != bdev->bd_part->nr_sects)
++	if ((nr_sectors & (zone_sectors - 1)) && end_sector != capacity)
+ 		return -EINVAL;
+ 
+-	blk_start_plug(&plug);
+ 	while (sector < end_sector) {
+-
+ 		bio = blk_next_bio(bio, 0, gfp_mask);
+-		bio->bi_iter.bi_sector = sector;
+ 		bio_set_dev(bio, bdev);
+-		bio_set_op_attrs(bio, REQ_OP_ZONE_RESET, 0);
+ 
++		/*
++		 * Special case for the zone reset operation that reset all
++		 * zones, this is useful for applications like mkfs.
++		 */
++		if (op == REQ_OP_ZONE_RESET &&
++		    blkdev_allow_reset_all_zones(bdev, sector, nr_sectors)) {
++			bio->bi_opf = REQ_OP_ZONE_RESET_ALL;
++			break;
++		}
++
++		bio->bi_opf = op;
++		bio->bi_iter.bi_sector = sector;
+ 		sector += zone_sectors;
+ 
+ 		/* This may take a while, so be nice to others */
+ 		cond_resched();
+-
+ 	}
+ 
+ 	ret = submit_bio_wait(bio);
+ 	bio_put(bio);
+ 
+-	blk_finish_plug(&plug);
+-
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(blkdev_reset_zones);
++EXPORT_SYMBOL_GPL(blkdev_zone_mgmt);
++
++struct zone_report_args {
++	struct blk_zone __user *zones;
++};
++
++static int blkdev_copy_zone_to_user(struct blk_zone *zone, unsigned int idx,
++				    void *data)
++{
++	struct zone_report_args *args = data;
++
++	if (copy_to_user(&args->zones[idx], zone, sizeof(struct blk_zone)))
++		return -EFAULT;
++	return 0;
++}
+ 
+ /*
+  * BLKREPORTZONE ioctl processing.
+@@ -315,9 +235,9 @@ int blkdev_report_zones_ioctl(struct block_device *bdev, fmode_t mode,
+ 			      unsigned int cmd, unsigned long arg)
+ {
+ 	void __user *argp = (void __user *)arg;
++	struct zone_report_args args;
+ 	struct request_queue *q;
+ 	struct blk_zone_report rep;
+-	struct blk_zone *zones;
+ 	int ret;
+ 
+ 	if (!argp)
+@@ -339,44 +259,29 @@ int blkdev_report_zones_ioctl(struct block_device *bdev, fmode_t mode,
+ 	if (!rep.nr_zones)
+ 		return -EINVAL;
+ 
+-	rep.nr_zones = min(blkdev_nr_zones(bdev), rep.nr_zones);
+-
+-	zones = kvmalloc_array(rep.nr_zones, sizeof(struct blk_zone),
+-			       GFP_KERNEL | __GFP_ZERO);
+-	if (!zones)
+-		return -ENOMEM;
+-
+-	ret = blkdev_report_zones(bdev, rep.sector, zones, &rep.nr_zones);
+-	if (ret)
+-		goto out;
+-
+-	if (copy_to_user(argp, &rep, sizeof(struct blk_zone_report))) {
+-		ret = -EFAULT;
+-		goto out;
+-	}
+-
+-	if (rep.nr_zones) {
+-		if (copy_to_user(argp + sizeof(struct blk_zone_report), zones,
+-				 sizeof(struct blk_zone) * rep.nr_zones))
+-			ret = -EFAULT;
+-	}
+-
+- out:
+-	kvfree(zones);
++	args.zones = argp + sizeof(struct blk_zone_report);
++	ret = blkdev_report_zones(bdev, rep.sector, rep.nr_zones,
++				  blkdev_copy_zone_to_user, &args);
++	if (ret < 0)
++		return ret;
+ 
+-	return ret;
++	rep.nr_zones = ret;
++	if (copy_to_user(argp, &rep, sizeof(struct blk_zone_report)))
++		return -EFAULT;
++	return 0;
+ }
+ 
+ /*
+- * BLKRESETZONE ioctl processing.
++ * BLKRESETZONE, BLKOPENZONE, BLKCLOSEZONE and BLKFINISHZONE ioctl processing.
+  * Called from blkdev_ioctl.
+  */
+-int blkdev_reset_zones_ioctl(struct block_device *bdev, fmode_t mode,
+-			     unsigned int cmd, unsigned long arg)
++int blkdev_zone_mgmt_ioctl(struct block_device *bdev, fmode_t mode,
++			   unsigned int cmd, unsigned long arg)
+ {
+ 	void __user *argp = (void __user *)arg;
+ 	struct request_queue *q;
+ 	struct blk_zone_range zrange;
++	enum req_opf op;
+ 
+ 	if (!argp)
+ 		return -EINVAL;
+@@ -397,8 +302,25 @@ int blkdev_reset_zones_ioctl(struct block_device *bdev, fmode_t mode,
+ 	if (copy_from_user(&zrange, argp, sizeof(struct blk_zone_range)))
+ 		return -EFAULT;
+ 
+-	return blkdev_reset_zones(bdev, zrange.sector, zrange.nr_sectors,
+-				  GFP_KERNEL);
++	switch (cmd) {
++	case BLKRESETZONE:
++		op = REQ_OP_ZONE_RESET;
++		break;
++	case BLKOPENZONE:
++		op = REQ_OP_ZONE_OPEN;
++		break;
++	case BLKCLOSEZONE:
++		op = REQ_OP_ZONE_CLOSE;
++		break;
++	case BLKFINISHZONE:
++		op = REQ_OP_ZONE_FINISH;
++		break;
++	default:
++		return -ENOTTY;
++	}
++
++	return blkdev_zone_mgmt(bdev, op, zrange.sector, zrange.nr_sectors,
++				GFP_KERNEL);
+ }
+ 
+ static inline unsigned long *blk_alloc_zone_bitmap(int node,
+@@ -408,37 +330,96 @@ static inline unsigned long *blk_alloc_zone_bitmap(int node,
+ 			    GFP_NOIO, node);
+ }
+ 
++void blk_queue_free_zone_bitmaps(struct request_queue *q)
++{
++	kfree(q->conv_zones_bitmap);
++	q->conv_zones_bitmap = NULL;
++	kfree(q->seq_zones_wlock);
++	q->seq_zones_wlock = NULL;
++}
++
++struct blk_revalidate_zone_args {
++	struct gendisk	*disk;
++	unsigned long	*conv_zones_bitmap;
++	unsigned long	*seq_zones_wlock;
++	unsigned int	nr_zones;
++	sector_t	zone_sectors;
++	sector_t	sector;
++};
++
+ /*
+- * Allocate an array of struct blk_zone to get nr_zones zone information.
+- * The allocated array may be smaller than nr_zones.
++ * Helper function to check the validity of zones of a zoned block device.
+  */
+-static struct blk_zone *blk_alloc_zones(unsigned int *nr_zones)
++static int blk_revalidate_zone_cb(struct blk_zone *zone, unsigned int idx,
++				  void *data)
+ {
+-	struct blk_zone *zones;
+-	size_t nrz = min(*nr_zones, BLK_ZONED_REPORT_MAX_ZONES);
++	struct blk_revalidate_zone_args *args = data;
++	struct gendisk *disk = args->disk;
++	struct request_queue *q = disk->queue;
++	sector_t capacity = get_capacity(disk);
+ 
+ 	/*
+-	 * GFP_KERNEL here is meaningless as the caller task context has
+-	 * the PF_MEMALLOC_NOIO flag set in blk_revalidate_disk_zones()
+-	 * with memalloc_noio_save().
++	 * All zones must have the same size, with the exception on an eventual
++	 * smaller last zone.
+ 	 */
+-	zones = kvcalloc(nrz, sizeof(struct blk_zone), GFP_KERNEL);
+-	if (!zones) {
+-		*nr_zones = 0;
+-		return NULL;
++	if (zone->start == 0) {
++		if (zone->len == 0 || !is_power_of_2(zone->len)) {
++			pr_warn("%s: Invalid zoned device with non power of two zone size (%llu)\n",
++				disk->disk_name, zone->len);
++			return -ENODEV;
++		}
++
++		args->zone_sectors = zone->len;
++		args->nr_zones = (capacity + zone->len - 1) >> ilog2(zone->len);
++	} else if (zone->start + args->zone_sectors < capacity) {
++		if (zone->len != args->zone_sectors) {
++			pr_warn("%s: Invalid zoned device with non constant zone size\n",
++				disk->disk_name);
++			return -ENODEV;
++		}
++	} else {
++		if (zone->len > args->zone_sectors) {
++			pr_warn("%s: Invalid zoned device with larger last zone size\n",
++				disk->disk_name);
++			return -ENODEV;
++		}
+ 	}
+ 
+-	*nr_zones = nrz;
++	/* Check for holes in the zone report */
++	if (zone->start != args->sector) {
++		pr_warn("%s: Zone gap at sectors %llu..%llu\n",
++			disk->disk_name, args->sector, zone->start);
++		return -ENODEV;
++	}
+ 
+-	return zones;
+-}
++	/* Check zone type */
++	switch (zone->type) {
++	case BLK_ZONE_TYPE_CONVENTIONAL:
++		if (!args->conv_zones_bitmap) {
++			args->conv_zones_bitmap =
++				blk_alloc_zone_bitmap(q->node, args->nr_zones);
++			if (!args->conv_zones_bitmap)
++				return -ENOMEM;
++		}
++		set_bit(idx, args->conv_zones_bitmap);
++		break;
++	case BLK_ZONE_TYPE_SEQWRITE_REQ:
++	case BLK_ZONE_TYPE_SEQWRITE_PREF:
++		if (!args->seq_zones_wlock) {
++			args->seq_zones_wlock =
++				blk_alloc_zone_bitmap(q->node, args->nr_zones);
++			if (!args->seq_zones_wlock)
++				return -ENOMEM;
++		}
++		break;
++	default:
++		pr_warn("%s: Invalid zone type 0x%x at sectors %llu\n",
++			disk->disk_name, (int)zone->type, zone->start);
++		return -ENODEV;
++	}
+ 
+-void blk_queue_free_zone_bitmaps(struct request_queue *q)
+-{
+-	kfree(q->seq_zones_bitmap);
+-	q->seq_zones_bitmap = NULL;
+-	kfree(q->seq_zones_wlock);
+-	q->seq_zones_wlock = NULL;
++	args->sector += zone->len;
++	return 0;
+ }
+ 
+ /**
+@@ -447,102 +428,53 @@ void blk_queue_free_zone_bitmaps(struct request_queue *q)
+  *
+  * Helper function for low-level device drivers to (re) allocate and initialize
+  * a disk request queue zone bitmaps. This functions should normally be called
+- * within the disk ->revalidate method. For BIO based queues, no zone bitmap
+- * is allocated.
++ * within the disk ->revalidate method for blk-mq based drivers.  For BIO based
++ * drivers only q->nr_zones needs to be updated so that the sysfs exposed value
++ * is correct.
+  */
+ int blk_revalidate_disk_zones(struct gendisk *disk)
+ {
+ 	struct request_queue *q = disk->queue;
+-	unsigned int nr_zones = __blkdev_nr_zones(q, get_capacity(disk));
+-	unsigned long *seq_zones_wlock = NULL, *seq_zones_bitmap = NULL;
+-	unsigned int i, rep_nr_zones = 0, z = 0, nrz;
+-	struct blk_zone *zones = NULL;
++	struct blk_revalidate_zone_args args = {
++		.disk		= disk,
++	};
+ 	unsigned int noio_flag;
+-	sector_t sector = 0;
+-	int ret = 0;
++	int ret;
+ 
+-	/*
+-	 * BIO based queues do not use a scheduler so only q->nr_zones
+-	 * needs to be updated so that the sysfs exposed value is correct.
+-	 */
+-	if (!queue_is_mq(q)) {
+-		q->nr_zones = nr_zones;
+-		return 0;
+-	}
++	if (WARN_ON_ONCE(!blk_queue_is_zoned(q)))
++		return -EIO;
++	if (WARN_ON_ONCE(!queue_is_mq(q)))
++		return -EIO;
+ 
+ 	/*
+-	 * Ensure that all memory allocations in this context are done as
+-	 * if GFP_NOIO was specified.
++	 * Ensure that all memory allocations in this context are done as if
++	 * GFP_NOIO was specified.
+ 	 */
+ 	noio_flag = memalloc_noio_save();
++	ret = disk->fops->report_zones(disk, 0, UINT_MAX,
++				       blk_revalidate_zone_cb, &args);
++	memalloc_noio_restore(noio_flag);
+ 
+-	if (!blk_queue_is_zoned(q) || !nr_zones) {
+-		nr_zones = 0;
+-		goto update;
+-	}
+-
+-	/* Allocate bitmaps */
+-	ret = -ENOMEM;
+-	seq_zones_wlock = blk_alloc_zone_bitmap(q->node, nr_zones);
+-	if (!seq_zones_wlock)
+-		goto out;
+-	seq_zones_bitmap = blk_alloc_zone_bitmap(q->node, nr_zones);
+-	if (!seq_zones_bitmap)
+-		goto out;
+-
+-	/* Get zone information and initialize seq_zones_bitmap */
+-	rep_nr_zones = nr_zones;
+-	zones = blk_alloc_zones(&rep_nr_zones);
+-	if (!zones)
+-		goto out;
+-
+-	while (z < nr_zones) {
+-		nrz = min(nr_zones - z, rep_nr_zones);
+-		ret = blk_report_zones(disk, sector, zones, &nrz);
+-		if (ret)
+-			goto out;
+-		if (!nrz)
+-			break;
+-		for (i = 0; i < nrz; i++) {
+-			if (zones[i].type != BLK_ZONE_TYPE_CONVENTIONAL)
+-				set_bit(z, seq_zones_bitmap);
+-			z++;
+-		}
+-		sector += nrz * blk_queue_zone_sectors(q);
+-	}
+-
+-	if (WARN_ON(z != nr_zones)) {
+-		ret = -EIO;
+-		goto out;
+-	}
+-
+-update:
+ 	/*
+-	 * Install the new bitmaps, making sure the queue is stopped and
+-	 * all I/Os are completed (i.e. a scheduler is not referencing the
+-	 * bitmaps).
++	 * Install the new bitmaps and update nr_zones only once the queue is
++	 * stopped and all I/Os are completed (i.e. a scheduler is not
++	 * referencing the bitmaps).
+ 	 */
+ 	blk_mq_freeze_queue(q);
+-	q->nr_zones = nr_zones;
+-	swap(q->seq_zones_wlock, seq_zones_wlock);
+-	swap(q->seq_zones_bitmap, seq_zones_bitmap);
+-	blk_mq_unfreeze_queue(q);
+-
+-out:
+-	memalloc_noio_restore(noio_flag);
+-
+-	kvfree(zones);
+-	kfree(seq_zones_wlock);
+-	kfree(seq_zones_bitmap);
+-
+-	if (ret) {
++	if (ret >= 0) {
++		blk_queue_chunk_sectors(q, args.zone_sectors);
++		q->nr_zones = args.nr_zones;
++		swap(q->seq_zones_wlock, args.seq_zones_wlock);
++		swap(q->conv_zones_bitmap, args.conv_zones_bitmap);
++		ret = 0;
++	} else {
+ 		pr_warn("%s: failed to revalidate zones\n", disk->disk_name);
+-		blk_mq_freeze_queue(q);
+ 		blk_queue_free_zone_bitmaps(q);
+-		blk_mq_unfreeze_queue(q);
+ 	}
++	blk_mq_unfreeze_queue(q);
+ 
++	kfree(args.seq_zones_wlock);
++	kfree(args.conv_zones_bitmap);
+ 	return ret;
+ }
+ EXPORT_SYMBOL_GPL(blk_revalidate_disk_zones);
+-
+diff --git a/block/bounce.c b/block/bounce.c
+index f8ed677a1..aa57ccc6c 100644
+--- a/block/bounce.c
++++ b/block/bounce.c
+@@ -267,14 +267,12 @@ static struct bio *bounce_clone_bio(struct bio *bio_src, gfp_t gfp_mask,
+ 		break;
+ 	}
+ 
+-	if (bio_integrity(bio_src)) {
+-		int ret;
++	bio_crypt_clone(bio, bio_src, gfp_mask);
+ 
+-		ret = bio_integrity_clone(bio, bio_src, gfp_mask);
+-		if (ret < 0) {
+-			bio_put(bio);
+-			return NULL;
+-		}
++	if (bio_integrity(bio_src) &&
++	    bio_integrity_clone(bio, bio_src, gfp_mask) < 0) {
++		bio_put(bio);
++		return NULL;
+ 	}
+ 
+ 	bio_clone_blkg_association(bio, bio_src);
+diff --git a/block/ioctl.c b/block/ioctl.c
+index 15a0eb80a..f5565dd6b 100644
+--- a/block/ioctl.c
++++ b/block/ioctl.c
+@@ -532,11 +532,14 @@ int blkdev_ioctl(struct block_device *bdev, fmode_t mode, unsigned cmd,
+ 	case BLKREPORTZONE:
+ 		return blkdev_report_zones_ioctl(bdev, mode, cmd, arg);
+ 	case BLKRESETZONE:
+-		return blkdev_reset_zones_ioctl(bdev, mode, cmd, arg);
++	case BLKOPENZONE:
++	case BLKCLOSEZONE:
++	case BLKFINISHZONE:
++		return blkdev_zone_mgmt_ioctl(bdev, mode, cmd, arg);
+ 	case BLKGETZONESZ:
+ 		return put_uint(arg, bdev_zone_sectors(bdev));
+ 	case BLKGETNRZONES:
+-		return put_uint(arg, blkdev_nr_zones(bdev));
++		return put_uint(arg, blkdev_nr_zones(bdev->bd_disk));
+ 	case HDIO_GETGEO:
+ 		return blkdev_getgeo(bdev, argp);
+ 	case BLKRAGET:
+diff --git a/block/keyslot-manager.c b/block/keyslot-manager.c
+new file mode 100644
+index 000000000..74b748518
+--- /dev/null
++++ b/block/keyslot-manager.c
+@@ -0,0 +1,663 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright 2019 Google LLC
++ */
++
++/**
++ * DOC: The Keyslot Manager
++ *
++ * Many devices with inline encryption support have a limited number of "slots"
++ * into which encryption contexts may be programmed, and requests can be tagged
++ * with a slot number to specify the key to use for en/decryption.
++ *
++ * As the number of slots are limited, and programming keys is expensive on
++ * many inline encryption hardware, we don't want to program the same key into
++ * multiple slots - if multiple requests are using the same key, we want to
++ * program just one slot with that key and use that slot for all requests.
++ *
++ * The keyslot manager manages these keyslots appropriately, and also acts as
++ * an abstraction between the inline encryption hardware and the upper layers.
++ *
++ * Lower layer devices will set up a keyslot manager in their request queue
++ * and tell it how to perform device specific operations like programming/
++ * evicting keys from keyslots.
++ *
++ * Upper layers will call keyslot_manager_get_slot_for_key() to program a
++ * key into some slot in the inline encryption hardware.
++ */
++#include <crypto/algapi.h>
++#include <linux/keyslot-manager.h>
++#include <linux/atomic.h>
++#include <linux/mutex.h>
++#include <linux/pm_runtime.h>
++#include <linux/wait.h>
++#include <linux/blkdev.h>
++
++struct keyslot {
++	atomic_t slot_refs;
++	struct list_head idle_slot_node;
++	struct hlist_node hash_node;
++	struct blk_crypto_key key;
++};
++
++struct keyslot_manager {
++	unsigned int num_slots;
++	struct keyslot_mgmt_ll_ops ksm_ll_ops;
++	unsigned int features;
++	unsigned int crypto_mode_supported[BLK_ENCRYPTION_MODE_MAX];
++	unsigned int max_dun_bytes_supported;
++	void *ll_priv_data;
++
++#ifdef CONFIG_PM
++	/* Device for runtime power management (NULL if none) */
++	struct device *dev;
++#endif
++
++	/* Protects programming and evicting keys from the device */
++	struct rw_semaphore lock;
++
++	/* List of idle slots, with least recently used slot at front */
++	wait_queue_head_t idle_slots_wait_queue;
++	struct list_head idle_slots;
++	spinlock_t idle_slots_lock;
++
++	/*
++	 * Hash table which maps key hashes to keyslots, so that we can find a
++	 * key's keyslot in O(1) time rather than O(num_slots).  Protected by
++	 * 'lock'.  A cryptographic hash function is used so that timing attacks
++	 * can't leak information about the raw keys.
++	 */
++	struct hlist_head *slot_hashtable;
++	unsigned int slot_hashtable_size;
++
++	/* Per-keyslot data */
++	struct keyslot slots[];
++};
++
++static inline bool keyslot_manager_is_passthrough(struct keyslot_manager *ksm)
++{
++	return ksm->num_slots == 0;
++}
++
++#ifdef CONFIG_PM
++static inline void keyslot_manager_set_dev(struct keyslot_manager *ksm,
++					   struct device *dev)
++{
++	ksm->dev = dev;
++}
++
++/* If there's an underlying device and it's suspended, resume it. */
++static inline void keyslot_manager_pm_get(struct keyslot_manager *ksm)
++{
++	if (ksm->dev)
++		pm_runtime_get_sync(ksm->dev);
++}
++
++static inline void keyslot_manager_pm_put(struct keyslot_manager *ksm)
++{
++	if (ksm->dev)
++		pm_runtime_put_sync(ksm->dev);
++}
++#else /* CONFIG_PM */
++static inline void keyslot_manager_set_dev(struct keyslot_manager *ksm,
++					   struct device *dev)
++{
++}
++
++static inline void keyslot_manager_pm_get(struct keyslot_manager *ksm)
++{
++}
++
++static inline void keyslot_manager_pm_put(struct keyslot_manager *ksm)
++{
++}
++#endif /* !CONFIG_PM */
++
++static inline void keyslot_manager_hw_enter(struct keyslot_manager *ksm)
++{
++	/*
++	 * Calling into the driver requires ksm->lock held and the device
++	 * resumed.  But we must resume the device first, since that can acquire
++	 * and release ksm->lock via keyslot_manager_reprogram_all_keys().
++	 */
++	keyslot_manager_pm_get(ksm);
++	down_write(&ksm->lock);
++}
++
++static inline void keyslot_manager_hw_exit(struct keyslot_manager *ksm)
++{
++	up_write(&ksm->lock);
++	keyslot_manager_pm_put(ksm);
++}
++
++/**
++ * keyslot_manager_create() - Create a keyslot manager
++ * @dev: Device for runtime power management (NULL if none)
++ * @num_slots: The number of key slots to manage.
++ * @ksm_ll_ops: The struct keyslot_mgmt_ll_ops for the device that this keyslot
++ *		manager will use to perform operations like programming and
++ *		evicting keys.
++ * @features: The supported features as a bitmask of BLK_CRYPTO_FEATURE_* flags.
++ *	      Most drivers should set BLK_CRYPTO_FEATURE_STANDARD_KEYS here.
++ * @crypto_mode_supported:	Array of size BLK_ENCRYPTION_MODE_MAX of
++ *				bitmasks that represents whether a crypto mode
++ *				and data unit size are supported. The i'th bit
++ *				of crypto_mode_supported[crypto_mode] is set iff
++ *				a data unit size of (1 << i) is supported. We
++ *				only support data unit sizes that are powers of
++ *				2.
++ * @ll_priv_data: Private data passed as is to the functions in ksm_ll_ops.
++ *
++ * Allocate memory for and initialize a keyslot manager. Called by e.g.
++ * storage drivers to set up a keyslot manager in their request_queue.
++ *
++ * Context: May sleep
++ * Return: Pointer to constructed keyslot manager or NULL on error.
++ */
++struct keyslot_manager *keyslot_manager_create(
++	struct device *dev,
++	unsigned int num_slots,
++	const struct keyslot_mgmt_ll_ops *ksm_ll_ops,
++	unsigned int features,
++	const unsigned int crypto_mode_supported[BLK_ENCRYPTION_MODE_MAX],
++	void *ll_priv_data)
++{
++	struct keyslot_manager *ksm;
++	unsigned int slot;
++	unsigned int i;
++
++	if (num_slots == 0)
++		return NULL;
++
++	/* Check that all ops are specified */
++	if (ksm_ll_ops->keyslot_program == NULL ||
++	    ksm_ll_ops->keyslot_evict == NULL)
++		return NULL;
++
++	ksm = kvzalloc(struct_size(ksm, slots, num_slots), GFP_KERNEL);
++	if (!ksm)
++		return NULL;
++
++	ksm->num_slots = num_slots;
++	ksm->ksm_ll_ops = *ksm_ll_ops;
++	ksm->features = features;
++	memcpy(ksm->crypto_mode_supported, crypto_mode_supported,
++	       sizeof(ksm->crypto_mode_supported));
++	ksm->max_dun_bytes_supported = BLK_CRYPTO_MAX_IV_SIZE;
++	ksm->ll_priv_data = ll_priv_data;
++	keyslot_manager_set_dev(ksm, dev);
++
++	init_rwsem(&ksm->lock);
++
++	init_waitqueue_head(&ksm->idle_slots_wait_queue);
++	INIT_LIST_HEAD(&ksm->idle_slots);
++
++	for (slot = 0; slot < num_slots; slot++) {
++		list_add_tail(&ksm->slots[slot].idle_slot_node,
++			      &ksm->idle_slots);
++	}
++
++	spin_lock_init(&ksm->idle_slots_lock);
++
++	ksm->slot_hashtable_size = roundup_pow_of_two(num_slots);
++	ksm->slot_hashtable = kvmalloc_array(ksm->slot_hashtable_size,
++					     sizeof(ksm->slot_hashtable[0]),
++					     GFP_KERNEL);
++	if (!ksm->slot_hashtable)
++		goto err_free_ksm;
++	for (i = 0; i < ksm->slot_hashtable_size; i++)
++		INIT_HLIST_HEAD(&ksm->slot_hashtable[i]);
++
++	return ksm;
++
++err_free_ksm:
++	keyslot_manager_destroy(ksm);
++	return NULL;
++}
++EXPORT_SYMBOL_GPL(keyslot_manager_create);
++
++void keyslot_manager_set_max_dun_bytes(struct keyslot_manager *ksm,
++				       unsigned int max_dun_bytes)
++{
++	ksm->max_dun_bytes_supported = max_dun_bytes;
++}
++EXPORT_SYMBOL_GPL(keyslot_manager_set_max_dun_bytes);
++
++static inline struct hlist_head *
++hash_bucket_for_key(struct keyslot_manager *ksm,
++		    const struct blk_crypto_key *key)
++{
++	return &ksm->slot_hashtable[blk_crypto_key_hash(key) &
++				    (ksm->slot_hashtable_size - 1)];
++}
++
++static void remove_slot_from_lru_list(struct keyslot_manager *ksm, int slot)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&ksm->idle_slots_lock, flags);
++	list_del(&ksm->slots[slot].idle_slot_node);
++	spin_unlock_irqrestore(&ksm->idle_slots_lock, flags);
++}
++
++static int find_keyslot(struct keyslot_manager *ksm,
++			const struct blk_crypto_key *key)
++{
++	const struct hlist_head *head = hash_bucket_for_key(ksm, key);
++	const struct keyslot *slotp;
++
++	hlist_for_each_entry(slotp, head, hash_node) {
++		if (slotp->key.hash == key->hash &&
++		    slotp->key.crypto_mode == key->crypto_mode &&
++		    slotp->key.size == key->size &&
++		    slotp->key.data_unit_size == key->data_unit_size &&
++		    !crypto_memneq(slotp->key.raw, key->raw, key->size))
++			return slotp - ksm->slots;
++	}
++	return -ENOKEY;
++}
++
++static int find_and_grab_keyslot(struct keyslot_manager *ksm,
++				 const struct blk_crypto_key *key)
++{
++	int slot;
++
++	slot = find_keyslot(ksm, key);
++	if (slot < 0)
++		return slot;
++	if (atomic_inc_return(&ksm->slots[slot].slot_refs) == 1) {
++		/* Took first reference to this slot; remove it from LRU list */
++		remove_slot_from_lru_list(ksm, slot);
++	}
++	return slot;
++}
++
++/**
++ * keyslot_manager_get_slot_for_key() - Program a key into a keyslot.
++ * @ksm: The keyslot manager to program the key into.
++ * @key: Pointer to the key object to program, including the raw key, crypto
++ *	 mode, and data unit size.
++ *
++ * Get a keyslot that's been programmed with the specified key.  If one already
++ * exists, return it with incremented refcount.  Otherwise, wait for a keyslot
++ * to become idle and program it.
++ *
++ * Context: Process context. Takes and releases ksm->lock.
++ * Return: The keyslot on success, else a -errno value.
++ */
++int keyslot_manager_get_slot_for_key(struct keyslot_manager *ksm,
++				     const struct blk_crypto_key *key)
++{
++	int slot;
++	int err;
++	struct keyslot *idle_slot;
++
++	if (keyslot_manager_is_passthrough(ksm))
++		return 0;
++
++	down_read(&ksm->lock);
++	slot = find_and_grab_keyslot(ksm, key);
++	up_read(&ksm->lock);
++	if (slot != -ENOKEY)
++		return slot;
++
++	for (;;) {
++		keyslot_manager_hw_enter(ksm);
++		slot = find_and_grab_keyslot(ksm, key);
++		if (slot != -ENOKEY) {
++			keyslot_manager_hw_exit(ksm);
++			return slot;
++		}
++
++		/*
++		 * If we're here, that means there wasn't a slot that was
++		 * already programmed with the key. So try to program it.
++		 */
++		if (!list_empty(&ksm->idle_slots))
++			break;
++
++		keyslot_manager_hw_exit(ksm);
++		wait_event(ksm->idle_slots_wait_queue,
++			   !list_empty(&ksm->idle_slots));
++	}
++
++	idle_slot = list_first_entry(&ksm->idle_slots, struct keyslot,
++					     idle_slot_node);
++	slot = idle_slot - ksm->slots;
++
++	err = ksm->ksm_ll_ops.keyslot_program(ksm, key, slot);
++	if (err) {
++		wake_up(&ksm->idle_slots_wait_queue);
++		keyslot_manager_hw_exit(ksm);
++		return err;
++	}
++
++	/* Move this slot to the hash list for the new key. */
++	if (idle_slot->key.crypto_mode != BLK_ENCRYPTION_MODE_INVALID)
++		hlist_del(&idle_slot->hash_node);
++	hlist_add_head(&idle_slot->hash_node, hash_bucket_for_key(ksm, key));
++
++	atomic_set(&idle_slot->slot_refs, 1);
++	idle_slot->key = *key;
++
++	remove_slot_from_lru_list(ksm, slot);
++
++	keyslot_manager_hw_exit(ksm);
++	return slot;
++}
++
++/**
++ * keyslot_manager_get_slot() - Increment the refcount on the specified slot.
++ * @ksm: The keyslot manager that we want to modify.
++ * @slot: The slot to increment the refcount of.
++ *
++ * This function assumes that there is already an active reference to that slot
++ * and simply increments the refcount. This is useful when cloning a bio that
++ * already has a reference to a keyslot, and we want the cloned bio to also have
++ * its own reference.
++ *
++ * Context: Any context.
++ */
++void keyslot_manager_get_slot(struct keyslot_manager *ksm, unsigned int slot)
++{
++	if (keyslot_manager_is_passthrough(ksm))
++		return;
++
++	if (WARN_ON(slot >= ksm->num_slots))
++		return;
++
++	WARN_ON(atomic_inc_return(&ksm->slots[slot].slot_refs) < 2);
++}
++
++/**
++ * keyslot_manager_put_slot() - Release a reference to a slot
++ * @ksm: The keyslot manager to release the reference from.
++ * @slot: The slot to release the reference from.
++ *
++ * Context: Any context.
++ */
++void keyslot_manager_put_slot(struct keyslot_manager *ksm, unsigned int slot)
++{
++	unsigned long flags;
++
++	if (keyslot_manager_is_passthrough(ksm))
++		return;
++
++	if (WARN_ON(slot >= ksm->num_slots))
++		return;
++
++	if (atomic_dec_and_lock_irqsave(&ksm->slots[slot].slot_refs,
++					&ksm->idle_slots_lock, flags)) {
++		list_add_tail(&ksm->slots[slot].idle_slot_node,
++			      &ksm->idle_slots);
++		spin_unlock_irqrestore(&ksm->idle_slots_lock, flags);
++		wake_up(&ksm->idle_slots_wait_queue);
++	}
++}
++
++/**
++ * keyslot_manager_crypto_mode_supported() - Find out if a crypto_mode /
++ *					     data unit size / is_hw_wrapped_key
++ *					     combination is supported by a ksm.
++ * @ksm: The keyslot manager to check
++ * @crypto_mode: The crypto mode to check for.
++ * @dun_bytes: The number of bytes that will be used to specify the DUN
++ * @data_unit_size: The data_unit_size for the mode.
++ * @is_hw_wrapped_key: Whether a hardware-wrapped key will be used.
++ *
++ * Calls and returns the result of the crypto_mode_supported function specified
++ * by the ksm.
++ *
++ * Context: Process context.
++ * Return: Whether or not this ksm supports the specified crypto settings.
++ */
++bool keyslot_manager_crypto_mode_supported(struct keyslot_manager *ksm,
++					   enum blk_crypto_mode_num crypto_mode,
++					   unsigned int dun_bytes,
++					   unsigned int data_unit_size,
++					   bool is_hw_wrapped_key)
++{
++	if (!ksm)
++		return false;
++	if (WARN_ON(crypto_mode >= BLK_ENCRYPTION_MODE_MAX))
++		return false;
++	if (WARN_ON(!is_power_of_2(data_unit_size)))
++		return false;
++	if (is_hw_wrapped_key) {
++		if (!(ksm->features & BLK_CRYPTO_FEATURE_WRAPPED_KEYS))
++			return false;
++	} else {
++		if (!(ksm->features & BLK_CRYPTO_FEATURE_STANDARD_KEYS))
++			return false;
++	}
++	if (!(ksm->crypto_mode_supported[crypto_mode] & data_unit_size))
++		return false;
++
++	return ksm->max_dun_bytes_supported >= dun_bytes;
++}
++
++/**
++ * keyslot_manager_evict_key() - Evict a key from the lower layer device.
++ * @ksm: The keyslot manager to evict from
++ * @key: The key to evict
++ *
++ * Find the keyslot that the specified key was programmed into, and evict that
++ * slot from the lower layer device if that slot is not currently in use.
++ *
++ * Context: Process context. Takes and releases ksm->lock.
++ * Return: 0 on success, -EBUSY if the key is still in use, or another
++ *	   -errno value on other error.
++ */
++int keyslot_manager_evict_key(struct keyslot_manager *ksm,
++			      const struct blk_crypto_key *key)
++{
++	int slot;
++	int err;
++	struct keyslot *slotp;
++
++	if (keyslot_manager_is_passthrough(ksm)) {
++		if (ksm->ksm_ll_ops.keyslot_evict) {
++			keyslot_manager_hw_enter(ksm);
++			err = ksm->ksm_ll_ops.keyslot_evict(ksm, key, -1);
++			keyslot_manager_hw_exit(ksm);
++			return err;
++		}
++		return 0;
++	}
++
++	keyslot_manager_hw_enter(ksm);
++
++	slot = find_keyslot(ksm, key);
++	if (slot < 0) {
++		err = slot;
++		goto out_unlock;
++	}
++	slotp = &ksm->slots[slot];
++
++	if (atomic_read(&slotp->slot_refs) != 0) {
++		err = -EBUSY;
++		goto out_unlock;
++	}
++	err = ksm->ksm_ll_ops.keyslot_evict(ksm, key, slot);
++	if (err)
++		goto out_unlock;
++
++	hlist_del(&slotp->hash_node);
++	memzero_explicit(&slotp->key, sizeof(slotp->key));
++	err = 0;
++out_unlock:
++	keyslot_manager_hw_exit(ksm);
++	return err;
++}
++
++/**
++ * keyslot_manager_reprogram_all_keys() - Re-program all keyslots.
++ * @ksm: The keyslot manager
++ *
++ * Re-program all keyslots that are supposed to have a key programmed.  This is
++ * intended only for use by drivers for hardware that loses its keys on reset.
++ *
++ * Context: Process context. Takes and releases ksm->lock.
++ */
++void keyslot_manager_reprogram_all_keys(struct keyslot_manager *ksm)
++{
++	unsigned int slot;
++
++	if (WARN_ON(keyslot_manager_is_passthrough(ksm)))
++		return;
++
++	/* This is for device initialization, so don't resume the device */
++	down_write(&ksm->lock);
++	for (slot = 0; slot < ksm->num_slots; slot++) {
++		const struct keyslot *slotp = &ksm->slots[slot];
++		int err;
++
++		if (slotp->key.crypto_mode == BLK_ENCRYPTION_MODE_INVALID)
++			continue;
++
++		err = ksm->ksm_ll_ops.keyslot_program(ksm, &slotp->key, slot);
++		WARN_ON(err);
++	}
++	up_write(&ksm->lock);
++}
++EXPORT_SYMBOL_GPL(keyslot_manager_reprogram_all_keys);
++
++/**
++ * keyslot_manager_private() - return the private data stored with ksm
++ * @ksm: The keyslot manager
++ *
++ * Returns the private data passed to the ksm when it was created.
++ */
++void *keyslot_manager_private(struct keyslot_manager *ksm)
++{
++	return ksm->ll_priv_data;
++}
++EXPORT_SYMBOL_GPL(keyslot_manager_private);
++
++void keyslot_manager_destroy(struct keyslot_manager *ksm)
++{
++	if (ksm) {
++		kvfree(ksm->slot_hashtable);
++		memzero_explicit(ksm, struct_size(ksm, slots, ksm->num_slots));
++		kvfree(ksm);
++	}
++}
++EXPORT_SYMBOL_GPL(keyslot_manager_destroy);
++
++/**
++ * keyslot_manager_create_passthrough() - Create a passthrough keyslot manager
++ * @dev: Device for runtime power management (NULL if none)
++ * @ksm_ll_ops: The struct keyslot_mgmt_ll_ops
++ * @features: Bitmask of BLK_CRYPTO_FEATURE_* flags
++ * @crypto_mode_supported: Bitmasks for supported encryption modes
++ * @ll_priv_data: Private data passed as is to the functions in ksm_ll_ops.
++ *
++ * Allocate memory for and initialize a passthrough keyslot manager.
++ * Called by e.g. storage drivers to set up a keyslot manager in their
++ * request_queue, when the storage driver wants to manage its keys by itself.
++ * This is useful for inline encryption hardware that don't have a small fixed
++ * number of keyslots, and for layered devices.
++ *
++ * See keyslot_manager_create() for more details about the parameters.
++ *
++ * Context: This function may sleep
++ * Return: Pointer to constructed keyslot manager or NULL on error.
++ */
++struct keyslot_manager *keyslot_manager_create_passthrough(
++	struct device *dev,
++	const struct keyslot_mgmt_ll_ops *ksm_ll_ops,
++	unsigned int features,
++	const unsigned int crypto_mode_supported[BLK_ENCRYPTION_MODE_MAX],
++	void *ll_priv_data)
++{
++	struct keyslot_manager *ksm;
++
++	ksm = kzalloc(sizeof(*ksm), GFP_KERNEL);
++	if (!ksm)
++		return NULL;
++
++	ksm->ksm_ll_ops = *ksm_ll_ops;
++	ksm->features = features;
++	memcpy(ksm->crypto_mode_supported, crypto_mode_supported,
++	       sizeof(ksm->crypto_mode_supported));
++	ksm->max_dun_bytes_supported = BLK_CRYPTO_MAX_IV_SIZE;
++	ksm->ll_priv_data = ll_priv_data;
++	keyslot_manager_set_dev(ksm, dev);
++
++	init_rwsem(&ksm->lock);
++
++	return ksm;
++}
++EXPORT_SYMBOL_GPL(keyslot_manager_create_passthrough);
++
++/**
++ * keyslot_manager_intersect_modes() - restrict supported modes by child device
++ * @parent: The keyslot manager for parent device
++ * @child: The keyslot manager for child device, or NULL
++ *
++ * Clear any crypto mode support bits in @parent that aren't set in @child.
++ * If @child is NULL, then all parent bits are cleared.
++ *
++ * Only use this when setting up the keyslot manager for a layered device,
++ * before it's been exposed yet.
++ */
++void keyslot_manager_intersect_modes(struct keyslot_manager *parent,
++				     const struct keyslot_manager *child)
++{
++	if (child) {
++		unsigned int i;
++
++		parent->features &= child->features;
++		parent->max_dun_bytes_supported =
++			min(parent->max_dun_bytes_supported,
++			    child->max_dun_bytes_supported);
++		for (i = 0; i < ARRAY_SIZE(child->crypto_mode_supported); i++) {
++			parent->crypto_mode_supported[i] &=
++				child->crypto_mode_supported[i];
++		}
++	} else {
++		parent->features = 0;
++		parent->max_dun_bytes_supported = 0;
++		memset(parent->crypto_mode_supported, 0,
++		       sizeof(parent->crypto_mode_supported));
++	}
++}
++EXPORT_SYMBOL_GPL(keyslot_manager_intersect_modes);
++
++/**
++ * keyslot_manager_derive_raw_secret() - Derive software secret from wrapped key
++ * @ksm: The keyslot manager
++ * @wrapped_key: The wrapped key
++ * @wrapped_key_size: Size of the wrapped key in bytes
++ * @secret: (output) the software secret
++ * @secret_size: (output) the number of secret bytes to derive
++ *
++ * Given a hardware-wrapped key, ask the hardware to derive a secret which
++ * software can use for cryptographic tasks other than inline encryption.  The
++ * derived secret is guaranteed to be cryptographically isolated from the key
++ * with which any inline encryption with this wrapped key would actually be
++ * done.  I.e., both will be derived from the unwrapped key.
++ *
++ * Return: 0 on success, -EOPNOTSUPP if hardware-wrapped keys are unsupported,
++ *	   or another -errno code.
++ */
++int keyslot_manager_derive_raw_secret(struct keyslot_manager *ksm,
++				      const u8 *wrapped_key,
++				      unsigned int wrapped_key_size,
++				      u8 *secret, unsigned int secret_size)
++{
++	int err;
++
++	if (ksm->ksm_ll_ops.derive_raw_secret) {
++		keyslot_manager_hw_enter(ksm);
++		err = ksm->ksm_ll_ops.derive_raw_secret(ksm, wrapped_key,
++							wrapped_key_size,
++							secret, secret_size);
++		keyslot_manager_hw_exit(ksm);
++	} else {
++		err = -EOPNOTSUPP;
++	}
++
++	return err;
++}
++EXPORT_SYMBOL_GPL(keyslot_manager_derive_raw_secret);
+diff --git a/block/partition-generic.c b/block/partition-generic.c
+index aee643ce1..31bff3fb2 100644
+--- a/block/partition-generic.c
++++ b/block/partition-generic.c
+@@ -459,56 +459,6 @@ static int drop_partitions(struct gendisk *disk, struct block_device *bdev)
+ 	return 0;
+ }
+ 
+-static bool part_zone_aligned(struct gendisk *disk,
+-			      struct block_device *bdev,
+-			      sector_t from, sector_t size)
+-{
+-	unsigned int zone_sectors = bdev_zone_sectors(bdev);
+-
+-	/*
+-	 * If this function is called, then the disk is a zoned block device
+-	 * (host-aware or host-managed). This can be detected even if the
+-	 * zoned block device support is disabled (CONFIG_BLK_DEV_ZONED not
+-	 * set). In this case, however, only host-aware devices will be seen
+-	 * as a block device is not created for host-managed devices. Without
+-	 * zoned block device support, host-aware drives can still be used as
+-	 * regular block devices (no zone operation) and their zone size will
+-	 * be reported as 0. Allow this case.
+-	 */
+-	if (!zone_sectors)
+-		return true;
+-
+-	/*
+-	 * Check partition start and size alignement. If the drive has a
+-	 * smaller last runt zone, ignore it and allow the partition to
+-	 * use it. Check the zone size too: it should be a power of 2 number
+-	 * of sectors.
+-	 */
+-	if (WARN_ON_ONCE(!is_power_of_2(zone_sectors))) {
+-		u32 rem;
+-
+-		div_u64_rem(from, zone_sectors, &rem);
+-		if (rem)
+-			return false;
+-		if ((from + size) < get_capacity(disk)) {
+-			div_u64_rem(size, zone_sectors, &rem);
+-			if (rem)
+-				return false;
+-		}
+-
+-	} else {
+-
+-		if (from & (zone_sectors - 1))
+-			return false;
+-		if ((from + size) < get_capacity(disk) &&
+-		    (size & (zone_sectors - 1)))
+-			return false;
+-
+-	}
+-
+-	return true;
+-}
+-
+ int rescan_partitions(struct gendisk *disk, struct block_device *bdev)
+ {
+ 	struct parsed_partitions *state = NULL;
+@@ -544,6 +494,14 @@ int rescan_partitions(struct gendisk *disk, struct block_device *bdev)
+ 		}
+ 		return -EIO;
+ 	}
++
++	/* Partitions are not supported on zoned block devices */
++	if (bdev_is_zoned(bdev)) {
++		pr_warn("%s: ignoring partition table on zoned block device\n",
++			disk->disk_name);
++		goto out;
++	}
++
+ 	/*
+ 	 * If any partition code tried to read beyond EOD, try
+ 	 * unlocking native capacity even if partition table is
+@@ -607,21 +565,6 @@ int rescan_partitions(struct gendisk *disk, struct block_device *bdev)
+ 			}
+ 		}
+ 
+-		/*
+-		 * On a zoned block device, partitions should be aligned on the
+-		 * device zone size (i.e. zone boundary crossing not allowed).
+-		 * Otherwise, resetting the write pointer of the last zone of
+-		 * one partition may impact the following partition.
+-		 */
+-		if (bdev_is_zoned(bdev) &&
+-		    !part_zone_aligned(disk, bdev, from, size)) {
+-			printk(KERN_WARNING
+-			       "%s: p%d start %llu+%llu is not zone aligned\n",
+-			       disk->disk_name, p, (unsigned long long) from,
+-			       (unsigned long long) size);
+-			continue;
+-		}
+-
+ 		part = add_partition(disk, p, from, size,
+ 				     state->parts[p].flags,
+ 				     &state->parts[p].info);
+@@ -635,6 +578,7 @@ int rescan_partitions(struct gendisk *disk, struct block_device *bdev)
+ 			md_autodetect_dev(part_to_dev(part)->devt);
+ #endif
+ 	}
++out:
+ 	free_partitions(state);
+ 	return 0;
+ }
+-- 
+2.17.1
+

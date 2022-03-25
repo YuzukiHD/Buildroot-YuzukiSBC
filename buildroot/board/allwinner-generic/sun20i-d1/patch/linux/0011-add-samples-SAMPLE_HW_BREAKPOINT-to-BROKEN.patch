@@ -1,0 +1,64 @@
+From 42dd1bbcad64fb6b36534bf0c5bf076078020282 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 16:39:03 +0800
+Subject: [PATCH 11/93] add samples SAMPLE_HW_BREAKPOINT to BROKEN
+
+---
+ samples/Kconfig                         |  1 +
+ samples/hw_breakpoint/data_breakpoint.c | 11 ++++++++---
+ 2 files changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/samples/Kconfig b/samples/Kconfig
+index c8dacb4dd..f57aeb094 100644
+--- a/samples/Kconfig
++++ b/samples/Kconfig
+@@ -42,6 +42,7 @@ config SAMPLE_KRETPROBES
+ config SAMPLE_HW_BREAKPOINT
+ 	tristate "Build kernel hardware breakpoint examples -- loadable module only"
+ 	depends on HAVE_HW_BREAKPOINT && m
++	depends on BROKEN
+ 	help
+ 	  This builds kernel hardware breakpoint example modules.
+ 
+diff --git a/samples/hw_breakpoint/data_breakpoint.c b/samples/hw_breakpoint/data_breakpoint.c
+index c58504774..418c46fe5 100644
+--- a/samples/hw_breakpoint/data_breakpoint.c
++++ b/samples/hw_breakpoint/data_breakpoint.c
+@@ -23,7 +23,7 @@
+ 
+ struct perf_event * __percpu *sample_hbp;
+ 
+-static char ksym_name[KSYM_NAME_LEN] = "pid_max";
++static char ksym_name[KSYM_NAME_LEN] = "jiffies";
+ module_param_string(ksym, ksym_name, KSYM_NAME_LEN, S_IRUGO);
+ MODULE_PARM_DESC(ksym, "Kernel symbol to monitor; this module will report any"
+ 			" write operations on the kernel symbol");
+@@ -41,11 +41,15 @@ static int __init hw_break_module_init(void)
+ {
+ 	int ret;
+ 	struct perf_event_attr attr;
++	void *addr = __symbol_get(ksym_name);
++
++	if (!addr)
++		return -ENXIO;
+ 
+ 	hw_breakpoint_init(&attr);
+-	attr.bp_addr = kallsyms_lookup_name(ksym_name);
++	attr.bp_addr = (unsigned long)addr;
+ 	attr.bp_len = HW_BREAKPOINT_LEN_4;
+-	attr.bp_type = HW_BREAKPOINT_W | HW_BREAKPOINT_R;
++	attr.bp_type = HW_BREAKPOINT_W;
+ 
+ 	sample_hbp = register_wide_hw_breakpoint(&attr, sample_hbp_handler, NULL);
+ 	if (IS_ERR((void __force *)sample_hbp)) {
+@@ -66,6 +70,7 @@ static int __init hw_break_module_init(void)
+ static void __exit hw_break_module_exit(void)
+ {
+ 	unregister_wide_hw_breakpoint(sample_hbp);
++	symbol_put(ksym_name);
+ 	printk(KERN_INFO "HW Breakpoint for %s write uninstalled\n", ksym_name);
+ }
+ 
+-- 
+2.17.1
+

@@ -1,0 +1,1612 @@
+From a55639bb68dbed935a23e6dc669bbb30fa8120a5 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 16:50:41 +0800
+Subject: [PATCH 26/93] add sunxi timer
+
+---
+ drivers/clocksource/Kconfig                   |  24 +-
+ drivers/clocksource/Makefile                  |   3 +
+ drivers/clocksource/arm_arch_timer.c          |   2 +-
+ drivers/clocksource/timer-of.c                |  17 +-
+ drivers/clocksource/timer-of.h                |   4 +-
+ drivers/clocksource/timer-riscv.c             |  39 +-
+ drivers/clocksource/timer-sprd.c              |  37 +-
+ drivers/clocksource/timer-sun4i.c             |  42 +-
+ drivers/clocksource/timer-sun50i.c            | 390 +++++++++++++++++
+ drivers/clocksource/timer-sunxi.c             | 405 ++++++++++++++++++
+ drivers/clocksource/timer_test/Kconfig        |  10 +
+ drivers/clocksource/timer_test/Makefile       |   3 +
+ .../clocksource/timer_test/sunxi_timer_test.c | 270 ++++++++++++
+ .../timer_test/sunxi_timer_test_i.h           |  48 +++
+ 14 files changed, 1273 insertions(+), 21 deletions(-)
+ create mode 100644 drivers/clocksource/timer-sun50i.c
+ create mode 100644 drivers/clocksource/timer-sunxi.c
+ create mode 100644 drivers/clocksource/timer_test/Kconfig
+ create mode 100644 drivers/clocksource/timer_test/Makefile
+ create mode 100644 drivers/clocksource/timer_test/sunxi_timer_test.c
+ create mode 100644 drivers/clocksource/timer_test/sunxi_timer_test_i.h
+
+diff --git a/drivers/clocksource/Kconfig b/drivers/clocksource/Kconfig
+index f35a53ce8..98de1bfaf 100644
+--- a/drivers/clocksource/Kconfig
++++ b/drivers/clocksource/Kconfig
+@@ -127,13 +127,21 @@ config RDA_TIMER
+ 	  Enables the support for the RDA Micro timer driver.
+ 
+ config SUN4I_TIMER
+-	bool "Sun4i timer driver" if COMPILE_TEST
++	bool "Sun4i timer driver"
+ 	depends on HAS_IOMEM
+ 	select CLKSRC_MMIO
+ 	select TIMER_OF
+ 	help
+ 	  Enables support for the Sun4i timer.
+ 
++config SUN50I_TIMER
++	bool "Sun50i timer driver"
++	depends on HAS_IOMEM
++	select CLKSRC_MMIO
++	select TIMER_OF
++	help
++	  Enables support for the Sun50i timer.
++
+ config SUN5I_HSTIMER
+ 	bool "Sun5i timer driver" if COMPILE_TEST
+ 	select CLKSRC_MMIO
+@@ -141,6 +149,16 @@ config SUN5I_HSTIMER
+ 	help
+ 	  Enables support the Sun5i timer.
+ 
++config SUNXI_TIMER
++	tristate "Sunxi timer driver"
++	depends on GENERIC_CLOCKEVENTS
++	depends on HAS_IOMEM
++	select CLKSRC_MMIO
++	help
++	  Enables support for the Sunxi timer.
++
++source "drivers/clocksource/timer_test/Kconfig"
++
+ config TEGRA_TIMER
+ 	bool "Tegra timer driver" if COMPILE_TEST
+ 	select CLKSRC_MMIO
+@@ -473,7 +491,7 @@ config SYS_SUPPORTS_SH_CMT
+         bool
+ 
+ config MTK_TIMER
+-	bool "Mediatek timer driver" if COMPILE_TEST
++	bool "Mediatek timer driver"
+ 	depends on HAS_IOMEM
+ 	select TIMER_OF
+ 	select CLKSRC_MMIO
+@@ -481,7 +499,7 @@ config MTK_TIMER
+ 	  Support for Mediatek timer driver.
+ 
+ config SPRD_TIMER
+-	bool "Spreadtrum timer driver" if EXPERT
++	tristate "Spreadtrum timer driver" if EXPERT
+ 	depends on HAS_IOMEM
+ 	depends on (ARCH_SPRD || COMPILE_TEST)
+ 	default ARCH_SPRD
+diff --git a/drivers/clocksource/Makefile b/drivers/clocksource/Makefile
+index 4dfe4225e..af879b42e 100644
+--- a/drivers/clocksource/Makefile
++++ b/drivers/clocksource/Makefile
+@@ -35,7 +35,10 @@ obj-$(CONFIG_CLKSRC_PXA)	+= timer-pxa.o
+ obj-$(CONFIG_PRIMA2_TIMER)	+= timer-prima2.o
+ obj-$(CONFIG_U300_TIMER)	+= timer-u300.o
+ obj-$(CONFIG_SUN4I_TIMER)	+= timer-sun4i.o
++obj-$(CONFIG_SUN50I_TIMER)	+= timer-sun50i.o
+ obj-$(CONFIG_SUN5I_HSTIMER)	+= timer-sun5i.o
++obj-$(CONFIG_SUNXI_TIMER)	+= timer-sunxi.o
++obj-$(CONFIG_SUNXI_TIMER_TEST)  += timer_test/
+ obj-$(CONFIG_MESON6_TIMER)	+= timer-meson6.o
+ obj-$(CONFIG_TEGRA_TIMER)	+= timer-tegra.o
+ obj-$(CONFIG_VT8500_TIMER)	+= timer-vt8500.o
+diff --git a/drivers/clocksource/arm_arch_timer.c b/drivers/clocksource/arm_arch_timer.c
+index 4be83b4de..981e22fe6 100644
+--- a/drivers/clocksource/arm_arch_timer.c
++++ b/drivers/clocksource/arm_arch_timer.c
+@@ -69,7 +69,7 @@ static enum arch_timer_ppi_nr arch_timer_uses_ppi = ARCH_TIMER_VIRT_PPI;
+ static bool arch_timer_c3stop;
+ static bool arch_timer_mem_use_virtual;
+ static bool arch_counter_suspend_stop;
+-static enum vdso_arch_clockmode vdso_default = VDSO_CLOCKMODE_ARCHTIMER;
++static enum vdso_clock_mode vdso_default = VDSO_CLOCKMODE_ARCHTIMER;
+ 
+ static cpumask_t evtstrm_available = CPU_MASK_NONE;
+ static bool evtstrm_enable = IS_ENABLED(CONFIG_ARM_ARCH_TIMER_EVTSTREAM);
+diff --git a/drivers/clocksource/timer-of.c b/drivers/clocksource/timer-of.c
+index a3c73e972..c7ce0def9 100644
+--- a/drivers/clocksource/timer-of.c
++++ b/drivers/clocksource/timer-of.c
+@@ -19,7 +19,7 @@
+  *
+  * Free the irq resource
+  */
+-static __init void timer_of_irq_exit(struct of_timer_irq *of_irq)
++static void timer_of_irq_exit(struct of_timer_irq *of_irq)
+ {
+ 	struct timer_of *to = container_of(of_irq, struct timer_of, of_irq);
+ 
+@@ -47,7 +47,7 @@ static __init void timer_of_irq_exit(struct of_timer_irq *of_irq)
+  *
+  * Returns 0 on success, < 0 otherwise
+  */
+-static __init int timer_of_irq_init(struct device_node *np,
++static int timer_of_irq_init(struct device_node *np,
+ 				    struct of_timer_irq *of_irq)
+ {
+ 	int ret;
+@@ -91,7 +91,7 @@ static __init int timer_of_irq_init(struct device_node *np,
+  *
+  * Disables and releases the refcount on the clk
+  */
+-static __init void timer_of_clk_exit(struct of_timer_clk *of_clk)
++static void timer_of_clk_exit(struct of_timer_clk *of_clk)
+ {
+ 	of_clk->rate = 0;
+ 	clk_disable_unprepare(of_clk->clk);
+@@ -107,7 +107,7 @@ static __init void timer_of_clk_exit(struct of_timer_clk *of_clk)
+  *
+  * Returns 0 on success, < 0 otherwise
+  */
+-static __init int timer_of_clk_init(struct device_node *np,
++static int timer_of_clk_init(struct device_node *np,
+ 				    struct of_timer_clk *of_clk)
+ {
+ 	int ret;
+@@ -146,12 +146,12 @@ static __init int timer_of_clk_init(struct device_node *np,
+ 	goto out;
+ }
+ 
+-static __init void timer_of_base_exit(struct of_timer_base *of_base)
++static void timer_of_base_exit(struct of_timer_base *of_base)
+ {
+ 	iounmap(of_base->base);
+ }
+ 
+-static __init int timer_of_base_init(struct device_node *np,
++static int timer_of_base_init(struct device_node *np,
+ 				     struct of_timer_base *of_base)
+ {
+ 	of_base->base = of_base->name ?
+@@ -165,7 +165,7 @@ static __init int timer_of_base_init(struct device_node *np,
+ 	return 0;
+ }
+ 
+-int __init timer_of_init(struct device_node *np, struct timer_of *to)
++int timer_of_init(struct device_node *np, struct timer_of *to)
+ {
+ 	int ret = -EINVAL;
+ 	int flags = 0;
+@@ -209,6 +209,7 @@ int __init timer_of_init(struct device_node *np, struct timer_of *to)
+ 		timer_of_base_exit(&to->of_base);
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(timer_of_init);
+ 
+ /**
+  * timer_of_cleanup - release timer_of ressources
+@@ -217,7 +218,7 @@ int __init timer_of_init(struct device_node *np, struct timer_of *to)
+  * Release the ressources that has been used in timer_of_init().
+  * This function should be called in init error cases
+  */
+-void __init timer_of_cleanup(struct timer_of *to)
++void timer_of_cleanup(struct timer_of *to)
+ {
+ 	if (to->flags & TIMER_OF_IRQ)
+ 		timer_of_irq_exit(&to->of_irq);
+diff --git a/drivers/clocksource/timer-of.h b/drivers/clocksource/timer-of.h
+index a5478f3e8..1b8cfac59 100644
+--- a/drivers/clocksource/timer-of.h
++++ b/drivers/clocksource/timer-of.h
+@@ -66,9 +66,9 @@ static inline unsigned long timer_of_period(struct timer_of *to)
+ 	return to->of_clk.period;
+ }
+ 
+-extern int __init timer_of_init(struct device_node *np,
++extern int timer_of_init(struct device_node *np,
+ 				struct timer_of *to);
+ 
+-extern void __init timer_of_cleanup(struct timer_of *to);
++extern void timer_of_cleanup(struct timer_of *to);
+ 
+ #endif
+diff --git a/drivers/clocksource/timer-riscv.c b/drivers/clocksource/timer-riscv.c
+index 4b04ffbe5..72697eeac 100644
+--- a/drivers/clocksource/timer-riscv.c
++++ b/drivers/clocksource/timer-riscv.c
+@@ -15,6 +15,7 @@
+ #include <linux/sched_clock.h>
+ #include <asm/smp.h>
+ #include <asm/sbi.h>
++#include <linux/cpu_pm.h>
+ 
+ static int riscv_clock_next_event(unsigned long delta,
+ 		struct clock_event_device *ce)
+@@ -26,8 +27,8 @@ static int riscv_clock_next_event(unsigned long delta,
+ 
+ static DEFINE_PER_CPU(struct clock_event_device, riscv_clock_event) = {
+ 	.name			= "riscv_timer_clockevent",
+-	.features		= CLOCK_EVT_FEAT_ONESHOT,
+-	.rating			= 100,
++	.features		= CLOCK_EVT_FEAT_ONESHOT|CLOCK_EVT_FEAT_C3STOP,
++	.rating			= 400,
+ 	.set_next_event		= riscv_clock_next_event,
+ };
+ 
+@@ -48,7 +49,7 @@ static u64 notrace riscv_sched_clock(void)
+ 
+ static struct clocksource riscv_clocksource = {
+ 	.name		= "riscv_clocksource",
+-	.rating		= 300,
++	.rating		= 400,
+ 	.mask		= CLOCKSOURCE_MASK(64),
+ 	.flags		= CLOCK_SOURCE_IS_CONTINUOUS,
+ 	.read		= riscv_clocksource_rdtime,
+@@ -80,6 +81,35 @@ void riscv_timer_interrupt(void)
+ 	evdev->event_handler(evdev);
+ }
+ 
++#ifdef CONFIG_CPU_PM
++static DEFINE_PER_CPU(unsigned long, saved_sie_stie);
++static int riscv_timer_cpu_pm_notify(struct notifier_block *self,
++				    unsigned long action, void *hcpu)
++{
++	if (action == CPU_PM_ENTER) {
++		__this_cpu_write(saved_sie_stie, csr_read(sie));
++		csr_clear(sie, SIE_STIE);
++	} else if (action == CPU_PM_ENTER_FAILED || action == CPU_PM_EXIT) {
++		csr_write(sie, saved_sie_stie);
++	}
++	return NOTIFY_OK;
++}
++
++static struct notifier_block riscv_timer_cpu_pm_notifier = {
++	.notifier_call = riscv_timer_cpu_pm_notify,
++};
++
++static int __init riscv_timer_cpu_pm_init(void)
++{
++	return cpu_pm_register_notifier(&riscv_timer_cpu_pm_notifier);
++}
++#else
++static int __init riscv_timer_cpu_pm_init(void)
++{
++	return 0;
++}
++#endif
++
+ static int __init riscv_timer_init_dt(struct device_node *n)
+ {
+ 	int cpuid, hartid, error;
+@@ -117,6 +147,9 @@ static int __init riscv_timer_init_dt(struct device_node *n)
+ 	if (error)
+ 		pr_err("cpu hp setup state failed for RISCV timer [%d]\n",
+ 		       error);
++	error = riscv_timer_cpu_pm_init();
++	if (error)
++		pr_err("failed to register RISCV timer PM API[%d]\n", error);
+ 	return error;
+ }
+ 
+diff --git a/drivers/clocksource/timer-sprd.c b/drivers/clocksource/timer-sprd.c
+index 430cb99d8..546178925 100644
+--- a/drivers/clocksource/timer-sprd.c
++++ b/drivers/clocksource/timer-sprd.c
+@@ -5,6 +5,8 @@
+ 
+ #include <linux/init.h>
+ #include <linux/interrupt.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
+ 
+ #include "timer-of.h"
+ 
+@@ -141,7 +143,7 @@ static struct timer_of to = {
+ 	},
+ };
+ 
+-static int __init sprd_timer_init(struct device_node *np)
++static int sprd_timer_init(struct device_node *np)
+ {
+ 	int ret;
+ 
+@@ -190,7 +192,7 @@ static struct clocksource suspend_clocksource = {
+ 	.flags	= CLOCK_SOURCE_IS_CONTINUOUS | CLOCK_SOURCE_SUSPEND_NONSTOP,
+ };
+ 
+-static int __init sprd_suspend_timer_init(struct device_node *np)
++static int sprd_suspend_timer_init(struct device_node *np)
+ {
+ 	int ret;
+ 
+@@ -204,6 +206,37 @@ static int __init sprd_suspend_timer_init(struct device_node *np)
+ 	return 0;
+ }
+ 
++#ifdef MODULE
++static int sprd_timer_probe(struct platform_device *pdev)
++{
++	struct device_node *np = pdev->dev.of_node;
++
++	if (of_property_read_bool(np, "interrupts"))
++		return sprd_timer_init(np);
++
++	return sprd_suspend_timer_init(np);
++}
++
++static const struct of_device_id sprd_timer_match_table[] = {
++	{ .compatible = "sprd,sc9860-suspend-timer" },
++	{ .compatible = "sprd,sc9860-timer" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, sprd_timer_match_table);
++
++static struct platform_driver sprd_timer_driver = {
++	.probe		= sprd_timer_probe,
++	.driver		= {
++		.name	= "sprd-timer",
++		.of_match_table = sprd_timer_match_table,
++	},
++};
++module_platform_driver(sprd_timer_driver);
++
++#else
+ TIMER_OF_DECLARE(sc9860_timer, "sprd,sc9860-timer", sprd_timer_init);
+ TIMER_OF_DECLARE(sc9860_persistent_timer, "sprd,sc9860-suspend-timer",
+ 		 sprd_suspend_timer_init);
++#endif
++
++MODULE_LICENSE("GPL v2");
+diff --git a/drivers/clocksource/timer-sun4i.c b/drivers/clocksource/timer-sun4i.c
+index 0ba8155b8..9ee766817 100644
+--- a/drivers/clocksource/timer-sun4i.c
++++ b/drivers/clocksource/timer-sun4i.c
+@@ -29,6 +29,7 @@
+ #define TIMER_IRQ_EN_REG	0x00
+ #define TIMER_IRQ_EN(val)		BIT(val)
+ #define TIMER_IRQ_ST_REG	0x04
++#define TIMER_IRQ_CLEAR(val)		BIT(val)
+ #define TIMER_CTL_REG(val)	(0x10 * val + 0x10)
+ #define TIMER_CTL_ENABLE		BIT(0)
+ #define TIMER_CTL_RELOAD		BIT(1)
+@@ -41,6 +42,18 @@
+ 
+ #define TIMER_SYNC_TICKS	3
+ 
++/* Registers which needs to be saved and restored before and after sleeping */
++static u32 regs_offset[] = {
++	TIMER_IRQ_EN_REG,
++	TIMER_CTL_REG(0),
++	TIMER_INTVAL_REG(0),
++	TIMER_CNTVAL_REG(0),
++	TIMER_CTL_REG(1),
++	TIMER_INTVAL_REG(1),
++	TIMER_CNTVAL_REG(1),
++};
++static u32 regs_backup[ARRAY_SIZE(regs_offset)];
++
+ /*
+  * When we disable a timer, we need to wait at least for 2 cycles of
+  * the timer source clock. We will use for that the clocksource timer
+@@ -82,10 +95,35 @@ static void sun4i_clkevt_time_start(void __iomem *base, u8 timer,
+ 	       base + TIMER_CTL_REG(timer));
+ }
+ 
++static inline void save_regs(void __iomem *base)
++{
++	int i;
++	for (i = 0; i < ARRAY_SIZE(regs_offset); i++)
++		regs_backup[i] = readl(base + regs_offset[i]);
++}
++
++static inline void restore_regs(void __iomem *base)
++{
++	int i;
++	for (i = 0; i < ARRAY_SIZE(regs_offset); i++)
++		writel(regs_backup[i], base + regs_offset[i]);
++}
++
+ static int sun4i_clkevt_shutdown(struct clock_event_device *evt)
+ {
+ 	struct timer_of *to = to_timer_of(evt);
+ 
++	save_regs(timer_of_base(to));
++	sun4i_clkevt_time_stop(timer_of_base(to), 0);
++
++	return 0;
++}
++
++static int sun4i_tick_resume(struct clock_event_device *evt)
++{
++	struct timer_of *to = to_timer_of(evt);
++
++	restore_regs(timer_of_base(to));
+ 	sun4i_clkevt_time_stop(timer_of_base(to), 0);
+ 
+ 	return 0;
+@@ -126,7 +164,7 @@ static int sun4i_clkevt_next_event(unsigned long evt,
+ 
+ static void sun4i_timer_clear_interrupt(void __iomem *base)
+ {
+-	writel(TIMER_IRQ_EN(0), base + TIMER_IRQ_ST_REG);
++	writel(TIMER_IRQ_CLEAR(0), base + TIMER_IRQ_ST_REG);
+ }
+ 
+ static irqreturn_t sun4i_timer_interrupt(int irq, void *dev_id)
+@@ -150,7 +188,7 @@ static struct timer_of to = {
+ 		.set_state_shutdown = sun4i_clkevt_shutdown,
+ 		.set_state_periodic = sun4i_clkevt_set_periodic,
+ 		.set_state_oneshot = sun4i_clkevt_set_oneshot,
+-		.tick_resume = sun4i_clkevt_shutdown,
++		.tick_resume = sun4i_tick_resume,
+ 		.set_next_event = sun4i_clkevt_next_event,
+ 		.cpumask = cpu_possible_mask,
+ 	},
+diff --git a/drivers/clocksource/timer-sun50i.c b/drivers/clocksource/timer-sun50i.c
+new file mode 100644
+index 000000000..6a692fc56
+--- /dev/null
++++ b/drivers/clocksource/timer-sun50i.c
+@@ -0,0 +1,390 @@
++/*
++ * Allwinner A1X SoCs timer handling.
++ *
++ * Copyright (C) 2012 Maxime Ripard
++ *
++ * Maxime Ripard <maxime.ripard@free-electrons.com>
++ *
++ * Based on code from
++ * Allwinner Technology Co., Ltd. <www.allwinnertech.com>
++ * Benn Huang <benn@allwinnertech.com>
++ *
++ * This file is licensed under the terms of the GNU General Public
++ * License version 2.  This program is licensed "as is" without any
++ * warranty of any kind, whether express or implied.
++ */
++
++#include <linux/clk.h>
++#include <linux/reset.h>
++#include <linux/clockchips.h>
++#include <linux/interrupt.h>
++#include <linux/irq.h>
++#include <linux/irqreturn.h>
++#include <linux/sched_clock.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/of_irq.h>
++
++#include "timer-of.h"
++
++#define TIMER_IRQ_REG		0x00
++#define TIMER_IRQ_EN(val)		BIT(val)
++#define TIMER_STA_REG		0x04
++#define TIMER_IRQ_STA(val)		BIT(val)
++#define TIMER_CTL_REG(val)	(0x20 * (val) + 0x20 + 0x00)
++#define TIMER_EN			BIT(0)
++#define TIMER_RELOAD			BIT(1)
++#define TIMER_ONESHOT			BIT(7)
++#define TIMER_IVL_REG(val)	(0x20 * (val) + 0x20 + 0x04)
++#define TIMER_CVL_REG(val)	(0x20 * (val) + 0x20 + 0x08)
++#define TIMER_IVH_REG(val)	(0x20 * (val) + 0x20 + 0x0c)
++#define TIMER_CVH_REG(val)	(0x20 * (val) + 0x20 + 0x10)
++#define TIMER_VL_MASK		0xffffffff
++#define TIMER_VH_MASK		0xffffff
++#define TIMER_VH_OFFSET		32
++
++#define TIMER_SYNC_TICKS	3
++
++/* Registers which needs to be saved and restored before and after sleeping */
++static u32 regs_offset[] = {
++	TIMER_IRQ_REG,
++	TIMER_STA_REG,
++	TIMER_CTL_REG(0),
++	TIMER_IVL_REG(0),
++	TIMER_CVL_REG(0),
++	TIMER_IVH_REG(0),
++	TIMER_CVH_REG(0),
++	TIMER_CTL_REG(1),
++	TIMER_IVL_REG(1),
++	TIMER_CVL_REG(1),
++	TIMER_IVH_REG(1),
++	TIMER_CVH_REG(1),
++};
++static u32 regs_backup[ARRAY_SIZE(regs_offset)];
++
++static u64 notrace sun50i_timer_sched_read(void);
++
++static int timer_sun50i_clk_init(struct device_node *np, struct of_timer_clk *of_clk)
++{
++	int ret = -EINVAL;
++
++	struct clk *bus_clk = NULL;
++	struct clk *mclk = NULL;
++	struct clk *pclk = NULL;
++	struct reset_control *reset = NULL;
++
++	pclk = of_clk_get_by_name(np, "parent");
++	if (IS_ERR_OR_NULL(pclk)) {
++		ret = PTR_ERR(pclk);
++		goto out_pclk_fail;
++	}
++
++	mclk = of_clk_get_by_name(np, "mod");
++	if (IS_ERR_OR_NULL(mclk)) {
++		ret = PTR_ERR(mclk);
++		goto out_mclk_fail;
++	}
++
++	bus_clk = of_clk_get_by_name(np, "bus");
++	if (IS_ERR_OR_NULL(bus_clk)) {
++		ret = PTR_ERR(bus_clk);
++		goto out_bus_clk_fail;
++	}
++
++	if (of_clk) {
++		reset = of_reset_control_get(np, NULL);
++		if (IS_ERR_OR_NULL(reset)) {
++			ret = PTR_ERR(reset);
++			goto out_reset_fail;
++		}
++		ret = reset_control_deassert(reset);
++		if (ret)
++			goto out_fail;
++	}
++
++	ret = clk_prepare_enable(pclk);
++	if (ret)
++		goto out_fail;
++
++	ret = clk_set_parent(mclk, pclk);
++	if (ret)
++		goto out_fail;
++
++	ret = clk_prepare_enable(mclk);
++	if (ret)
++		goto out_fail;
++
++	ret = clk_prepare_enable(bus_clk);
++	if (ret)
++		goto out_fail;
++
++	if (of_clk) {
++		of_clk->clk = mclk;
++		of_clk->rate = clk_get_rate(of_clk->clk);
++		if (!of_clk->rate) {
++			ret = -EINVAL;
++			pr_err("Failed to get clock rate for %pOF\n", np);
++			goto out_fail;
++		}
++		of_clk->period = DIV_ROUND_UP(of_clk->rate, HZ);
++	}
++
++	return ret;
++
++out_fail:
++	if (reset)
++		reset_control_put(reset);
++out_reset_fail:
++	clk_put(bus_clk);
++out_bus_clk_fail:
++	clk_put(mclk);
++out_mclk_fail:
++	clk_put(pclk);
++out_pclk_fail:
++	return ret;
++}
++
++static int of_timer_sun50i_clk_init(struct device_node *np, struct of_timer_clk *to)
++{
++	struct device_node *sub_np;
++	int ret = -EINVAL;
++
++	sub_np = of_parse_phandle(np, "sunxi-timers", 0);
++	if (IS_ERR_OR_NULL(sub_np)) {
++		pr_err("can't parse timer0 property\n");
++		return ret;
++	}
++
++	ret = timer_sun50i_clk_init(sub_np, to);
++	if (ret) {
++		return ret;
++	}
++
++	sub_np = of_parse_phandle(np, "sunxi-timers", 1);
++	if (ret) {
++		pr_err("can't parse timer1 property\n");
++		return ret;
++	}
++
++	ret = timer_sun50i_clk_init(sub_np, NULL);
++	return ret;
++}
++
++/*
++ * When we disable a timer, we need to wait at least for 2 cycles of
++ * the timer source clock. We will use for that the clocksource timer
++ * that is already setup and runs at the same frequency than the other
++ * timers, and we never will be disabled.
++ */
++static void sun50i_clkevt_sync(void)
++{
++	u64 old, new;
++
++	old = sun50i_timer_sched_read();
++
++	do {
++		cpu_relax();
++		new = sun50i_timer_sched_read();
++	} while (new - old < TIMER_SYNC_TICKS);
++}
++
++static void sun50i_clkevt_time_stop(void __iomem *base, u8 timer)
++{
++	u32 val = readl(base + TIMER_CTL_REG(timer));
++	writel(val & ~TIMER_EN, base + TIMER_CTL_REG(timer));
++	sun50i_clkevt_sync();
++}
++
++static void sun50i_clkevt_time_setup(void __iomem *base, u8 timer,
++				    unsigned long delay)
++{
++	u32 value;
++
++	value = delay & TIMER_VL_MASK;
++	writel(value, base + TIMER_IVL_REG(timer));
++	value = ((delay >> TIMER_VH_OFFSET) & (TIMER_VH_MASK));
++	writel(value, base + TIMER_IVH_REG(timer));
++}
++
++static void sun50i_clkevt_time_start(void __iomem *base, u8 timer,
++				    bool periodic)
++{
++	u32 val = readl(base + TIMER_CTL_REG(timer));
++
++	if (periodic)
++		val &= ~TIMER_ONESHOT;
++	else
++		val |= TIMER_ONESHOT;
++
++	writel(val | TIMER_EN | TIMER_RELOAD,
++	       base + TIMER_CTL_REG(timer));
++}
++
++static inline void save_regs(void __iomem *base)
++{
++	int i;
++	for (i = 0; i < ARRAY_SIZE(regs_offset); i++)
++		regs_backup[i] = readl(base + regs_offset[i]);
++}
++
++static inline void restore_regs(void __iomem *base)
++{
++	int i;
++	for (i = 0; i < ARRAY_SIZE(regs_offset); i++)
++		writel(regs_backup[i], base + regs_offset[i]);
++}
++
++static int sun50i_clkevt_shutdown(struct clock_event_device *evt)
++{
++	struct timer_of *to = to_timer_of(evt);
++
++	save_regs(timer_of_base(to));
++	sun50i_clkevt_time_stop(timer_of_base(to), 0);
++
++	return 0;
++}
++
++static int sun50i_tick_resume(struct clock_event_device *evt)
++{
++	struct timer_of *to = to_timer_of(evt);
++
++	restore_regs(timer_of_base(to));
++	sun50i_clkevt_time_stop(timer_of_base(to), 0);
++
++	return 0;
++}
++
++static int sun50i_clkevt_set_oneshot(struct clock_event_device *evt)
++{
++	struct timer_of *to = to_timer_of(evt);
++
++	sun50i_clkevt_time_stop(timer_of_base(to), 0);
++	sun50i_clkevt_time_start(timer_of_base(to), 0, false);
++
++	return 0;
++}
++
++static int sun50i_clkevt_set_periodic(struct clock_event_device *evt)
++{
++	struct timer_of *to = to_timer_of(evt);
++
++	sun50i_clkevt_time_stop(timer_of_base(to), 0);
++	sun50i_clkevt_time_setup(timer_of_base(to), 0, timer_of_period(to));
++	sun50i_clkevt_time_start(timer_of_base(to), 0, true);
++
++	return 0;
++}
++
++static int sun50i_clkevt_next_event(unsigned long evt,
++				   struct clock_event_device *clkevt)
++{
++	struct timer_of *to = to_timer_of(clkevt);
++
++	sun50i_clkevt_time_stop(timer_of_base(to), 0);
++	sun50i_clkevt_time_setup(timer_of_base(to), 0, evt - TIMER_SYNC_TICKS);
++	sun50i_clkevt_time_start(timer_of_base(to), 0, false);
++
++	return 0;
++}
++
++static void sun50i_timer_clear_interrupt(void __iomem *base)
++{
++	writel(TIMER_IRQ_STA(0), base + TIMER_STA_REG);
++}
++
++static irqreturn_t sun50i_timer_interrupt(int irq, void *dev_id)
++{
++	struct clock_event_device *evt = (struct clock_event_device *)dev_id;
++	struct timer_of *to = to_timer_of(evt);
++
++	sun50i_timer_clear_interrupt(timer_of_base(to));
++	evt->event_handler(evt);
++
++	return IRQ_HANDLED;
++}
++
++static struct timer_of to = {
++	.flags = TIMER_OF_IRQ | TIMER_OF_BASE,
++
++	.clkevt = {
++		.name = "sun50i_tick",
++		.rating = 350,
++		.features = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_ONESHOT,
++		.set_state_shutdown = sun50i_clkevt_shutdown,
++		.set_state_periodic = sun50i_clkevt_set_periodic,
++		.set_state_oneshot = sun50i_clkevt_set_oneshot,
++		.tick_resume = sun50i_tick_resume,
++		.set_next_event = sun50i_clkevt_next_event,
++		.cpumask = cpu_possible_mask,
++	},
++
++	.of_irq = {
++		.handler = sun50i_timer_interrupt,
++		.flags = IRQF_TIMER | IRQF_IRQPOLL,
++	},
++};
++
++static u64 notrace sun50i_timer_sched_read(void)
++{
++	u64 val_low, val_high;
++
++	val_high = (~readl(timer_of_base(&to) + TIMER_CVH_REG(1))) & TIMER_VH_MASK;
++
++	val_low = (~readl(timer_of_base(&to) + TIMER_CVL_REG(1))) & TIMER_VL_MASK;
++
++	return ((val_high << TIMER_VH_OFFSET) | val_low);
++}
++
++static u64 sun50i_timer_readl_down(struct clocksource *c)
++{
++	return sun50i_timer_sched_read();
++}
++
++static int __init sun50i_timer_init(struct device_node *node)
++{
++	int ret;
++	u32 val;
++
++	ret = timer_of_init(node, &to);
++	if (ret) {
++		pr_err("sun50i timer of init failed\n");
++		return ret;
++	}
++
++	ret = of_timer_sun50i_clk_init(node, &(to.of_clk));
++	if (ret) {
++		pr_err("sun50i timer of clk init failed\n");
++		return ret;
++	}
++
++	sun50i_clkevt_time_setup(timer_of_base(&to), 1, ~0);
++	sun50i_clkevt_time_start(timer_of_base(&to), 1, true);
++
++	pr_info("sun50i timer init:0x%llx\n", sun50i_timer_sched_read());
++
++	sched_clock_register(sun50i_timer_sched_read, 56, timer_of_rate(&to));
++
++	ret = clocksource_mmio_init(timer_of_base(&to) + TIMER_CVL_REG(1),
++				    node->name, timer_of_rate(&to), 350, 56,
++				    sun50i_timer_readl_down);
++	if (ret) {
++		pr_err("Failed to register clocksource\n");
++		return ret;
++	}
++
++	/* Make sure timer is stopped before playing with interrupts */
++	sun50i_clkevt_time_stop(timer_of_base(&to), 0);
++
++	/* clear timer0 interrupt */
++	sun50i_timer_clear_interrupt(timer_of_base(&to));
++
++	clockevents_config_and_register(&to.clkevt, timer_of_rate(&to),
++					TIMER_SYNC_TICKS, 0xffffffffffffff);
++
++	/* Enable timer0 interrupt */
++	val = readl(timer_of_base(&to) + TIMER_IRQ_REG);
++	writel(val | TIMER_IRQ_EN(0), timer_of_base(&to) + TIMER_IRQ_REG);
++
++	return ret;
++}
++TIMER_OF_DECLARE(sun50i_timer, "allwinner,sun50i-timer", sun50i_timer_init);
+diff --git a/drivers/clocksource/timer-sunxi.c b/drivers/clocksource/timer-sunxi.c
+new file mode 100644
+index 000000000..086f4b033
+--- /dev/null
++++ b/drivers/clocksource/timer-sunxi.c
+@@ -0,0 +1,405 @@
++/*
++ * Allwinner A1X SoCs timer handling.
++ *
++ * Copyright (C) 2012 Maxime Ripard
++ *
++ * Maxime Ripard <maxime.ripard@free-electrons.com>
++ *
++ * Based on code from
++ * Allwinner Technology Co., Ltd. <www.allwinnertech.com>
++ * Benn Huang <benn@allwinnertech.com>
++ *
++ * Modified: Martin <wuyan@allwinnertech>
++ * Support compile as module
++ *
++ * This file is licensed under the terms of the GNU General Public
++ * License version 2.  This program is licensed "as is" without any
++ * warranty of any kind, whether express or implied.
++ */
++
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/clk.h>
++#include <linux/clockchips.h>
++#include <linux/interrupt.h>
++#include <linux/irq.h>
++#include <linux/irqreturn.h>
++#include <linux/sched_clock.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/of_irq.h>
++#include <linux/slab.h>
++
++/* Timer IRQ Enable Register */
++#define TIMER_IRQ_EN_REG		0x00
++#define TIMER_IRQ_EN(val)		BIT(val)  /* val=0:timer0, val=1:timer1 */
++/* Timer IRQ Status Register */
++#define TIMER_IRQ_ST_REG		0x04
++#define TIMER_IRQ_CLEAR(val)		BIT(val)  /* val=0:timer0, val=1:timer1 */
++/* Timer IRQ Control Register */
++#define TIMER_CTL_REG(val)		(0x10 * val + 0x10)  /* val=0:timer0, val=1:timer1 */
++#define TIMER_CTL_ENABLE		BIT(0)
++#define TIMER_CTL_RELOAD		BIT(1)
++#define TIMER_CTL_CLK_SRC(val)		(((val) & 0x3) << 2)  /* val=0:LOSC, val=1:OSC24M */
++#define TIMER_CTL_CLK_SRC_OSC24M	(1)
++#define TIMER_CTL_CLK_PRES(val)		(((val) & 0x7) << 4)  /* val=0:/1, val=1:/2, ..., val=7:/128 */
++#define TIMER_CTL_ONESHOT		BIT(7)  /* val=0:continuous mode, val=1:single mode */
++/* Timer Interval Value Register */
++#define TIMER_INTVAL_REG(val)		(0x10 * (val) + 0x14)  /* val=0:timer0, val=1:timer1 */
++/* Timer Current Value Register */
++#define TIMER_CNTVAL_REG(val)		(0x10 * (val) + 0x18)  /* val=0:timer0, val=1:timer1 */
++
++#define TIMER_SYNC_TICKS		3
++
++static void __iomem *timer_base;
++static int timer_size;
++static void *store_mem;
++static u32 ticks_per_jiffy;  /* how many ticks does the timer need to produce in a jiffy */
++static struct clk *clk;
++static int irq;
++
++/*
++ * When we disable a timer, we need to wait at least for 2 cycles of
++ * the timer source clock. We will use for that the clocksource timer
++ * that is already setup and runs at the same frequency than the other
++ * timers, and we never will be disabled.
++ */
++static void sunxi_clkevt_sync(void)
++{
++	u32 old = readl(timer_base + TIMER_CNTVAL_REG(1));
++
++	while ((old - readl(timer_base + TIMER_CNTVAL_REG(1))) < TIMER_SYNC_TICKS)
++		cpu_relax();
++}
++
++static void sunxi_clkevt_time_stop(u8 timer)
++{
++	u32 val = readl(timer_base + TIMER_CTL_REG(timer));
++	writel(val & ~TIMER_CTL_ENABLE, timer_base + TIMER_CTL_REG(timer));
++	sunxi_clkevt_sync();
++}
++
++static void sunxi_clkevt_time_setup(u8 timer, unsigned long delay)
++{
++	writel(delay, timer_base + TIMER_INTVAL_REG(timer));
++}
++
++static void sunxi_clkevt_time_start(u8 timer, bool periodic)
++{
++	u32 val = readl(timer_base + TIMER_CTL_REG(timer));
++
++	if (periodic)
++		val &= ~TIMER_CTL_ONESHOT;
++	else
++		val |= TIMER_CTL_ONESHOT;
++
++	writel(val | TIMER_CTL_ENABLE | TIMER_CTL_RELOAD,
++		timer_base + TIMER_CTL_REG(timer));
++}
++
++static int sunxi_clkevt_shutdown(struct clock_event_device *evt)
++{
++	/* we should store the registers for soc timer first */
++	memcpy(store_mem, (void *)timer_base, timer_size);
++	sunxi_clkevt_time_stop(0);
++	return 0;
++}
++
++static int sunxi_tick_resume(struct clock_event_device *evt)
++{
++	/* We should restore the registers for soc time first */
++	/* Only the necessary registers shoule be restored */
++	writel(*(u32 *)(store_mem + TIMER_IRQ_EN_REG),
++		timer_base + TIMER_IRQ_EN_REG);
++	writel(*(u32 *)(store_mem + TIMER_IRQ_ST_REG),
++		timer_base + TIMER_IRQ_ST_REG);
++	writel(*(u32 *)(store_mem + TIMER_CTL_REG(0)),
++		timer_base + TIMER_CTL_REG(0));
++	writel(*(u32 *)(store_mem + TIMER_INTVAL_REG(0)),
++		timer_base + TIMER_INTVAL_REG(0));
++	writel(*(u32 *)(store_mem + TIMER_CNTVAL_REG(0)),
++		timer_base + TIMER_CNTVAL_REG(0));
++	writel(*(u32 *)(store_mem + TIMER_CTL_REG(1)),
++		timer_base + TIMER_CTL_REG(1));
++	writel(*(u32 *)(store_mem + TIMER_INTVAL_REG(1)),
++		timer_base + TIMER_INTVAL_REG(1));
++	writel(*(u32 *)(store_mem + TIMER_CNTVAL_REG(1)),
++		timer_base + TIMER_CNTVAL_REG(1));
++
++	sunxi_clkevt_time_stop(0);
++	return 0;
++}
++
++static int sunxi_clkevt_set_oneshot(struct clock_event_device *evt)
++{
++	sunxi_clkevt_time_stop(0);
++	sunxi_clkevt_time_start(0, false);
++	return 0;
++}
++
++static int sunxi_clkevt_set_periodic(struct clock_event_device *evt)
++{
++	sunxi_clkevt_time_stop(0);
++	sunxi_clkevt_time_setup(0, ticks_per_jiffy);
++	sunxi_clkevt_time_start(0, true);
++	return 0;
++}
++
++static int sunxi_clkevt_next_event(unsigned long evt,
++	struct clock_event_device *unused)
++{
++	sunxi_clkevt_time_stop(0);
++	sunxi_clkevt_time_setup(0, evt - TIMER_SYNC_TICKS);
++	sunxi_clkevt_time_start(0, false);
++
++	return 0;
++}
++
++static struct clock_event_device sunxi_clockevent = {
++	.name = "sunxi_tick",
++	.rating = 350,
++	.features = CLOCK_EVT_FEAT_PERIODIC |
++		CLOCK_EVT_FEAT_ONESHOT |
++		CLOCK_EVT_FEAT_DYNIRQ,
++	.set_state_shutdown = sunxi_clkevt_shutdown,
++	.set_state_periodic = sunxi_clkevt_set_periodic,
++	.set_state_oneshot = sunxi_clkevt_set_oneshot,
++	.tick_resume = sunxi_tick_resume,
++	.set_next_event = sunxi_clkevt_next_event,
++};
++
++static void sunxi_timer_clear_interrupt(void)
++{
++	writel(TIMER_IRQ_CLEAR(0), timer_base + TIMER_IRQ_ST_REG);
++}
++
++static irqreturn_t sunxi_timer_interrupt(int irq, void *dev_id)
++{
++	struct clock_event_device *evt = (struct clock_event_device *)dev_id;
++
++	sunxi_timer_clear_interrupt();
++	evt->event_handler(evt);
++
++	return IRQ_HANDLED;
++}
++
++static struct irqaction sunxi_timer_irq = {
++	.name = "sunxi_timer0",
++	.flags = IRQF_TIMER | IRQF_IRQPOLL,
++	.handler = sunxi_timer_interrupt,
++	.dev_id = &sunxi_clockevent,
++};
++
++/*
++ * The code below are copied from drivers/clocksource/mmio.c.
++ * Since they are not exported, we cannot use it in a module.
++ * To meet GKI requirements, we cannot modify kernel common code either.
++ * So we have to copy it here, and we modify it to adapt our use.
++ */
++/* Start of copied code --> */
++struct sunxi_clocksource_mmio {
++	void __iomem *reg;
++	struct clocksource clksrc;
++};
++
++static inline
++struct sunxi_clocksource_mmio *sunxi_to_mmio_clksrc(struct clocksource *c)
++{
++	return container_of(c, struct sunxi_clocksource_mmio, clksrc);
++}
++
++static u64 sunxi_clocksource_mmio_readl_down(struct clocksource *c)
++{
++	return ~(u64)readl_relaxed(sunxi_to_mmio_clksrc(c)->reg) & c->mask;
++}
++
++static int sunxi_clocksource_mmio_init(void __iomem *base, const char *name,
++	unsigned long hz, int rating, unsigned bits,
++	u64 (*read)(struct clocksource *))
++{
++	struct sunxi_clocksource_mmio *cs;
++
++	if (bits > 64 || bits < 16)
++		return -EINVAL;
++
++	cs = kzalloc(sizeof(struct sunxi_clocksource_mmio), GFP_KERNEL);
++	if (!cs)
++		return -ENOMEM;
++
++	cs->reg = base;
++	cs->clksrc.name = name;
++	cs->clksrc.rating = rating;
++	cs->clksrc.read = read;
++	cs->clksrc.mask = CLOCKSOURCE_MASK(bits);
++	cs->clksrc.flags = CLOCK_SOURCE_IS_CONTINUOUS;
++
++	return clocksource_register_hz(&cs->clksrc, hz);
++}
++/* <-- End of copied code */
++
++static int sunxi_timer_init(struct device_node *node)
++{
++	unsigned long rate = 0;
++	struct resource res;
++	int ret;
++	u32 val;
++
++	timer_base = of_iomap(node, 0);
++	if (!timer_base) {
++		pr_crit("Can't map registers");
++		ret = -ENXIO;
++		goto fail_of_iomap;
++	}
++
++	if (of_address_to_resource(node, 0, &res)) {
++		ret = -EINVAL;
++		goto fail_of_address_to_resource;
++	}
++
++	timer_size = resource_size(&res);
++
++	store_mem = (void *)kmalloc(timer_size, GFP_KERNEL);
++	if (!store_mem) {
++		ret = -ENOMEM;
++		goto fail_kmalloc;
++	}
++
++	irq = irq_of_parse_and_map(node, 0);
++	if (irq <= 0) {
++		pr_crit("Can't parse IRQ");
++		ret = -EINVAL;
++		goto fail_irq_of_parse_and_map;
++	}
++
++	clk = of_clk_get(node, 0);
++	if (IS_ERR(clk)) {
++		pr_crit("Can't get timer clock");
++		ret = PTR_ERR(clk);
++		goto fail_of_clk_get;
++	}
++
++	ret = clk_prepare_enable(clk);
++	if (ret) {
++		pr_err("Failed to prepare clock");
++		goto fail_clk_prepare_enable;
++	}
++
++	rate = clk_get_rate(clk);
++
++	writel(~0, timer_base + TIMER_INTVAL_REG(1));
++	writel(TIMER_CTL_ENABLE | TIMER_CTL_RELOAD |
++		TIMER_CTL_CLK_SRC(TIMER_CTL_CLK_SRC_OSC24M),
++		timer_base + TIMER_CTL_REG(1));
++
++	ret = sunxi_clocksource_mmio_init(timer_base + TIMER_CNTVAL_REG(1),
++		node->name, rate, 350, 32, sunxi_clocksource_mmio_readl_down);
++	if (ret) {
++		pr_err("Failed to register clocksource");
++		goto fail_clocksource_mmio_init;
++	}
++
++	ticks_per_jiffy = DIV_ROUND_UP(rate, HZ);
++
++	writel(TIMER_CTL_CLK_SRC(TIMER_CTL_CLK_SRC_OSC24M),
++			timer_base + TIMER_CTL_REG(0));
++
++	/* Make sure timer is stopped before playing with interrupts */
++	sunxi_clkevt_time_stop(0);
++
++	/* clear timer0 interrupt */
++	sunxi_timer_clear_interrupt();
++
++	sunxi_clockevent.cpumask = cpu_possible_mask;
++	sunxi_clockevent.irq = irq;
++
++	clockevents_config_and_register(&sunxi_clockevent, rate,
++		TIMER_SYNC_TICKS, 0xffffffff);
++
++	ret = setup_irq(irq, &sunxi_timer_irq);
++	if (ret) {
++		pr_err("failed to setup irq %d\n", irq);
++		goto fail_setup_irq;
++	}
++
++	/* Enable timer0 interrupt */
++	val = readl(timer_base + TIMER_IRQ_EN_REG);
++	writel(val | TIMER_IRQ_EN(0), timer_base + TIMER_IRQ_EN_REG);
++
++#ifdef MODULE
++	/*
++	 * Hold this module, do not allow user to remove.
++	 * Since we don't have any way to unregister clockevent and clocksource.
++	 */
++	try_module_get(THIS_MODULE);
++#endif
++
++	return 0;
++
++fail_setup_irq:
++//clockevents_unregister_device(dev);
++/*
++ * @TODO:
++ * For clockevents_config_and_register(), we don't have its deinit function.
++ * (Why doesn't kernel/time/clockevents.c provide one?).
++ * I think this leads to memory leak if the above setup_irq() fails.
++ */
++fail_clocksource_mmio_init:
++	clk_disable_unprepare(clk);
++fail_clk_prepare_enable:
++	clk_put(clk);
++fail_of_clk_get:
++fail_irq_of_parse_and_map:
++	kfree(store_mem);
++fail_kmalloc:
++fail_of_address_to_resource:
++	iounmap(timer_base);
++fail_of_iomap:
++	return ret;
++}
++
++//#ifndef MODULE
++
++/*
++ * If we use TIMER_OF_DECLARE(), when the interrupt-controller is set to
++ * 'wakeupgen', which is probed later than sunxi_timer_init(),
++ * sunxi_timer_init() will fail on irq_of_parse_and_map() with an error 'irq:
++ * no irq domain found for interrupt-controller@0'.
++ * Therefore, we cannot use TIMER_OF_DECLARE() when setting 'wakeupgen' as the
++ * interrupt-controller in dts. Let's use module_platform_driver() instead.
++ * But if the interrupt-controller is set to 'gic', we can surely use
++ * TIMER_OF_DECLARE() here.
++ */
++
++//TIMER_OF_DECLARE(sunxi, "allwinner,sunxi-timer", sunxi_timer_init);
++
++//#else  /* if defined MODULE */
++
++static int sunxi_timer_probe(struct platform_device *pdev)
++{
++	struct device_node *np = pdev->dev.of_node;
++	return sunxi_timer_init(np);
++}
++
++static const struct of_device_id sunxi_timer_match[] = {
++	{ .compatible = "allwinner,sunxi-timer"},
++	{}
++};
++MODULE_DEVICE_TABLE(of, sunxi_timer_match);
++
++static struct platform_driver sunxi_timer_driver = {
++	.probe  = sunxi_timer_probe,
++	.driver = {
++		.name = "sunxi-timer",
++		.owner = THIS_MODULE,
++		.of_match_table = sunxi_timer_match,
++	},
++};
++
++module_platform_driver(sunxi_timer_driver);
++
++MODULE_AUTHOR("Martin <wuyan@allwinnertech.com");
++MODULE_DESCRIPTION("sunxi soc-timer driver");
++MODULE_LICENSE("GPL v2");
++MODULE_VERSION("1.0.1");
++
++//#endif  /* MODULE */
+diff --git a/drivers/clocksource/timer_test/Kconfig b/drivers/clocksource/timer_test/Kconfig
+new file mode 100644
+index 000000000..648378354
+--- /dev/null
++++ b/drivers/clocksource/timer_test/Kconfig
+@@ -0,0 +1,10 @@
++#
++# sunxi timer test configuration.
++#
++
++config SUNXI_TIMER_TEST
++	tristate "sunxi timer test driver"
++	default n
++	help
++	Nothing help.
++
+diff --git a/drivers/clocksource/timer_test/Makefile b/drivers/clocksource/timer_test/Makefile
+new file mode 100644
+index 000000000..62a31bb10
+--- /dev/null
++++ b/drivers/clocksource/timer_test/Makefile
+@@ -0,0 +1,3 @@
++
++obj-$(CONFIG_SUNXI_TIMER_TEST) += sunxi_timer_test.o
++
+diff --git a/drivers/clocksource/timer_test/sunxi_timer_test.c b/drivers/clocksource/timer_test/sunxi_timer_test.c
+new file mode 100644
+index 000000000..5dfff75ed
+--- /dev/null
++++ b/drivers/clocksource/timer_test/sunxi_timer_test.c
+@@ -0,0 +1,270 @@
++/*
++ * drivers/char/timer_test/sunxi_timer_test.c
++ *
++ * Copyright(c) 2013-2015 Allwinnertech Co., Ltd.
++ *      http://www.allwinnertech.com
++ *
++ * Author: liugang <liugang@allwinnertech.com>
++ *
++ * sunxi timer test driver
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ */
++
++#include "sunxi_timer_test_i.h"
++#include <linux/sunxi_timer_test.h>
++
++/* rtc_dev_prepare */
++#define DEV_NAME "timer_test_chrdev"
++
++u32 g_loopcnt[2] = {0}; /* 0 for timer, 1 for hrtimer, so as g_cur_cnt */
++static atomic_t g_cur_cnt[2] = {ATOMIC_INIT(0), ATOMIC_INIT(0)};
++struct timer_list g_timer;
++
++static dev_t g_devid;
++static struct cdev *g_ptimer_cdev; /* in /proc/devices */
++static ktime_t g_ktime;
++static struct class *g_timer_class;
++
++static void timer_handle(struct timer_list *timer)
++{
++	struct timespec64 tv_cur;
++
++	if (atomic_add_return(1, &g_cur_cnt[0]) >= g_loopcnt[0]) {
++		/* print cur time in sec */
++		ktime_get_real_ts64(&tv_cur);
++		pr_info("%s: cur sec %d\n", __func__, (int)tv_cur.tv_sec);
++
++		/* clear g_cur_cnt[0] */
++		atomic_set(&g_cur_cnt[0], 0);
++	}
++
++	/* set next trig */
++	mod_timer(timer, timer->expires);
++}
++
++u32 case_timer_function(u32 interv_ms, u32 print_gap_s, u32 total_s)
++{
++	int itemp = -1;
++	struct timespec64 tv_start, tv_cur;
++
++	pr_info("%s: interv_ms %d, print_gap_s %d, total_s %d\n",
++			__func__, interv_ms, print_gap_s, total_s);
++
++	g_loopcnt[0] = (print_gap_s * 1000) / interv_ms;
++	atomic_set(&g_cur_cnt[0], 0);
++
++	/* init and add timer */
++	g_timer.expires = jiffies + (HZ * interv_ms) / 1000;
++	timer_setup(&g_timer, timer_handle, 0);
++
++	add_timer(&g_timer);
++
++	/* wait for total_s */
++	ktime_get_real_ts64(&tv_start);
++	pr_info("%s: start sec %d\n", __func__, (int)tv_start.tv_sec);
++	while (ktime_get_real_ts64(&tv_cur),
++			tv_cur.tv_sec - tv_start.tv_sec <= total_s)
++		msleep_interruptible(0);
++
++	/* del timer */
++	pr_info("%s: before del_timer_sync\n", __func__);
++	/* del_timer(&g_timer); */
++	itemp = del_timer_sync(&g_timer);
++	pr_info("%s: after del_timer_sync(return %d)\n", __func__, itemp);
++
++	return 0;
++}
++
++static struct hrtimer g_hrtimer;
++
++static enum hrtimer_restart hrtimer_handle(struct hrtimer *cur_timer)
++{
++	struct timespec64 tv_cur;
++
++	if (atomic_add_return(1, &g_cur_cnt[1]) >= g_loopcnt[1]) {
++		/* print cur time in sec */
++		ktime_get_real_ts64(&tv_cur);
++		pr_info("%s: cur sec %d\n", __func__, (int)tv_cur.tv_sec);
++
++		/* clear g_cur_cnt[1] */
++		atomic_set(&g_cur_cnt[1], 0);
++	}
++
++	/* if not call this, hrtimer_handle will called again and again */
++	hrtimer_forward(cur_timer, cur_timer->base->get_time(), g_ktime);
++	return HRTIMER_RESTART;
++}
++
++u32 case_hrtimer_function(u32 interv_us, u32 print_gap_s, u32 total_s)
++{
++	int itemp = -1;
++	struct timespec64 tv_start, tv_cur;
++
++	pr_info("%s: interv_us %d, print_gap_s %d, total_s %d\n",
++			__func__, interv_us, print_gap_s, total_s);
++
++	g_loopcnt[1] = (print_gap_s * 1000000) / interv_us;
++	atomic_set(&g_cur_cnt[1], 0);
++	pr_info("%s: g_loopcnt %d\n", __func__, g_loopcnt[1]);
++
++	/* init hrtimer */
++	g_ktime = ktime_set(0, interv_us * 1000);
++	hrtimer_init(&g_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
++	g_hrtimer.function = &hrtimer_handle;
++
++	/* start hrtimer */
++	hrtimer_start(&g_hrtimer, g_ktime, HRTIMER_MODE_REL);
++	pr_info("%s: hrtimer_start\n", __func__);
++
++	/* wait for total_s */
++	ktime_get_real_ts64(&tv_start);
++	pr_info("%s: start sec %d\n", __func__, (int)tv_start.tv_sec);
++	while (ktime_get_real_ts64(&tv_cur),
++			tv_cur.tv_sec - tv_start.tv_sec <= total_s)
++		msleep_interruptible(0);
++
++	/* del httimer */
++	itemp = hrtimer_cancel(&g_hrtimer);
++	pr_info("%s: hrtimer_cancel return %d\n", __func__, itemp);
++
++	return 0;
++}
++
++static int timer_test_open(struct inode *inode, struct file *file)
++{
++	return 0;
++}
++
++static int timer_test_release(struct inode *inode, struct file *file)
++{
++	return 0;
++}
++
++static long timer_test_ioctl(struct file *file, unsigned int cmd,
++		unsigned long arg)
++{
++	long ret = 0;
++	struct timer_test_para para;
++
++	memset(&para, 0, sizeof(para));
++	if (copy_from_user(&para, (struct timer_test_para *)arg,
++				sizeof(struct timer_test_para)) != 0) {
++		pr_err("%s(%d) err\n", __func__, __LINE__);
++		return __LINE__;
++	}
++
++	switch (cmd) {
++	case TIMER_TEST_CMD_FUNC_NORMAL:
++		ret = case_timer_function(para.timer_interv_us / 1000,
++				para.print_gap_s, para.total_test_s);
++		break;
++	case TIMER_TEST_CMD_FUNC_HRTIMER:
++		ret = case_hrtimer_function(para.timer_interv_us,
++				para.print_gap_s, para.total_test_s);
++		break;
++	default:
++		break;
++	}
++
++	return ret;
++}
++
++static const struct file_operations timer_test_fops = {
++	.owner			= THIS_MODULE,
++	.open			= timer_test_open,
++	.release		= timer_test_release,
++	.unlocked_ioctl		= timer_test_ioctl,
++};
++
++static int timer_test_cdev_init(void)
++{
++	int itemp = 0;
++
++	itemp = alloc_chrdev_region(&g_devid, 0, 1, DEV_NAME);
++	if (itemp) {
++		pr_info("%s err, line %d\n", __func__, __LINE__);
++		return -1;
++	}
++
++	g_ptimer_cdev = cdev_alloc();
++	if (g_ptimer_cdev == NULL) {
++		pr_info("%s err, line %d\n", __func__, __LINE__);
++		goto err2;
++	}
++
++	cdev_init(g_ptimer_cdev, &timer_test_fops);
++
++	g_ptimer_cdev->owner = THIS_MODULE;
++	itemp = cdev_add(g_ptimer_cdev, g_devid, 1);
++	if (itemp < 0) {
++		pr_info("%s err, line %d\n", __func__, __LINE__);
++		goto err1;
++	}
++
++	g_timer_class = class_create(THIS_MODULE, DEV_NAME);
++	if (IS_ERR(g_timer_class)) {
++		pr_info("%s err, line %d\n", __func__, __LINE__);
++		goto err1;
++	}
++	device_create(g_timer_class, NULL, g_devid, 0, DEV_NAME);
++
++	pr_info("%s success\n", __func__);
++	return 0;
++
++err1:
++	cdev_del(g_ptimer_cdev);
++	g_ptimer_cdev = NULL;
++err2:
++	unregister_chrdev_region(g_devid, 1);
++	return -1;
++}
++
++static void timer_test_cdev_deinit(void)
++{
++	device_destroy(g_timer_class, g_devid);
++	class_destroy(g_timer_class);
++
++	cdev_del(g_ptimer_cdev);
++
++	unregister_chrdev_region(g_devid, 1);
++}
++
++/**
++ * sunxi_timer_test_init - enter the timer test module
++ */
++static int __init sunxi_timer_test_init(void)
++{
++	int itemp = 0;
++
++	pr_info("%s enter\n", __func__);
++
++	itemp = timer_test_cdev_init();
++	if (itemp < 0) {
++		pr_err("%s err, line %d\n", __func__, __LINE__);
++		return -1;
++	}
++
++	pr_info("%s success\n", __func__);
++	return 0;
++}
++
++/**
++ * sunxi_timer_test_exit - exit the timer test module
++ */
++static void __exit sunxi_timer_test_exit(void)
++{
++	pr_info("%s enter\n", __func__);
++
++	timer_test_cdev_deinit();
++}
++
++module_init(sunxi_timer_test_init);
++module_exit(sunxi_timer_test_exit);
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("liugang");
++MODULE_DESCRIPTION("sunxi timer test driver code");
++
+diff --git a/drivers/clocksource/timer_test/sunxi_timer_test_i.h b/drivers/clocksource/timer_test/sunxi_timer_test_i.h
+new file mode 100644
+index 000000000..261fd9773
+--- /dev/null
++++ b/drivers/clocksource/timer_test/sunxi_timer_test_i.h
+@@ -0,0 +1,48 @@
++/*
++ * drivers/char/timer_test/sunxi_timer_test_i.h
++ *
++ * Copyright(c) 2013-2015 Allwinnertech Co., Ltd.
++ *      http://www.allwinnertech.com
++ *
++ * Author: liugang <liugang@allwinnertech.com>
++ *
++ * sunxi timer test head file
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ */
++
++#ifndef __SUNXI_TIMER_TEST_I_H
++#define __SUNXI_TIMER_TEST_I_H
++
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/module.h>
++#include <linux/types.h>
++#include <linux/fcntl.h>
++#include <linux/gfp.h>
++#include <linux/interrupt.h>
++#include <linux/init.h>
++#include <linux/ioport.h>
++#include <linux/in.h>
++#include <linux/string.h>
++#include <linux/delay.h>
++#include <linux/errno.h>
++#include <linux/netdevice.h>
++#include <linux/etherdevice.h>
++#include <linux/skbuff.h>
++#include <linux/platform_device.h>
++#include <linux/slab.h>
++#include <asm/io.h>
++#include <asm/pgtable.h>
++#include <linux/kthread.h>
++#include <linux/delay.h>
++#include <linux/fs.h>
++#include <linux/cdev.h>
++#include <linux/hrtimer.h>
++#include <linux/ktime.h>
++#include <linux/device.h>
++
++#endif
+-- 
+2.17.1
+

@@ -1,0 +1,28 @@
+From ba62c9c60fbf8a3435b08db28508718445ea0faf Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:11:39 +0800
+Subject: [PATCH 59/93] fix slimbus node
+
+---
+ drivers/slimbus/core.c | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/slimbus/core.c b/drivers/slimbus/core.c
+index 63ee96eb5..ae1e248a8 100644
+--- a/drivers/slimbus/core.c
++++ b/drivers/slimbus/core.c
+@@ -162,9 +162,8 @@ static int slim_add_device(struct slim_controller *ctrl,
+ 	sbdev->ctrl = ctrl;
+ 	INIT_LIST_HEAD(&sbdev->stream_list);
+ 	spin_lock_init(&sbdev->stream_list_lock);
+-
+-	if (node)
+-		sbdev->dev.of_node = of_node_get(node);
++	sbdev->dev.of_node = of_node_get(node);
++	sbdev->dev.fwnode = of_fwnode_handle(node);
+ 
+ 	dev_set_name(&sbdev->dev, "%x:%x:%x:%x",
+ 				  sbdev->e_addr.manf_id,
+-- 
+2.17.1
+

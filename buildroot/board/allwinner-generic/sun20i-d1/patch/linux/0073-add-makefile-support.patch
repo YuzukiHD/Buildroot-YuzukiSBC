@@ -1,0 +1,32 @@
+From 2f2d4fc7afce168239bdeb5239a89c2f457ddda6 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:18:52 +0800
+Subject: [PATCH 73/93] add makefile support
+
+---
+ drivers/Makefile | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/Makefile b/drivers/Makefile
+index aaef17cc6..80c49c1a4 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -8,6 +8,7 @@
+ 
+ obj-y				+= irqchip/
+ obj-y				+= bus/
++obj-y				+= dsp/
+ 
+ obj-$(CONFIG_GENERIC_PHY)	+= phy/
+ 
+@@ -180,6 +181,7 @@ obj-$(CONFIG_NVMEM)		+= nvmem/
+ obj-$(CONFIG_FPGA)		+= fpga/
+ obj-$(CONFIG_FSI)		+= fsi/
+ obj-$(CONFIG_TEE)		+= tee/
++obj-$(CONFIG_SUNXI_DRM_HEAP)	+= sunxi_drm_heap/
+ obj-$(CONFIG_MULTIPLEXER)	+= mux/
+ obj-$(CONFIG_UNISYS_VISORBUS)	+= visorbus/
+ obj-$(CONFIG_SIOX)		+= siox/
+-- 
+2.17.1
+

@@ -1,0 +1,2924 @@
+From ca6dc29c09709a6c89bfd1f69f239bd3d2574c48 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:01:46 +0800
+Subject: [PATCH 43/93] add sunxi leds driver
+
+---
+ drivers/leds/Kconfig             |   16 +
+ drivers/leds/Makefile            |    4 +
+ drivers/leds/leds-matrix-sunxi.c |  526 ++++++++
+ drivers/leds/leds-matrix-sunxi.h |   42 +
+ drivers/leds/leds-sunxi.c        | 2079 ++++++++++++++++++++++++++++++
+ drivers/leds/leds-sunxi.h        |  190 +++
+ 6 files changed, 2857 insertions(+)
+ create mode 100644 drivers/leds/leds-matrix-sunxi.c
+ create mode 100644 drivers/leds/leds-matrix-sunxi.h
+ create mode 100644 drivers/leds/leds-sunxi.c
+ create mode 100644 drivers/leds/leds-sunxi.h
+
+diff --git a/drivers/leds/Kconfig b/drivers/leds/Kconfig
+index 1988de1d6..d18c25340 100644
+--- a/drivers/leds/Kconfig
++++ b/drivers/leds/Kconfig
+@@ -823,6 +823,22 @@ config LEDS_LM36274
+ 	  Say Y to enable the LM36274 LED driver for TI LMU devices.
+ 	  This supports the LED device LM36274.
+ 
++config LEDS_SUNXI
++	tristate "LED support for Allwinner platforms"
++	depends on ARCH_SUNXI
++	depends on LEDS_CLASS
++	help
++	  This option enabled support for the LEDs on the Allwinner
++	  platforms. Say Y to enabled these.
++
++config MATRIX_LEDS_SUNXI
++	tristate "LED Matrix support for Allwinner platforms"
++	depends on ARCH_SUNXI
++	depends on LEDS_CLASS
++	help
++	  This option enabled support for the LEDs matrix on the Allwinner
++	  platforms. Say Y to enabled these.
++
+ comment "LED Triggers"
+ source "drivers/leds/trigger/Kconfig"
+ 
+diff --git a/drivers/leds/Makefile b/drivers/leds/Makefile
+index 41fb073a3..9dc5f1665 100644
+--- a/drivers/leds/Makefile
++++ b/drivers/leds/Makefile
+@@ -86,6 +86,10 @@ obj-$(CONFIG_LEDS_TI_LMU_COMMON)	+= leds-ti-lmu-common.o
+ obj-$(CONFIG_LEDS_LM3697)		+= leds-lm3697.o
+ obj-$(CONFIG_LEDS_LM36274)		+= leds-lm36274.o
+ 
++#LED Driver for sunxi platform
++obj-$(CONFIG_LEDS_SUNXI)		+= leds-sunxi.o
++obj-$(CONFIG_MATRIX_LEDS_SUNXI)		+= leds-matrix-sunxi.o
++
+ # LED SPI Drivers
+ obj-$(CONFIG_LEDS_CR0014114)		+= leds-cr0014114.o
+ obj-$(CONFIG_LEDS_DAC124S085)		+= leds-dac124s085.o
+diff --git a/drivers/leds/leds-matrix-sunxi.c b/drivers/leds/leds-matrix-sunxi.c
+new file mode 100644
+index 000000000..3c227dcf5
+--- /dev/null
++++ b/drivers/leds/leds-matrix-sunxi.c
+@@ -0,0 +1,526 @@
++/*
++ * drivers/leds/leds-matrix-leds.c - Allwinner LED Matrix Driver
++ *
++ * Copyright (C) 2021 Allwinner Technology Limited. All rights reserved.
++ *	http://www.allwinnertech.com
++ * Author : OuJiayu <OuJiayu@allwinnertech.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ */
++
++#include <linux/module.h>
++#include <linux/err.h>
++#include <linux/leds.h>
++#include <linux/io.h>
++#include <linux/slab.h>
++#include <linux/delay.h>
++#include <linux/platform_device.h>
++#include <linux/pinctrl/consumer.h>
++#include <linux/property.h>
++#include <linux/gpio.h>
++#include <linux/of.h>
++#include <linux/of_gpio.h>
++#include <linux/of_platform.h>
++#include "leds-matrix-sunxi.h"
++
++struct matrix_led_gdata {
++	int *map;
++	int *col;
++};
++struct matrix_led_gdata *gdata;
++
++static inline int sizeof_gpio_leds_priv(int led_cnt)
++{
++	return sizeof(struct matrix_led_priv) +
++		(sizeof(struct matrix_led_data) * led_cnt);
++}
++
++static inline struct matrix_led_data *
++		cdev_to_matrix_led_data(struct led_classdev *led_cdev)
++{
++	return container_of(led_cdev, struct matrix_led_data, cdev);
++}
++
++static inline struct matrix_led_priv *
++		flag_to_matrix_led_priv(u8 *flag)
++{
++	return container_of(flag, struct matrix_led_priv, flag);
++}
++
++static void matrix_led_set(struct led_classdev *led_cdev,
++		enum led_brightness value)
++{
++	struct matrix_led_data *leds =
++		cdev_to_matrix_led_data(led_cdev);
++	int level;
++
++	if (value == LED_OFF)
++		level = 0;
++	else
++		level = 1;
++
++	if (leds->can_sleep) {
++		gpio_set_value_cansleep(leds->row_gpio, !level); //set row
++		gpio_set_value_cansleep(leds->col_gpio, level); //set col
++	} else {
++		gpio_set_value(leds->row_gpio, !level); //set row
++		gpio_set_value(leds->col_gpio, level); //set col
++	}
++}
++
++static int matrix_led_set_blocking(struct led_classdev *led_cdev,
++		enum led_brightness value)
++{
++	matrix_led_set(led_cdev, value);
++	return 0;
++}
++
++static DECLARE_WAIT_QUEUE_HEAD(matrix_led_wait);
++
++static void matrix_led_set_refresh(struct led_classdev *led_cdev,
++		enum led_brightness value)
++{
++	struct matrix_led_data *leds =
++		cdev_to_matrix_led_data(led_cdev);
++	struct matrix_led_priv *priv =
++		flag_to_matrix_led_priv(leds->flag);
++	int row, col, num, level, i;
++
++	if (value == LED_OFF) {
++		if (priv->light_cnt > 0)
++			priv->light_cnt -= 1;
++		level = 0;
++	} else {
++		priv->light_cnt += 1;
++		level = 1;
++	}
++
++	for (i = 0; i < priv->pdata->num_row_gpios; i++) {
++		if (leds->row_gpio == priv->pdata->row_gpios[i])
++			row = i;
++	}
++
++	for (i = 0; i < priv->pdata->num_col_gpios; i++) {
++		if (leds->col_gpio == priv->pdata->col_gpios[i]) {
++			gdata->col[i] = level;
++			col = i;
++		}
++	}
++	num = row * priv->pdata->num_row_gpios + col;
++
++	if (level == 1)
++		gdata->map[num] = 1;
++	else
++		gdata->map[num] = 0;
++
++	if (priv->light_cnt >= 1) {
++		priv->pdata->wait = 1;
++		wake_up_interruptible(&matrix_led_wait);
++	} else {
++		priv->pdata->wait = 0;
++	}
++
++	schedule_delayed_work(&priv->work, 0);
++	return;
++}
++
++static void matrix_led_refresh_work(struct work_struct *work)
++{
++	struct matrix_led_priv *priv;
++	struct matrix_led_platform_data *pdata;
++	int i = 0, j = 0, flag = 0;
++	int col_num;
++
++	priv = container_of(work, struct matrix_led_priv, work.work);
++	pdata = priv->pdata;
++	col_num = pdata->num_col_gpios;
++
++	while (1) {
++		wait_event_interruptible(matrix_led_wait, pdata->wait != 0);
++		for (i = 0; i < pdata->num_row_gpios; i++) {
++		/* light the row led one by one */
++			for (j = 0; j < col_num; j++) {
++				gdata->col[j] = gdata->map[i * col_num + j];
++				if (gdata->map[i * col_num + j] == 1) {
++					flag = 1;
++				}
++			}
++			if (flag == 1) {
++				if (!gpio_cansleep(pdata->row_gpios[i]))
++					gpio_set_value(pdata->row_gpios[i], 0);
++				else
++					gpio_set_value_cansleep(pdata->row_gpios[i], 0);
++				udelay(pdata->delay_us);
++				for (j = 0; j < col_num; j++) {
++					if (!gpio_cansleep(pdata->col_gpios[j]))
++						gpio_set_value(pdata->col_gpios[j],
++							gdata->col[j]);
++					else
++						gpio_set_value_cansleep(pdata->col_gpios[j],
++								gdata->col[j]);
++					udelay(pdata->delay_us);
++				}
++			} else {
++				flag = 0;
++				continue;
++			}
++			udelay(50);
++
++		/* turn off the led after light for the purpose of scanning */
++
++			if (!gpio_cansleep(pdata->row_gpios[i]))
++				gpio_set_value(pdata->row_gpios[i], 1);
++			else
++				gpio_set_value_cansleep(pdata->row_gpios[i], 1);
++			udelay(pdata->delay_us);
++			for (j = 0; j < col_num; j++) {
++				if (!gpio_cansleep(pdata->col_gpios[j]))
++					gpio_set_value(pdata->col_gpios[j], 0);
++				else
++					gpio_set_value_cansleep(pdata->col_gpios[j], 0);
++				udelay(pdata->delay_us);
++			}
++			udelay(50);
++			flag = 0;
++		}
++	}
++	return;
++}
++
++static int matrix_led_set_refresh_blocking(struct led_classdev *led_cdev,
++		enum led_brightness value)
++{
++	matrix_led_set_refresh(led_cdev, value);
++	return 0;
++}
++
++static int matrix_led_set_default_state(struct matrix_led_platform_data *pdata)
++{
++	int i = 0, ret = -1;
++
++	/* set row gpio output and high level */
++	for (i = 0; i < pdata->num_row_gpios; i++) {
++		ret = pinctrl_gpio_direction_output(pdata->row_gpios[i]);
++		if (ret < 0) {
++			dev_err(pdata->dev,
++				"row%d gpio set output failed\n", i);
++			return ret;
++		}
++		gpio_set_value(pdata->row_gpios[i], 1);
++	}
++
++	/* set col gpio output and low level */
++	for (i = 0; i < pdata->num_col_gpios; i++) {
++		ret = pinctrl_gpio_direction_output(pdata->col_gpios[i]);
++		if (ret < 0) {
++			dev_err(pdata->dev,
++				"col%d gpio set output failed\n", i);
++			return ret;
++		}
++		gpio_set_value(pdata->col_gpios[i], 0);
++	}
++
++	return 0;
++}
++
++static int set_gdata_for_refresh(struct matrix_led_platform_data *pdata)
++{
++	struct device *dev = pdata->dev;
++	int *count, *map;
++	int i;
++	int led_cnt = pdata->num_col_gpios * pdata->num_row_gpios;
++
++	if (pdata->refresh) {
++		gdata = devm_kzalloc(dev, sizeof(*gdata), GFP_KERNEL);
++		if (!gdata) {
++			dev_err(dev, "could not allocate memory for gdata\n");
++			return -1;
++		}
++	} else {
++		if (!gdata)
++			gdata = NULL;
++		return 0;
++	}
++
++	count = devm_kcalloc(dev, pdata->num_col_gpios,
++			sizeof(int), GFP_KERNEL);
++	if (!count) {
++		dev_err(dev, "could not allocate memory for count\n");
++		return -1;
++	}
++	if (pdata->refresh) {
++		for (i = 0; i < pdata->num_col_gpios; i++)
++			count[i] = 0;
++	}
++	gdata->col = count;
++	map = devm_kcalloc(dev, led_cnt,
++			sizeof(int), GFP_KERNEL);
++	if (!map) {
++		dev_err(dev, "could not allocate memory for map\n");
++		goto count_err;
++	}
++	for (i = 0; i < led_cnt; i++) {
++		map[i] = 0;
++	}
++	gdata->map = map;
++
++	return 0;
++
++count_err:
++	kfree(count);
++	return -1;
++}
++
++/*
++ * NOTE:This function is used to parse the device tree.In the device tree,
++ * what you need to configure are as following:
++ * sunxi_matrix_leds {
++ *		compatible = <>;
++ *		row-gpios = <
++ *			&pio PX X GPIO_ACTIVE_HIGH
++ *			&pio PX X GPIO_ACTIVE_HIGH>;
++ *		col-gpios = <
++ *			&pio PX X GPIO_ACTIVE_LOW
++ *			&pio PX X GPIO_ACTIVE_LOW>;
++ *		status = "okay";
++ * };
++ * Configure the correct GPIO pin according to the hardware.
++ */
++static struct matrix_led_platform_data
++	*sunxi_matrix_led_parse_dt(struct device *dev, struct device_node *np)
++{
++	struct matrix_led_platform_data *pdata;
++	unsigned int *gpios;
++	int nrow, ncol, i, ret;
++
++	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
++	if (IS_ERR(pdata) || !pdata) {
++		dev_err(dev, "could not allocate memory for platform data\n");
++		return ERR_PTR(-ENOMEM);
++	}
++
++	of_property_read_u32(np, "gpio-delay-us", &pdata->delay_us);
++
++	pdata->num_row_gpios = nrow = of_gpio_named_count(np, "row-gpios");
++	pdata->num_col_gpios = ncol = of_gpio_named_count(np, "col-gpios");
++
++	if (pdata->num_row_gpios <= 0 || pdata->num_col_gpios <= 0) {
++		dev_err(dev, "number of leds rows/cols not specified\n");
++		ret = -EINVAL;
++		goto free_pdata;
++	}
++
++	gpios = devm_kcalloc(dev, pdata->num_row_gpios + pdata->num_col_gpios,
++			sizeof(unsigned int), GFP_KERNEL);
++	if (!gpios) {
++		dev_err(dev, "could not allocate memory for gpios\n");
++		ret = -ENOMEM;
++		goto free_pdata;
++	}
++	for (i = 0; i < nrow; i++) {
++		ret = of_get_named_gpio(np, "row-gpios", i);
++		if (ret < 0) {
++			goto free_mem;
++		}
++		gpios[i] = ret;
++	}
++	for (i = 0; i < ncol; i++) {
++		ret = of_get_named_gpio(np, "col-gpios", i);
++		if (ret < 0)
++			goto free_mem;
++		gpios[nrow + i] = ret;
++	}
++	pdata->row_gpios = gpios;
++	pdata->col_gpios = &gpios[pdata->num_row_gpios];
++
++	return pdata;
++
++free_mem:
++	kfree(gpios);
++free_pdata:
++	kfree(pdata);
++	return ERR_PTR(ret);
++}
++
++static int
++sunxi_matrix_classdev_register(struct matrix_led_platform_data *pdata,
++		struct matrix_led_priv *priv,
++		struct matrix_led_data *leds, int i)
++{
++	int row, col, row_ret, col_ret, ret;
++	struct device *dev = pdata->dev;
++
++	row = i / pdata->num_row_gpios;
++	col = i % pdata->num_row_gpios;
++
++	leds->row_gpio = pdata->row_gpios[row];
++	leds->col_gpio = pdata->col_gpios[col];
++
++	row_ret = gpio_cansleep(leds->row_gpio);
++	col_ret = gpio_cansleep(leds->col_gpio);
++
++	if (!row_ret && !col_ret) {
++		if (!pdata->refresh)
++			leds->cdev.brightness_set = matrix_led_set;
++		else
++			leds->cdev.brightness_set = matrix_led_set_refresh;
++		leds->can_sleep = false;
++	} else if (row_ret && col_ret) {
++		if (!pdata->refresh)
++			leds->cdev.brightness_set_blocking =
++				matrix_led_set_blocking;
++		else
++			leds->cdev.brightness_set_blocking =
++				matrix_led_set_refresh_blocking;
++		leds->can_sleep = true;
++	} else {
++		dev_err(dev, "please set the gpio in the same soc\n");
++		return -EINVAL;
++	}
++
++	leds->cdev.name = kzalloc(8, GFP_KERNEL);
++	sprintf((char *)leds->cdev.name, "mled%d", i);
++	leds->cdev.dev = dev;
++
++	ret = devm_led_classdev_register(dev, &leds->cdev);
++	if (ret < 0) {
++		dev_err(dev, "class register failed %s\n", leds->cdev.name);
++		return ret;
++	}
++
++	/* prepare to get priv data*/
++	leds->flag = &priv->flag;
++
++	return 0;
++}
++
++static int
++sunxi_matrix_classdev_unregister(struct matrix_led_priv *priv)
++{
++	int i;
++	for (i = 0; i < priv->led_cnt; i++) {
++		kfree(priv->leds[i].cdev.name);
++		led_classdev_unregister(&priv->leds[i].cdev);
++	}
++	return 0;
++}
++
++static int sunxi_matrix_led_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct matrix_led_platform_data *pdata;
++	struct matrix_led_priv *priv;
++	struct device_node *np = dev->of_node;
++	int ret, i, led_cnt;
++
++	if (!np) {
++		dev_err(dev, "device lacks DT data\n");
++		return -ENODEV;
++	}
++
++	pdata = sunxi_matrix_led_parse_dt(dev, np);
++	if (IS_ERR(pdata)) {
++		return PTR_ERR(pdata);
++	}
++	pdata->dev = dev;
++
++	/* If you want to use the function of array LED lighting at the same time,
++	 * please set refresh-leds in dts.Otherwise,
++	 * the LEDs between rows will affect each other.*/
++	led_cnt = (pdata->num_row_gpios * pdata->num_col_gpios);
++
++	priv = devm_kzalloc(dev, sizeof_gpio_leds_priv(led_cnt),
++			GFP_KERNEL);
++	if (!priv) {
++		ret = -ENOMEM;
++		goto pdata_err;
++	}
++	priv->led_cnt = led_cnt;
++
++	if (of_get_property(np, "refresh-leds", NULL))
++		pdata->refresh = true;
++	else
++		pdata->refresh = false;
++
++	for (i = 0; i < led_cnt; i++) {
++		ret = sunxi_matrix_classdev_register(pdata, priv,
++					&priv->leds[i], i);
++		if (ret < 0) {
++			goto priv_err;
++		}
++	}
++
++	ret = set_gdata_for_refresh(pdata);
++	if (ret < 0) {
++		dev_err(dev, "set gdata for refresh failed\n");
++		goto priv_err;
++	}
++
++	ret = matrix_led_set_default_state(pdata);
++	if (ret < 0) {
++		dev_err(dev, "matrix_led_set_default_state failed\n");
++		goto priv_err;
++	}
++
++	INIT_DELAYED_WORK(&priv->work, matrix_led_refresh_work);
++	priv->pdata = pdata;
++	platform_set_drvdata(pdev, priv);
++
++	dev_info(dev, "sunxi matrix led probe success!\n");
++	return 0;
++
++priv_err:
++	kfree(priv);
++pdata_err:
++	kfree(pdata);
++	return ret;
++}
++
++static int sunxi_matrix_led_remove(struct platform_device *pdev)
++{
++	struct matrix_led_priv *priv;
++	int i;
++
++	priv = platform_get_drvdata(pdev);
++
++	flush_delayed_work(&priv->work);
++	for (i = 0; i < priv->led_cnt; i++) {
++		struct matrix_led_data *leds = &priv->leds[i];
++		matrix_led_set(&leds->cdev, LED_OFF);
++	}
++	sunxi_matrix_classdev_unregister(priv);
++
++	if (!gdata)
++		kfree(gdata);
++
++	kfree(priv);
++
++	return 0;
++}
++
++static const struct of_device_id sunxi_matrix_led_dt_ids[] = {
++	{.compatible = "allwinner,sunxi-matrix-leds"},
++	{},
++};
++
++static struct platform_driver sunxi_matrix_led_driver = {
++	.probe          = sunxi_matrix_led_probe,
++	.remove         = sunxi_matrix_led_remove,
++	.driver         = {
++		.name   = "sunxi-matrix-leds",
++		.owner  = THIS_MODULE,
++		.of_match_table = sunxi_matrix_led_dt_ids,
++	},
++};
++
++module_platform_driver(sunxi_matrix_led_driver);
++
++MODULE_ALIAS("sunxi matrix gpio leds driver");
++MODULE_ALIAS("platform : matrix leds dirver");
++MODULE_LICENSE("GPL v2");
++MODULE_VERSION("1.0.0");
++MODULE_AUTHOR("OuJiayu@allwinnertech.com");
++MODULE_DESCRIPTION("Sunxi matrix GPIO LED driver");
+diff --git a/drivers/leds/leds-matrix-sunxi.h b/drivers/leds/leds-matrix-sunxi.h
+new file mode 100644
+index 000000000..cd759ef8f
+--- /dev/null
++++ b/drivers/leds/leds-matrix-sunxi.h
+@@ -0,0 +1,42 @@
++/*
++ * Copyright (C) 2018 Allwinner Technology Limited. All rights reserved.
++ * OuJiayu <OuJiayu@allwinnertech.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ */
++
++#ifndef __LINUX_LEDS_MATRIX_SUNXI_H
++#define __LINUX_LEDS_MATRIX_SUNXI_H
++
++struct matrix_led_data {
++	struct led_classdev cdev;
++	unsigned int row_gpio;
++	unsigned int col_gpio;
++	bool can_sleep;
++	u8 *flag;
++};
++
++struct matrix_led_priv {
++	int led_cnt;
++	int light_cnt;
++	u8 flag;
++	struct delayed_work work;
++	struct matrix_led_platform_data *pdata;
++	struct matrix_led_data leds[];
++};
++
++struct matrix_led_platform_data {
++	struct device *dev;
++	const unsigned int *row_gpios;
++	const unsigned int *col_gpios;
++	unsigned int num_row_gpios;
++	unsigned int num_col_gpios;
++	int delay_us;
++	bool refresh; /* use for judge if dts set refresh */
++	int wait; /* use for wait event */
++};
++
++#endif
+diff --git a/drivers/leds/leds-sunxi.c b/drivers/leds/leds-sunxi.c
+new file mode 100644
+index 000000000..a31d6ac5d
+--- /dev/null
++++ b/drivers/leds/leds-sunxi.c
+@@ -0,0 +1,2079 @@
++/*
++ * drivers/leds/leds-sunxi.c - Allwinner RGB LED Driver
++ *
++ * Copyright (C) 2018 Allwinner Technology Limited. All rights reserved.
++ *      http://www.allwinnertech.com
++ *
++ *Author : Albert Yu <yuxyun@allwinnertech.com>
++ *	   Lewis <liuyu@allwinnertech.com>
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ */
++
++#include <linux/module.h>
++#include <linux/delay.h>
++#include <linux/leds.h>
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/slab.h>
++#include <linux/clk.h>
++#include <linux/dmaengine.h>
++#include <linux/interrupt.h>
++#include <linux/platform_device.h>
++#include <linux/pinctrl/consumer.h>
++#include <linux/dma-mapping.h>
++#include <linux/debugfs.h>
++#include <linux/uaccess.h>
++#include <linux/delay.h>
++#include <linux/regulator/consumer.h>
++#include <linux/reset.h>
++
++#if IS_ENABLED(CONFIG_PM)
++#include <linux/pm.h>
++#endif
++#include "leds-sunxi.h"
++
++/* For debug */
++#define LED_ERR(fmt, arg...) pr_err("%s()%d - "fmt, __func__, __LINE__, ##arg)
++
++#define dprintk(level_mask, fmt, arg...)				\
++do {									\
++	if (unlikely(debug_mask & level_mask))				\
++		pr_warn("%s()%d - "fmt, __func__, __LINE__, ##arg);	\
++} while (0)
++
++static u32 debug_mask = 1;
++struct sunxi_led *sunxi_led_global;
++static struct class *led_class;
++
++#define sunxi_slave_id(d, s) (((d)<<16) | (s))
++
++/*For Driver */
++void led_dump_reg(struct sunxi_led *led, u32 offset, u32 len)
++{
++	u32 i;
++	u8 buf[64], cnt = 0;
++
++	for (i = 0; i < len; i = i + REG_INTERVAL) {
++		if (i%HEXADECIMAL == 0)
++			cnt += sprintf(buf + cnt, "0x%08x: ",
++					(u32)(led->res->start + offset + i));
++
++		cnt += sprintf(buf + cnt, "%08x ",
++				readl(led->iomem_reg_base + offset + i));
++
++		if (i%HEXADECIMAL == REG_CL) {
++			pr_warn("%s\n", buf);
++			cnt = 0;
++		}
++	}
++}
++
++static void sunxi_clk_get(struct sunxi_led *led)
++{
++	struct device *dev = led->dev;
++	struct device_node *np = dev->of_node;
++
++	led->clk_ledc = of_clk_get(np, 0);
++	if (IS_ERR(led->clk_ledc))
++		LED_ERR("failed to get clk_ledc!\n");
++
++	led->clk_cpuapb = of_clk_get(np, 1);
++	if (IS_ERR(led->clk_cpuapb))
++		LED_ERR("failed to get clk_cpuapb!\n");
++}
++
++static void sunxi_clk_put(struct sunxi_led *led)
++{
++	clk_put(led->clk_ledc);
++	clk_put(led->clk_cpuapb);
++	led->clk_ledc = NULL;
++	led->clk_cpuapb = NULL;
++}
++
++static void sunxi_clk_enable(struct sunxi_led *led)
++{
++	clk_prepare_enable(led->clk_ledc);
++	clk_prepare_enable(led->clk_cpuapb);
++}
++
++static void sunxi_clk_disable(struct sunxi_led *led)
++{
++	clk_disable_unprepare(led->clk_ledc);
++}
++
++static void sunxi_clk_init(struct sunxi_led *led)
++{
++	sunxi_clk_get(led);
++	sunxi_clk_enable(led);
++}
++
++static void sunxi_clk_deinit(struct sunxi_led *led)
++{
++	sunxi_clk_disable(led);
++	sunxi_clk_put(led);
++}
++
++static u32 sunxi_get_reg(int offset)
++{
++	struct sunxi_led *led = sunxi_led_global;
++	u32 value = ioread32(((u8 *)led->iomem_reg_base) + offset);
++
++	return value;
++}
++
++static void sunxi_set_reg(int offset, u32 value)
++{
++	struct sunxi_led *led = sunxi_led_global;
++
++	iowrite32(value, ((u8 *)led->iomem_reg_base) + offset);
++}
++
++static inline void sunxi_set_reset_ns(struct sunxi_led *led)
++{
++	u32 n, reg_val;
++	u32 mask = 0x1FFF;
++	u32 min = SUNXI_RESET_TIME_MIN_NS;
++	u32 max = SUNXI_RESET_TIME_MAX_NS;
++
++	if (led->reset_ns < min || led->reset_ns > max) {
++		LED_ERR("invalid parameter, reset_ns should be %u-%u!\n",
++				min, max);
++		return;
++	}
++
++	n = (led->reset_ns - 42) / 42;
++	reg_val = sunxi_get_reg(LED_RESET_TIMING_CTRL_REG_OFFSET);
++	reg_val &= ~(mask << 16);
++	reg_val |= (n << 16);
++	sunxi_set_reg(LED_RESET_TIMING_CTRL_REG_OFFSET, reg_val);
++}
++
++static inline void sunxi_set_t1h_ns(struct sunxi_led *led)
++{
++	u32 n, reg_val;
++	u32 mask = 0x3F;
++	u32 shift = 21;
++	u32 min = SUNXI_T1H_MIN_NS;
++	u32 max = SUNXI_T1H_MAX_NS;
++
++	if (led->t1h_ns < min || led->t1h_ns > max) {
++		LED_ERR("invalid parameter, t1h_ns should be %u-%u!\n",
++				min, max);
++		return;
++	}
++
++	n = (led->t1h_ns - 42) / 42;
++	reg_val = sunxi_get_reg(LED_T01_TIMING_CTRL_REG_OFFSET);
++	reg_val &= ~(mask << shift);
++	reg_val |= n << shift;
++	sunxi_set_reg(LED_T01_TIMING_CTRL_REG_OFFSET, reg_val);
++}
++
++static inline void sunxi_set_t1l_ns(struct sunxi_led *led)
++{
++	u32 n, reg_val;
++	u32 mask = 0x1F;
++	u32 shift = 16;
++	u32 min = SUNXI_T1L_MIN_NS;
++	u32 max = SUNXI_T1L_MAX_NS;
++
++	if (led->t1l_ns < min || led->t1l_ns > max) {
++		LED_ERR("invalid parameter, t1l_ns should be %u-%u!\n",
++				min, max);
++		return;
++	}
++
++	n = (led->t1l_ns - 42) / 42;
++	reg_val = sunxi_get_reg(LED_T01_TIMING_CTRL_REG_OFFSET);
++	reg_val &= ~(mask << shift);
++	reg_val |= n << shift;
++	sunxi_set_reg(LED_T01_TIMING_CTRL_REG_OFFSET, reg_val);
++}
++
++static inline void sunxi_set_t0h_ns(struct sunxi_led *led)
++{
++	u32 n, reg_val;
++	u32 mask = 0x1F;
++	u32 shift = 6;
++	u32 min = SUNXI_T0H_MIN_NS;
++	u32 max = SUNXI_T0H_MAX_NS;
++
++	if (led->t0h_ns < min || led->t0h_ns > max) {
++		LED_ERR("invalid parameter, t0h_ns should be %u-%u!\n",
++			min, max);
++		return;
++	}
++
++	n = (led->t0h_ns - 42) / 42;
++	reg_val = sunxi_get_reg(LED_T01_TIMING_CTRL_REG_OFFSET);
++	reg_val &= ~(mask << shift);
++	reg_val |= n << shift;
++	sunxi_set_reg(LED_T01_TIMING_CTRL_REG_OFFSET, reg_val);
++}
++
++static inline void sunxi_set_t0l_ns(struct sunxi_led *led)
++{
++	u32 n, reg_val;
++	u32 min = SUNXI_T0L_MIN_NS;
++	u32 max = SUNXI_T0L_MAX_NS;
++
++	if (led->t0l_ns < min || led->t0l_ns > max) {
++		LED_ERR("invalid parameter, t0l_ns should be %u-%u!\n",
++				min, max);
++		return;
++	}
++
++	n = (led->t0l_ns - 42) / 42;
++	reg_val = sunxi_get_reg(LED_T01_TIMING_CTRL_REG_OFFSET);
++	reg_val &= ~0x3F;
++	reg_val |= n;
++	sunxi_set_reg(LED_T01_TIMING_CTRL_REG_OFFSET, reg_val);
++}
++
++static inline void sunxi_set_wait_time0_ns(struct sunxi_led *led)
++{
++	u32 n, reg_val;
++	u32 min = SUNXI_WAIT_TIME0_MIN_NS;
++	u32 max = SUNXI_WAIT_TIME0_MAX_NS;
++
++	if (led->wait_time0_ns < min || led->wait_time0_ns > max) {
++		LED_ERR("invalid parameter, wait_time0_ns should be %u-%u!\n",
++				min, max);
++		return;
++	}
++
++	n = (led->wait_time0_ns - 42) / 42;
++	reg_val = (1 << 8) | n;
++	sunxi_set_reg(LEDC_WAIT_TIME0_CTRL_REG, reg_val);
++}
++
++static inline void sunxi_set_wait_time1_ns(struct sunxi_led *led)
++{
++	unsigned long long tmp, max = SUNXI_WAIT_TIME1_MAX_NS;
++	u32 min = SUNXI_WAIT_TIME1_MIN_NS;
++	u32 n, reg_val;
++
++	if (led->wait_time1_ns < min || led->wait_time1_ns > max) {
++		LED_ERR("invalid parameter, wait_time1_ns should be %u-%llu!\n",
++			min, max);
++		return;
++	}
++
++	tmp = led->wait_time1_ns;
++	n = div_u64(tmp, 42);
++	n -= 1;
++	reg_val = (1 << 31) | n;
++	sunxi_set_reg(LEDC_WAIT_TIME1_CTRL_REG, reg_val);
++}
++
++static inline void sunxi_set_wait_data_time_ns(struct sunxi_led *led)
++{
++	u32 min, max;
++#ifndef SUNXI_FPGA_LEDC
++	u32 mask = 0x1FFF, shift = 16, reg_val = 0, n;
++#endif
++	min = SUNXI_WAIT_DATA_TIME_MIN_NS;
++#ifdef SUNXI_FPGA_LEDC
++	/*
++	 * For FPGA platforms, it is easy to meet wait data timeout for
++	 * the obvious latency of task which is because of less cpu cores
++	 * and lower cpu frequency compared with IC platforms, so here we
++	 * permit long enough time latency.
++	 */
++	max = SUNXI_WAIT_DATA_TIME_MAX_NS_FPGA;
++#else /* SUNXI_FPGA_LEDC */
++	max = SUNXI_WAIT_DATA_TIME_MAX_NS_IC;
++#endif /* SUNXI_FPGA_LEDC */
++
++	if (led->wait_data_time_ns < min || led->wait_data_time_ns > max) {
++		LED_ERR("invalid parameter, wait_data_time_ns should be %u-%u!\n",
++			min, max);
++		return;
++	}
++
++#ifndef SUNXI_FPGA_LEDC
++	n = (led->wait_data_time_ns - 42) / 42;
++	reg_val &= ~(mask << shift);
++	reg_val |= (n << shift);
++	sunxi_set_reg(LEDC_DATA_FINISH_CNT_REG_OFFSET, reg_val);
++#endif /* SUNXI_FPGA_LEDC */
++}
++
++static void sunxi_ledc_set_time(struct sunxi_led *led)
++{
++	sunxi_set_reset_ns(led);
++	sunxi_set_t1h_ns(led);
++	sunxi_set_t1l_ns(led);
++	sunxi_set_t0h_ns(led);
++	sunxi_set_t0l_ns(led);
++	sunxi_set_wait_time0_ns(led);
++	sunxi_set_wait_time1_ns(led);
++	sunxi_set_wait_data_time_ns(led);
++}
++
++static void sunxi_ledc_set_length(struct sunxi_led *led)
++{
++	u32 reg_val;
++	u32 length = led->length;
++
++	if (length == 0)
++		return;
++
++	if (length > led->led_count)
++		return;
++
++	reg_val = sunxi_get_reg(LEDC_CTRL_REG_OFFSET);
++	reg_val &= ~(0x1FFF << 16);
++	reg_val |=  length << 16;
++	sunxi_set_reg(LEDC_CTRL_REG_OFFSET, reg_val);
++
++	reg_val = sunxi_get_reg(LED_RESET_TIMING_CTRL_REG_OFFSET);
++	reg_val &= ~0x3FF;
++	reg_val |= length - 1;
++	sunxi_set_reg(LED_RESET_TIMING_CTRL_REG_OFFSET, reg_val);
++}
++
++static void sunxi_ledc_set_output_mode(struct sunxi_led *led, const char *str)
++{
++	u32 val;
++	u32 mask = 0x7;
++	u32 shift = 6;
++	u32 reg_val = sunxi_get_reg(LEDC_CTRL_REG_OFFSET);
++	if (str != NULL) {
++		if (!strncmp(str, "GRB", 3))
++			val = SUNXI_OUTPUT_GRB;
++		else if (!strncmp(str, "GBR", 3))
++			val = SUNXI_OUTPUT_GBR;
++		else if (!strncmp(str, "RGB", 3))
++			val = SUNXI_OUTPUT_RGB;
++		else if (!strncmp(str, "RBG", 3))
++			val = SUNXI_OUTPUT_RBG;
++		else if (!strncmp(str, "BGR", 3))
++			val = SUNXI_OUTPUT_BGR;
++		else if (!strncmp(str, "BRG", 3))
++			val = SUNXI_OUTPUT_BRG;
++		else
++			return;
++	} else {
++		val = led->output_mode.val;
++	}
++
++	reg_val &= ~(mask << shift);
++	reg_val |= val;
++
++	sunxi_set_reg(LEDC_CTRL_REG_OFFSET, reg_val);
++
++	if (strncmp(str, led->output_mode.str, 3))
++		memcpy(led->output_mode.str, str, 3);
++
++	if (val != led->output_mode.val)
++		led->output_mode.val = val;
++}
++
++static void sunxi_ledc_enable_irq(u32 mask)
++{
++	u32 reg_val = 0;
++
++	reg_val |= mask;
++	sunxi_set_reg(LEDC_INT_CTRL_REG_OFFSET, reg_val);
++}
++
++static void sunxi_ledc_disable_irq(u32 mask)
++{
++	u32 reg_val = 0;
++
++	reg_val = sunxi_get_reg(LEDC_INT_CTRL_REG_OFFSET);
++	reg_val &= ~mask;
++	sunxi_set_reg(LEDC_INT_CTRL_REG_OFFSET, reg_val);
++}
++
++static inline void sunxi_ledc_enable(struct sunxi_led *led)
++{
++	u32 reg_val;
++
++	reg_val = sunxi_get_reg(LEDC_CTRL_REG_OFFSET);
++	reg_val |=  1;
++	sunxi_set_reg(LEDC_CTRL_REG_OFFSET, reg_val);
++}
++
++static inline void sunxi_ledc_reset(struct sunxi_led *led)
++{
++	u32 reg_val = sunxi_get_reg(LEDC_CTRL_REG_OFFSET);
++
++	sunxi_ledc_disable_irq(LEDC_TRANS_FINISH_INT_EN | LEDC_FIFO_CPUREQ_INT_EN
++			| LEDC_WAITDATA_TIMEOUT_INT_EN | LEDC_FIFO_OVERFLOW_INT_EN
++			| LEDC_GLOBAL_INT_EN);
++
++	if (debug_mask & DEBUG_INFO2) {
++		dprintk(DEBUG_INFO2, "dump reg:\n");
++		led_dump_reg(led, 0, 0x30);
++	}
++
++	reg_val |= 1 << 1;
++	sunxi_set_reg(LEDC_CTRL_REG_OFFSET, reg_val);
++}
++
++#ifdef CONFIG_DEBUG_FS
++static ssize_t reset_ns_write(struct file *filp, const char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int err;
++	char buffer[64];
++	u32 min, max;
++	unsigned long val;
++	struct sunxi_led *led = sunxi_led_global;
++
++	min = SUNXI_RESET_TIME_MIN_NS;
++	max = SUNXI_RESET_TIME_MAX_NS;
++
++	if (count >= sizeof(buffer))
++		goto err_out;
++
++	if (copy_from_user(buffer, buf, count))
++		goto err_out;
++
++	buffer[count] = '\0';
++
++	err = kstrtoul(buffer, 10, &val);
++	if (err)
++		goto err_out;
++
++	if (val < min || val > max)
++		goto err_out;
++
++	led->reset_ns = val;
++	sunxi_set_reset_ns(led);
++
++	*offp += count;
++
++	return count;
++
++err_out:
++	LED_ERR("invalid parameter, reset_ns should be %u-%u!\n",
++		min, max);
++
++	return -EINVAL;
++}
++
++static ssize_t reset_ns_read(struct file *filp, char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	r = snprintf(buffer, 64, "%u\n", led->reset_ns);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations reset_ns_fops = {
++	.owner = THIS_MODULE,
++	.write = reset_ns_write,
++	.read  = reset_ns_read,
++};
++
++static ssize_t t1h_ns_write(struct file *filp, const char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int err;
++	char buffer[64];
++	u32 min, max;
++	unsigned long val;
++	struct sunxi_led *led = sunxi_led_global;
++
++	min = SUNXI_T1H_MIN_NS;
++	max = SUNXI_T1H_MAX_NS;
++
++	if (count >= sizeof(buffer))
++		return -EINVAL;
++
++	if (copy_from_user(buffer, buf, count))
++		return -EFAULT;
++
++	buffer[count] = '\0';
++
++	err = kstrtoul(buffer, 10, &val);
++	if (err)
++		return -EINVAL;
++
++	if (val < min || val > max)
++		goto err_out;
++
++	led->t1h_ns = val;
++
++	sunxi_set_t1h_ns(led);
++
++	*offp += count;
++
++	return count;
++
++err_out:
++	LED_ERR("invalid parameter, t1h_ns should be %u-%u!\n",
++		min, max);
++
++	return -EINVAL;
++}
++
++static ssize_t t1h_ns_read(struct file *filp, char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	r = snprintf(buffer, 64, "%u\n", led->t1h_ns);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations t1h_ns_fops = {
++	.owner = THIS_MODULE,
++	.write = t1h_ns_write,
++	.read  = t1h_ns_read,
++};
++
++static ssize_t t1l_ns_write(struct file *filp, const char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int err;
++	char buffer[64];
++	u32 min, max;
++	unsigned long val;
++	struct sunxi_led *led = sunxi_led_global;
++
++	min = SUNXI_T1L_MIN_NS;
++	max = SUNXI_T1L_MAX_NS;
++
++	if (count >= sizeof(buffer))
++		goto err_out;
++
++	if (copy_from_user(buffer, buf, count))
++		goto err_out;
++
++	buffer[count] = '\0';
++
++	err = kstrtoul(buffer, 10, &val);
++	if (err)
++		goto err_out;
++
++	if (val < min || val > max)
++		goto err_out;
++
++	led->t1l_ns = val;
++	sunxi_set_t1l_ns(led);
++
++	*offp += count;
++
++	return count;
++
++err_out:
++	LED_ERR("invalid parameter, t1l_ns should be %u-%u!\n",
++		min, max);
++
++	return -EINVAL;
++}
++
++static ssize_t t1l_ns_read(struct file *filp, char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	r = snprintf(buffer, 64, "%u\n", led->t1l_ns);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations t1l_ns_fops = {
++	.owner = THIS_MODULE,
++	.write = t1l_ns_write,
++	.read  = t1l_ns_read,
++};
++
++static ssize_t t0h_ns_write(struct file *filp, const char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int err;
++	char buffer[64];
++	u32 min, max;
++	unsigned long val;
++	struct sunxi_led *led = sunxi_led_global;
++
++	min = SUNXI_T0H_MIN_NS;
++	max = SUNXI_T0H_MAX_NS;
++
++	if (count >= sizeof(buffer))
++		goto err_out;
++
++	if (copy_from_user(buffer, buf, count))
++		goto err_out;
++
++	buffer[count] = '\0';
++
++	err = kstrtoul(buffer, 10, &val);
++	if (err)
++		goto err_out;
++
++	if (val < min || val > max)
++		goto err_out;
++
++	led->t0h_ns = val;
++	sunxi_set_t0h_ns(led);
++
++	*offp += count;
++
++	return count;
++
++err_out:
++	LED_ERR("invalid parameter, t0h_ns should be %u-%u!\n",
++		min, max);
++
++	return -EINVAL;
++}
++
++static ssize_t t0h_ns_read(struct file *filp, char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	r = snprintf(buffer, 64, "%u\n", led->t0h_ns);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations t0h_ns_fops = {
++	.owner = THIS_MODULE,
++	.write = t0h_ns_write,
++	.read  = t0h_ns_read,
++};
++
++static ssize_t t0l_ns_write(struct file *filp, const char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int err;
++	char buffer[64];
++	u32 min, max;
++	unsigned long val;
++	struct sunxi_led *led = sunxi_led_global;
++
++	min = SUNXI_T0L_MIN_NS;
++	max = SUNXI_T0L_MAX_NS;
++
++	if (count >= sizeof(buffer))
++		goto err_out;
++
++	if (copy_from_user(buffer, buf, count))
++		goto err_out;
++
++	buffer[count] = '\0';
++
++	err = kstrtoul(buffer, 10, &val);
++	if (err)
++		goto err_out;
++
++	if (val < min || val > max)
++		goto err_out;
++
++	led->t0l_ns = val;
++	sunxi_set_t0l_ns(led);
++
++	*offp += count;
++
++	return count;
++
++err_out:
++	LED_ERR("invalid parameter, t0l_ns should be %u-%u!\n",
++		min, max);
++
++	return -EINVAL;
++}
++
++static ssize_t t0l_ns_read(struct file *filp, char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	r = snprintf(buffer, 64, "%u\n", led->t0l_ns);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations t0l_ns_fops = {
++	.owner = THIS_MODULE,
++	.write = t0l_ns_write,
++	.read  = t0l_ns_read,
++};
++
++static ssize_t wait_time0_ns_write(struct file *filp, const char __user *buf,
++				size_t count, loff_t *offp)
++{
++	int err;
++	char buffer[64];
++	u32 min, max;
++	unsigned long val;
++	struct sunxi_led *led = sunxi_led_global;
++
++	min = SUNXI_WAIT_TIME0_MIN_NS;
++	max = SUNXI_WAIT_TIME0_MAX_NS;
++
++	if (count >= sizeof(buffer))
++		goto err_out;
++
++	if (copy_from_user(buffer, buf, count))
++		goto err_out;
++
++	buffer[count] = '\0';
++
++	err = kstrtoul(buffer, 10, &val);
++	if (err)
++		goto err_out;
++
++	if (val < min || val > max)
++		goto err_out;
++
++	led->wait_time0_ns = val;
++	sunxi_set_wait_time0_ns(led);
++
++	*offp += count;
++
++	return count;
++
++err_out:
++	LED_ERR("invalid parameter, wait_time0_ns should be %u-%u!\n",
++		min, max);
++
++	return -EINVAL;
++}
++
++static ssize_t wait_time0_ns_read(struct file *filp, char __user *buf,
++				size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	r = snprintf(buffer, 64, "%u\n", led->wait_time0_ns);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations wait_time0_ns_fops = {
++	.owner = THIS_MODULE,
++	.write = wait_time0_ns_write,
++	.read  = wait_time0_ns_read,
++};
++
++static ssize_t wait_time1_ns_write(struct file *filp, const char __user *buf,
++				size_t count, loff_t *offp)
++{
++	int err;
++	char buffer[64];
++	u32 min;
++	unsigned long long max;
++	unsigned long long val;
++	struct sunxi_led *led = sunxi_led_global;
++
++	min = SUNXI_WAIT_TIME1_MIN_NS;
++	max = SUNXI_WAIT_TIME1_MAX_NS;
++
++	if (count >= sizeof(buffer))
++		goto err_out;
++
++	if (copy_from_user(buffer, buf, count))
++		goto err_out;
++
++	buffer[count] = '\0';
++
++	err = kstrtoull(buffer, 10, &val);
++	if (err)
++		goto err_out;
++
++	if (val < min || val > max)
++		goto err_out;
++
++	led->wait_time1_ns = val;
++	sunxi_set_wait_time1_ns(led);
++
++	*offp += count;
++
++	return count;
++
++err_out:
++	LED_ERR("invalid parameter, wait_time1_ns should be %u-%lld!\n",
++		min, max);
++
++	return -EINVAL;
++}
++
++static ssize_t wait_time1_ns_read(struct file *filp, char __user *buf,
++				size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	r = snprintf(buffer, 64, "%lld\n", led->wait_time1_ns);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations wait_time1_ns_fops = {
++	.owner = THIS_MODULE,
++	.write = wait_time1_ns_write,
++	.read  = wait_time1_ns_read,
++};
++
++static ssize_t wait_data_time_ns_write(struct file *filp,
++				const char __user *buf,
++				size_t count, loff_t *offp)
++{
++	int err;
++	char buffer[64];
++	u32 min, max;
++	unsigned long val;
++	struct sunxi_led *led = sunxi_led_global;
++
++	min = SUNXI_WAIT_DATA_TIME_MIN_NS;
++#ifdef SUNXI_FPGA_LEDC
++	max = SUNXI_WAIT_DATA_TIME_MAX_NS_FPGA;
++#else
++	max = SUNXI_WAIT_DATA_TIME_MAX_NS_IC;
++#endif
++
++	if (count >= sizeof(buffer))
++		goto err_out;
++
++	if (copy_from_user(buffer, buf, count))
++		goto err_out;
++
++	buffer[count] = '\0';
++
++	err = kstrtoul(buffer, 10, &val);
++	if (err)
++		goto err_out;
++
++	if (val < min || val > max)
++		goto err_out;
++
++	led->wait_data_time_ns = val;
++	sunxi_set_wait_data_time_ns(led);
++
++	*offp += count;
++
++	return count;
++
++err_out:
++	LED_ERR("invalid parameter, wait_data_time_ns should be %u-%u!\n",
++		min, max);
++
++	return -EINVAL;
++}
++
++static ssize_t wait_data_time_ns_read(struct file *filp, char __user *buf,
++				size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	r = snprintf(buffer, 64, "%u\n", led->wait_data_time_ns);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations wait_data_time_ns_fops = {
++	.owner = THIS_MODULE,
++	.write = wait_data_time_ns_write,
++	.read  = wait_data_time_ns_read,
++};
++
++static int data_show(struct seq_file *s, void *data)
++{
++	int i;
++	struct sunxi_led *led = sunxi_led_global;
++
++	for (i = 0; i < led->led_count; i++) {
++		if (!(i % 4)) {
++			if (i + 4 <= led->led_count)
++				seq_printf(s, "%04d-%04d", i, i + 4);
++			else
++				seq_printf(s, "%04d-%04d", i, led->led_count);
++		}
++		seq_printf(s, " 0x%08x", led->data[i]);
++		if (((i % 4) == 3) || (i == led->led_count - 1))
++			seq_puts(s, "\n");
++	}
++
++	return 0;
++}
++
++static void sunxi_ledc_set_dma_mode(struct sunxi_led *led)
++{
++	u32 reg_val = 0;
++
++	reg_val |= 1 << 5;
++	sunxi_set_reg(LEDC_DMA_CTRL_REG, reg_val);
++
++	sunxi_ledc_disable_irq(LEDC_FIFO_CPUREQ_INT_EN);
++}
++
++static void sunxi_ledc_set_cpu_mode(struct sunxi_led *led)
++{
++	u32 reg_val = 0;
++
++	reg_val &= ~(1 << 5);
++	sunxi_set_reg(LEDC_DMA_CTRL_REG, reg_val);
++
++	sunxi_ledc_enable_irq(LEDC_FIFO_CPUREQ_INT_EN);
++}
++
++static int data_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, data_show, inode->i_private);
++}
++
++static const struct file_operations data_fops = {
++	.owner = THIS_MODULE,
++	.open  = data_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = single_release,
++};
++
++static ssize_t output_mode_write(struct file *filp, const char __user *buf,
++			size_t count, loff_t *offp)
++{
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	if (count >= sizeof(buffer))
++		goto err_out;
++
++	if (copy_from_user(buffer, buf, count))
++		goto err_out;
++
++	buffer[count] = '\0';
++
++	sunxi_ledc_set_output_mode(led, buffer);
++
++	*offp += count;
++
++	return count;
++
++err_out:
++	LED_ERR("invalid parameter!\n");
++
++	return -EINVAL;
++}
++
++static ssize_t output_mode_read(struct file *filp, char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	struct sunxi_led *led = sunxi_led_global;
++
++	r = snprintf(buffer, 64, "%s\n", led->output_mode.str);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations output_mode_fops = {
++	.owner = THIS_MODULE,
++	.write = output_mode_write,
++	.read  = output_mode_read,
++};
++
++static ssize_t hwversion_read(struct file *filp, char __user *buf,
++			size_t count, loff_t *offp)
++{
++	int r;
++	char buffer[64];
++	u32 reg_val, major_ver, minor_ver;
++
++	reg_val = sunxi_get_reg(LEDC_VER_NUM_REG);
++	major_ver = reg_val >> 16;
++	minor_ver = reg_val & 0xF;
++
++	r = snprintf(buffer, 64, "r%up%u\n", major_ver, minor_ver);
++
++	return simple_read_from_buffer(buf, count, offp, buffer, r);
++}
++
++static const struct file_operations hwversion_fops = {
++	.owner = THIS_MODULE,
++	.read  = hwversion_read,
++};
++
++static void sunxi_led_create_debugfs(struct sunxi_led *led)
++{
++	struct dentry *debugfs_dir, *debugfs_file;
++
++	debugfs_dir = debugfs_create_dir("sunxi_leds", NULL);
++	if (IS_ERR_OR_NULL(debugfs_dir)) {
++		LED_ERR("debugfs_create_dir failed!\n");
++		return;
++	}
++
++	led->debugfs_dir = debugfs_dir;
++
++	debugfs_file = debugfs_create_file("reset_ns", 0660,
++				debugfs_dir, NULL, &reset_ns_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for reset_ns failed!\n");
++
++	debugfs_file = debugfs_create_file("t1h_ns", 0660,
++				debugfs_dir, NULL, &t1h_ns_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for t1h_ns failed!\n");
++
++	debugfs_file = debugfs_create_file("t1l_ns", 0660,
++				debugfs_dir, NULL, &t1l_ns_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for t1l_ns failed!\n");
++
++	debugfs_file = debugfs_create_file("t0h_ns", 0660,
++				debugfs_dir, NULL, &t0h_ns_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for t0h_ns failed!\n");
++
++	debugfs_file = debugfs_create_file("t0l_ns", 0660,
++				debugfs_dir, NULL, &t0l_ns_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for t0l_ns failed!\n");
++
++	debugfs_file = debugfs_create_file("wait_time0_ns", 0660,
++				debugfs_dir, NULL, &wait_time0_ns_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for wait_time0_ns failed!\n");
++
++	debugfs_file = debugfs_create_file("wait_time1_ns", 0660,
++				debugfs_dir, NULL, &wait_time1_ns_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for wait_time1_ns failed!\n");
++
++	debugfs_file = debugfs_create_file("wait_data_time_ns", 0660,
++				debugfs_dir, NULL, &wait_data_time_ns_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for wait_data_time_ns failed!\n");
++
++	debugfs_file = debugfs_create_file("data", 0440,
++				debugfs_dir, NULL, &data_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for data failed!\n");
++
++	debugfs_file = debugfs_create_file("output_mode", 0660,
++				debugfs_dir, NULL, &output_mode_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for output_mode failed!\n");
++
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for trans_mode failed!\n");
++
++	debugfs_file = debugfs_create_file("hwversion", 0440,
++				debugfs_dir, NULL, &hwversion_fops);
++	if (!debugfs_file)
++		LED_ERR("debugfs_create_file for hwversion failed!\n");
++}
++
++static void sunxi_led_remove_debugfs(struct sunxi_led *led)
++{
++	debugfs_remove_recursive(led->debugfs_dir);
++}
++#endif /* CONFIG_DEBUG_FS */
++
++static void sunxi_ledc_dma_callback(void *param)
++{
++	dprintk(DEBUG_INFO, "finish\n");
++}
++
++static void sunxi_ledc_trans_data(struct sunxi_led *led)
++{
++	int i, err;
++	size_t size;
++	unsigned long flags;
++	phys_addr_t dst_addr;
++	struct dma_slave_config slave_config;
++	struct device *dev = led->dev;
++	struct dma_async_tx_descriptor *dma_desc;
++
++	/* less than 32 lights use cpu transmission. */
++	/* more than 32 lights use dma transmission. */
++	if (led->length <= SUNXI_LEDC_FIFO_DEPTH) {
++		dprintk(DEBUG_INFO, "cpu xfer\n");
++		ktime_get_coarse_real_ts64(&(led->start_time));
++		sunxi_ledc_set_time(led);
++		sunxi_ledc_set_output_mode(led, led->output_mode.str);
++		sunxi_ledc_set_cpu_mode(led);
++		sunxi_ledc_set_length(led);
++
++		sunxi_ledc_enable_irq(LEDC_TRANS_FINISH_INT_EN | LEDC_WAITDATA_TIMEOUT_INT_EN
++				| LEDC_FIFO_OVERFLOW_INT_EN | LEDC_GLOBAL_INT_EN);
++
++		sunxi_ledc_enable(led);
++
++		for (i = 0; i < led->length; i++)
++			sunxi_set_reg(LEDC_DATA_REG_OFFSET, led->data[i]);
++
++	} else {
++		dprintk(DEBUG_INFO, "dma xfer\n");
++
++		size = led->length * 4;
++		led->src_dma = dma_map_single(dev, led->data,
++					size, DMA_TO_DEVICE);
++		dst_addr = led->res->start + LEDC_DATA_REG_OFFSET;
++
++		flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
++
++		slave_config.direction = DMA_MEM_TO_DEV;
++		slave_config.src_addr = led->src_dma;
++		slave_config.dst_addr = dst_addr;
++		slave_config.src_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
++		slave_config.dst_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
++		slave_config.src_maxburst = 4;
++		slave_config.dst_maxburst = 4;
++
++		err = dmaengine_slave_config(led->dma_chan, &slave_config);
++		if (err < 0) {
++			LED_ERR("dmaengine_slave_config failed!\n");
++			return;
++		}
++
++		dma_desc = dmaengine_prep_slave_single(led->dma_chan,
++							led->src_dma,
++							size,
++							DMA_MEM_TO_DEV,
++							flags);
++		if (!dma_desc) {
++			LED_ERR("dmaengine_prep_slave_single failed!\n");
++			return;
++		}
++
++		dma_desc->callback = sunxi_ledc_dma_callback;
++
++		dmaengine_submit(dma_desc);
++		dma_async_issue_pending(led->dma_chan);
++
++		ktime_get_coarse_real_ts64(&(led->start_time));
++		sunxi_ledc_set_time(led);
++		sunxi_ledc_set_output_mode(led, led->output_mode.str);
++		sunxi_ledc_set_dma_mode(led);
++		sunxi_ledc_set_length(led);
++		sunxi_ledc_enable_irq(LEDC_TRANS_FINISH_INT_EN | LEDC_WAITDATA_TIMEOUT_INT_EN
++				| LEDC_FIFO_OVERFLOW_INT_EN | LEDC_GLOBAL_INT_EN);
++		sunxi_ledc_enable(led);
++	}
++}
++
++static inline void sunxi_ledc_clear_all_irq(void)
++{
++	u32 reg_val = sunxi_get_reg(LEDC_INT_STS_REG_OFFSET);
++
++	reg_val &= ~0x1F;
++	sunxi_set_reg(LEDC_INT_STS_REG_OFFSET, reg_val);
++}
++
++static inline void sunxi_ledc_clear_irq(enum sunxi_ledc_irq_status_reg irq)
++{
++	u32 reg_val = sunxi_get_reg(LEDC_INT_STS_REG_OFFSET);
++
++	reg_val &= ~irq;
++	sunxi_set_reg(LEDC_INT_STS_REG_OFFSET, reg_val);
++}
++
++static void sunxi_ledc_dma_terminate(struct sunxi_led *led)
++{
++	if (led->dma_chan) {
++		dmaengine_terminate_all(led->dma_chan);
++		dma_unmap_single(led->dev, led->src_dma, led->length * 4,
++				DMA_TO_DEVICE);
++	}
++}
++
++static int sunxi_ledc_complete(struct sunxi_led *led)
++{
++	unsigned long flags = 0;
++	unsigned long timeout = 0;
++	u32 reg_val;
++
++	/*wait_event_timeout return 0   : timeout
++	 *wait_event_timeout return > 0 : thr left time
++	 * */
++	timeout = wait_event_timeout(led->wait, led->result, 5*HZ);
++
++	/* dynamic close dma transmission */
++	sunxi_ledc_dma_terminate(led);
++
++	if (timeout == 0) {
++		reg_val = sunxi_get_reg(LEDC_INT_STS_REG_OFFSET);
++		printk("LEDC INTERRUPT STATUS REG IS %x", reg_val);
++		LED_ERR("led xfer timeout\n");
++		reg_val = sunxi_get_reg(LEDC_INT_STS_REG_OFFSET);
++		printk("LEDC INTERRUPT STATUS REG IS %x", reg_val);
++		return -ETIME;
++	} else if (led->result == RESULT_ERR) {
++		return -ECOMM;
++	}
++
++	dprintk(DEBUG_INFO, "xfer complete\n");
++
++	spin_lock_irqsave(&led->lock, flags);
++	led->result = 0;
++	spin_unlock_irqrestore(&led->lock, flags);
++
++	return 0;
++}
++
++static irqreturn_t sunxi_ledc_irq_handler(int irq, void *dev_id)
++{
++	unsigned long flags;
++	long delta_time_ns;
++	u32 irq_status, max_ns;
++	struct sunxi_led *led = sunxi_led_global;
++	struct timespec64 current_time;
++
++	spin_lock_irqsave(&led->lock, flags);
++
++	irq_status = sunxi_get_reg(LEDC_INT_STS_REG_OFFSET);
++
++	sunxi_ledc_clear_all_irq();
++
++	if (irq_status & LEDC_TRANS_FINISH_INT) {
++		sunxi_ledc_reset(led);
++		led->length = 0;
++		led->result = RESULT_COMPLETE;
++		wake_up(&led->wait);
++		goto out;
++	}
++
++	if (irq_status & LEDC_WAITDATA_TIMEOUT_INT) {
++		ktime_get_coarse_real_ts64(&current_time);
++		delta_time_ns = current_time.tv_sec - led->start_time.tv_sec;
++		delta_time_ns *= 1000 * 1000 * 1000;
++		delta_time_ns += current_time.tv_nsec - led->start_time.tv_nsec;
++
++		max_ns = led->wait_data_time_ns;
++
++		if (delta_time_ns <= max_ns) {
++			spin_unlock_irqrestore(&led->lock, flags);
++			return IRQ_HANDLED;
++		}
++
++		sunxi_ledc_reset(led);
++
++		if (delta_time_ns <= max_ns * 2) {
++			sunxi_ledc_dma_terminate(led);
++			sunxi_ledc_trans_data(led);
++		} else {
++			LED_ERR("wait time is more than %d ns,"
++				"going to reset ledc and drop this operation!\n",
++				max_ns);
++			led->result = RESULT_ERR;
++			wake_up(&led->wait);
++			led->length = 0;
++		}
++
++		goto out;
++	}
++
++	if (irq_status & LEDC_FIFO_OVERFLOW_INT) {
++		LED_ERR("there exists fifo overflow issue, irq_status=0x%x!\n",
++				irq_status);
++		sunxi_ledc_reset(led);
++		led->result = RESULT_ERR;
++		wake_up(&led->wait);
++		led->length = 0;
++		goto out;
++	}
++
++out:
++	spin_unlock_irqrestore(&led->lock, flags);
++	return IRQ_HANDLED;
++}
++
++static int sunxi_ledc_irq_init(struct sunxi_led *led)
++{
++	int err;
++	struct device *dev = led->dev;
++	unsigned long flags = 0;
++	const char *name = "ledcirq";
++	struct platform_device *pdev;
++
++	pdev = container_of(dev, struct platform_device, dev);
++
++	spin_lock_init(&led->lock);
++
++	led->irqnum = platform_get_irq(pdev, 0);
++	if (led->irqnum < 0)
++		LED_ERR("failed to get ledc irq!\n");
++
++	err = request_irq(led->irqnum, sunxi_ledc_irq_handler,
++				flags, name, dev);
++	if (err) {
++		LED_ERR("failed to install IRQ handler for irqnum %d\n",
++			led->irqnum);
++		return -EPERM;
++	}
++
++	return 0;
++}
++
++static void sunxi_ledc_irq_deinit(struct sunxi_led *led)
++{
++	free_irq(led->irqnum, led->dev);
++	sunxi_ledc_disable_irq(LEDC_TRANS_FINISH_INT_EN | LEDC_FIFO_CPUREQ_INT_EN
++			| LEDC_WAITDATA_TIMEOUT_INT_EN | LEDC_FIFO_OVERFLOW_INT_EN
++			| LEDC_GLOBAL_INT_EN);
++}
++
++static void sunxi_ledc_pinctrl_init(struct sunxi_led *led)
++{
++	struct device *dev = led->dev;
++	struct pinctrl *pinctrl = devm_pinctrl_get_select_default(dev);
++
++	led->pctrl = pinctrl;
++	if (IS_ERR(pinctrl))
++		LED_ERR("devm_pinctrl_get_select_default failed!\n");
++}
++
++static int led_regulator_request(struct sunxi_led *led)
++{
++	struct regulator *regu = NULL;
++
++	/* Consider "n*" as nocare. Support "none", "nocare", "null", "" etc. */
++	if ((led->regulator_id[0] == 'n') || (led->regulator_id[0] == 0))
++		return 0;
++
++	regu = regulator_get(NULL, led->regulator_id);
++	if (IS_ERR(regu)) {
++		LED_ERR("get regulator %s failed!\n", led->regulator_id);
++		return -1;
++	}
++	led->regulator = regu;
++
++	return 0;
++}
++
++static int led_regulator_release(struct sunxi_led *led)
++{
++	if (led->regulator == NULL)
++		return 0;
++
++	regulator_put(led->regulator);
++	led->regulator = NULL;
++
++	return 1;
++}
++
++static int sunxi_ledc_dma_get(struct sunxi_led *led)
++{
++	if (led->dma_chan == NULL) {
++		led->dma_chan = dma_request_chan(led->dev, "tx");
++		if (IS_ERR(led->dma_chan)) {
++			LED_ERR("failed to get the DMA channel!\n");
++			return -EFAULT;
++		}
++	}
++	return 0;
++}
++
++static void sunxi_ledc_dma_put(struct sunxi_led *led)
++{
++	if (led->dma_chan) {
++		dma_release_channel(led->dma_chan);
++		led->dma_chan = NULL;
++	}
++}
++
++static int sunxi_set_led_brightness(struct led_classdev *led_cdev,
++			enum led_brightness value)
++{
++	unsigned long flags;
++	u32 r, g, b, shift, old_data, new_data, length;
++	struct sunxi_led_info *pinfo;
++	struct sunxi_led_classdev_group *pcdev_group;
++	struct sunxi_led *led = sunxi_led_global;
++	int err;
++
++	pinfo = container_of(led_cdev, struct sunxi_led_info, cdev);
++
++	switch (pinfo->type) {
++	case LED_TYPE_G:
++		pcdev_group = container_of(pinfo,
++			struct sunxi_led_classdev_group, g);
++		g = value;
++		shift = 16;
++		break;
++	case LED_TYPE_R:
++		pcdev_group = container_of(pinfo,
++			struct sunxi_led_classdev_group, r);
++		r = value;
++		shift = 8;
++		break;
++
++	case LED_TYPE_B:
++		pcdev_group = container_of(pinfo,
++			struct sunxi_led_classdev_group, b);
++		b = value;
++		shift = 0;
++		break;
++	}
++
++	old_data = led->data[pcdev_group->led_num];
++	if (((old_data >> shift) & 0xFF) == value)
++		return 0;
++
++	if (pinfo->type != LED_TYPE_R)
++		r = pcdev_group->r.cdev.brightness;
++	if (pinfo->type != LED_TYPE_G)
++		g = pcdev_group->g.cdev.brightness;
++	if (pinfo->type != LED_TYPE_B)
++		b = pcdev_group->b.cdev.brightness;
++
++	/* LEDC treats input data as GRB by default */
++	new_data = (g << 16) | (r << 8) | b;
++	length = pcdev_group->led_num + 1;
++
++	spin_lock_irqsave(&led->lock, flags);
++	led->data[pcdev_group->led_num] = new_data;
++	led->length = length;
++	spin_unlock_irqrestore(&led->lock, flags);
++
++	/* prepare for dma xfer, dynamic apply dma channel */
++	if (led->length > SUNXI_LEDC_FIFO_DEPTH) {
++		err = sunxi_ledc_dma_get(led);
++		if (err)
++			return err;
++	}
++
++	sunxi_ledc_trans_data(led);
++	if (debug_mask & DEBUG_INFO2) {
++		dprintk(DEBUG_INFO2, "dump reg:\n");
++		led_dump_reg(led, 0, 0x30);
++	}
++
++	sunxi_ledc_complete(led);
++
++	/* dynamic release dma chan, release at the end of a transmission */
++	if (led->length > SUNXI_LEDC_FIFO_DEPTH)
++		sunxi_ledc_dma_put(led);
++
++	if (debug_mask & DEBUG_INFO1)
++		pr_warn("num = %03u\n", length);
++
++	return 0;
++}
++
++static int sunxi_register_led_classdev(struct sunxi_led *led)
++{
++	int i, err;
++	size_t size;
++	struct device *dev = led->dev;
++	struct led_classdev *pcdev_RGB;
++
++	dprintk(DEBUG_INIT, "led_classdev start\n");
++	if (!led->led_count)
++		led->led_count = SUNXI_DEFAULT_LED_COUNT;
++
++	size = sizeof(struct sunxi_led_classdev_group) * led->led_count;
++	led->pcdev_group = kzalloc(size, GFP_KERNEL);
++	if (!led->pcdev_group) {
++		LED_ERR("kzalloc error\n");
++		return -ENOMEM;
++	}
++
++	for (i = 0; i < led->led_count; i++) {
++		led->pcdev_group[i].r.type = LED_TYPE_R;
++		pcdev_RGB = &led->pcdev_group[i].r.cdev;
++		pcdev_RGB->name = kzalloc(16, GFP_KERNEL);
++		sprintf((char *)pcdev_RGB->name, "sunxi_led%dr", i);
++		pcdev_RGB->brightness = LED_OFF;
++		pcdev_RGB->brightness_set_blocking = sunxi_set_led_brightness;
++		pcdev_RGB->dev = dev;
++		err = led_classdev_register(dev, pcdev_RGB);
++		if (err < 0) {
++			LED_ERR("led_classdev_register %s failed!\n",
++				pcdev_RGB->name);
++			return err;
++		}
++
++		led->pcdev_group[i].g.type = LED_TYPE_G;
++		pcdev_RGB = &led->pcdev_group[i].g.cdev;
++		pcdev_RGB->name = kzalloc(16, GFP_KERNEL);
++		sprintf((char *)pcdev_RGB->name, "sunxi_led%dg", i);
++		pcdev_RGB->brightness = LED_OFF;
++		pcdev_RGB->brightness_set_blocking = sunxi_set_led_brightness;
++		pcdev_RGB->dev = dev;
++		err = led_classdev_register(dev, pcdev_RGB);
++		if (err < 0) {
++			LED_ERR("led_classdev_register %s failed!\n",
++			pcdev_RGB->name);
++			return err;
++		}
++
++		led->pcdev_group[i].b.type = LED_TYPE_B;
++		pcdev_RGB = &led->pcdev_group[i].b.cdev;
++		pcdev_RGB->name = kzalloc(16, GFP_KERNEL);
++		sprintf((char *)pcdev_RGB->name, "sunxi_led%db", i);
++		pcdev_RGB->brightness = LED_OFF;
++		pcdev_RGB->brightness_set_blocking = sunxi_set_led_brightness;
++		pcdev_RGB->dev = dev;
++		err = led_classdev_register(dev, pcdev_RGB);
++		if (err < 0) {
++			LED_ERR("led_classdev_register %s failed!\n",
++					pcdev_RGB->name);
++			return err;
++		}
++
++		led->pcdev_group[i].led_num = i;
++	}
++
++	size = sizeof(u32) * led->led_count;
++	led->data = kzalloc(size, GFP_KERNEL);
++	if (!led->data)
++		return -ENOMEM;
++
++	return 0;
++}
++
++static void sunxi_unregister_led_classdev(struct sunxi_led *led)
++{
++	int i;
++
++	for (i = 0; i < led->led_count; i++) {
++		kfree(led->pcdev_group[i].b.cdev.name);
++		led->pcdev_group[i].b.cdev.name = NULL;
++		kfree(led->pcdev_group[i].g.cdev.name);
++		led->pcdev_group[i].g.cdev.name = NULL;
++		kfree(led->pcdev_group[i].r.cdev.name);
++		led->pcdev_group[i].r.cdev.name = NULL;
++		led_classdev_unregister(&led->pcdev_group[i].b.cdev);
++		led_classdev_unregister(&led->pcdev_group[i].g.cdev);
++		led_classdev_unregister(&led->pcdev_group[i].r.cdev);
++	}
++	kfree(led->data);
++	led->data = NULL;
++
++
++	kfree(led->pcdev_group);
++	led->pcdev_group = NULL;
++}
++
++static inline int sunxi_get_u32_of_property(const char *propname, int *val)
++{
++	int err;
++	struct sunxi_led *led = sunxi_led_global;
++	struct device *dev = led->dev;
++	struct device_node *np = dev->of_node;
++
++	err = of_property_read_u32(np, propname, val);
++	if (err < 0)
++		LED_ERR("failed to get the value of propname %s!\n", propname);
++
++	return err;
++}
++
++static inline int sunxi_get_str_of_property(const char *propname,
++					const char **out_string)
++{
++	int err;
++	struct sunxi_led *led = sunxi_led_global;
++	struct device *dev = led->dev;
++	struct device_node *np = dev->of_node;
++
++	err = of_property_read_string(np, propname, out_string);
++	if (err < 0)
++		LED_ERR("failed to get the string of propname %s!\n", propname);
++
++	return err;
++}
++
++static void sunxi_get_para_of_property(struct sunxi_led *led)
++{
++	int err;
++	u32 val;
++	const char *str;
++
++	err = sunxi_get_u32_of_property("led_count", &val);
++	if (!err)
++		led->led_count = val;
++
++	memcpy(led->output_mode.str, "GRB", 3);
++	led->output_mode.val = SUNXI_OUTPUT_GRB;
++	err = sunxi_get_str_of_property("output_mode", &str);
++	if (!err)
++		if (!strncmp(str, "BRG", 3) ||
++			!strncmp(str, "GBR", 3) ||
++			!strncmp(str, "RGB", 3) ||
++			!strncmp(str, "RBG", 3) ||
++			!strncmp(str, "BGR", 3) ||
++			!strncmp(str, "BRG", 3))
++			memcpy(led->output_mode.str, str, 3);
++
++	err =  sunxi_get_str_of_property("led_regulator", &str);
++	if (!err) {
++		if (strlen(str) >= sizeof(led->regulator_id))
++			LED_ERR("illegal regulator id\n");
++		else {
++			strcpy(led->regulator_id, str);
++			pr_info("led_regulator: %s\n", led->regulator_id);
++		}
++	}
++
++	err = sunxi_get_u32_of_property("reset_ns", &val);
++	if (!err)
++		led->reset_ns = val;
++
++	err = sunxi_get_u32_of_property("t1h_ns", &val);
++	if (!err)
++		led->t1h_ns = val;
++
++	err = sunxi_get_u32_of_property("t1l_ns", &val);
++	if (!err)
++		led->t1l_ns = val;
++
++	err = sunxi_get_u32_of_property("t0h_ns", &val);
++	if (!err)
++		led->t0h_ns = val;
++
++	err = sunxi_get_u32_of_property("t0l_ns", &val);
++	if (!err)
++		led->t0l_ns = val;
++
++	err = sunxi_get_u32_of_property("wait_time0_ns", &val);
++	if (!err)
++		led->wait_time0_ns = val;
++
++	err = sunxi_get_u32_of_property("wait_time1_ns", &val);
++	if (!err)
++		led->wait_time1_ns = val;
++
++	err = sunxi_get_u32_of_property("wait_data_time_ns", &val);
++	if (!err)
++		led->wait_data_time_ns = val;
++}
++void sunxi_led_set_all(struct sunxi_led *led, u8 channel,
++		enum led_brightness value)
++{
++	u32 i;
++	struct led_classdev *led_cdev;
++
++	if (channel%3 == 0) {
++		for (i = 0; i < led->led_count; i++) {
++			led_cdev = &led->pcdev_group[i].r.cdev;
++			mutex_lock(&led_cdev->led_access);
++			sunxi_set_led_brightness(led_cdev, value);
++			mutex_unlock(&led_cdev->led_access);
++		}
++	} else if (channel%3 == 1) {
++		for (i = 0; i < led->led_count; i++) {
++			led_cdev = &led->pcdev_group[i].g.cdev;
++			mutex_lock(&led_cdev->led_access);
++			sunxi_set_led_brightness(led_cdev, value);
++			mutex_unlock(&led_cdev->led_access);
++		}
++	} else {
++		for (i = 0; i < led->led_count; i++) {
++			led_cdev = &led->pcdev_group[i].b.cdev;
++			mutex_lock(&led_cdev->led_access);
++			sunxi_set_led_brightness(led_cdev, value);
++			mutex_unlock(&led_cdev->led_access);
++		}
++	}
++}
++
++static ssize_t led_show(struct class *class,
++			struct class_attribute *attr,
++			char *buf)
++{
++	struct sunxi_led *led = sunxi_led_global;
++
++	sunxi_led_set_all(led, 0, 0);
++	sunxi_led_set_all(led, 1, 0);
++	sunxi_led_set_all(led, 2, 0);
++
++	sunxi_led_set_all(led, 0, 20);
++	msleep(500);
++	sunxi_led_set_all(led, 1, 20);
++	msleep(500);
++	sunxi_led_set_all(led, 2, 20);
++	msleep(500);
++
++	sunxi_led_set_all(led, 0, 0);
++	sunxi_led_set_all(led, 1, 0);
++	sunxi_led_set_all(led, 2, 0);
++
++	return 0;
++}
++
++static struct class_attribute led_class_attrs[] = {
++	__ATTR(light, 0644, led_show, NULL),
++	//__ATTR_NULL,
++};
++
++static void led_node_init(void)
++{
++	int i;
++	int err;
++	/* sys/class/led/xxx */
++	for (i = 0; i < ARRAY_SIZE(led_class_attrs); i++) {
++		err = class_create_file(led_class, &led_class_attrs[i]);
++		if (err) {
++			LED_ERR("class_create_file() failed! \n");
++			while (i--)
++				class_remove_file(led_class, &led_class_attrs[i]);
++			class_destroy(led_class);
++			led_class = NULL;
++		}
++	}
++}
++
++
++static int sunxi_led_probe(struct platform_device *pdev)
++{
++	int err;
++	struct sunxi_led *led;
++	struct device *dev = &pdev->dev;
++	struct resource *mem_res = NULL;
++	int ret;
++
++	dprintk(DEBUG_INIT, "start\n");
++
++	led = kzalloc(sizeof(struct sunxi_led), GFP_KERNEL);
++	if (!led) {
++		LED_ERR("kzalloc failed\n");
++		ret = -ENOMEM;
++	}
++
++	/* global variable, edfined at the begining*/
++	sunxi_led_global = led;
++
++	platform_set_drvdata(pdev, led);
++	led->dev = dev;
++
++	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (mem_res == NULL) {
++		LED_ERR("failed to get MEM res\n");
++		ret = -ENXIO;
++		goto emem;
++	}
++
++	if (!request_mem_region(mem_res->start, resource_size(mem_res),
++				mem_res->name)) {
++		LED_ERR("failed to request mem region\n");
++		ret = -EINVAL;
++		goto emem;
++	}
++
++	led->iomem_reg_base = ioremap(mem_res->start, resource_size(mem_res));
++	if (!led->iomem_reg_base) {
++		ret = -EIO;
++		goto eiomap;
++	}
++	led->res = mem_res;
++
++	led->output_mode.str = kzalloc(3, GFP_KERNEL);
++	if (!led->output_mode.str) {
++		LED_ERR("kzalloc failed\n");
++		ret = -ENOMEM;
++		goto ezalloc_str;
++	}
++
++	sunxi_get_para_of_property(led);
++
++	err = led_regulator_request(led);
++	if (err < 0) {
++		LED_ERR("request regulator failed!\n");
++		ret = err;
++		goto eregulator;
++	}
++
++	err = sunxi_register_led_classdev(led);
++	if (err) {
++		LED_ERR("failed to register led classdev\n");
++		ret = err;
++		goto eclassdev;
++	}
++
++	sunxi_ledc_set_time(led);
++
++	led->reset = devm_reset_control_get(&pdev->dev, NULL);
++	if (IS_ERR(led->reset)) {
++		LED_ERR("get reset clk error\n");
++		return -EINVAL;
++	}
++	ret = reset_control_deassert(led->reset);
++	if (ret) {
++		LED_ERR("deassert clk error, ret:%d\n", ret);
++		return ret;
++	}
++
++	sunxi_clk_init(led);
++
++	init_waitqueue_head(&led->wait);
++
++	err = sunxi_ledc_irq_init(led);
++	if (err) {
++		LED_ERR("failed to init irq\n");
++		ret = err;
++		goto eirq;
++	}
++
++	sunxi_ledc_pinctrl_init(led);
++
++#ifdef CONFIG_DEBUG_FS
++	sunxi_led_create_debugfs(led);
++#endif /* CONFIG_DEBUG_FS */
++
++	led_class = class_create(THIS_MODULE, "led");
++	if (IS_ERR(led_class)) {
++		LED_ERR("class_register err\n");
++		class_destroy(led_class);
++		ret = -EFAULT;
++		goto eclass;
++	}
++	led_node_init();
++	dprintk(DEBUG_INIT, "finish\n");
++	return 0;
++
++eclass:
++#ifdef CONFIG_DEBUG_FS
++	sunxi_led_remove_debugfs(led);
++#endif /* CONFIG_DEBUG_FS */
++
++	sunxi_ledc_irq_deinit(led);
++
++eirq:
++	sunxi_unregister_led_classdev(led);
++	sunxi_clk_deinit(led);
++
++eclassdev:
++	led_regulator_release(led);
++
++eregulator:
++	kfree(led->output_mode.str);
++
++ezalloc_str:
++	iounmap(led->iomem_reg_base);
++	led->iomem_reg_base = NULL;
++
++eiomap:
++	release_mem_region(mem_res->start, resource_size(mem_res));
++
++emem:
++	kfree(led);
++	return ret;
++}
++
++static int sunxi_led_remove(struct platform_device *pdev)
++{
++	struct sunxi_led *led = platform_get_drvdata(pdev);
++
++	class_destroy(led_class);
++
++#ifdef CONFIG_DEBUG_FS
++	sunxi_led_remove_debugfs(led);
++#endif /* CONFIG_DEBUG_FS */
++
++	sunxi_ledc_irq_deinit(led);
++
++	sunxi_unregister_led_classdev(led);
++	sunxi_clk_deinit(led);
++
++	led_regulator_release(led);
++
++	kfree(led->output_mode.str);
++	led->output_mode.str = NULL;
++
++	iounmap(led->iomem_reg_base);
++	led->iomem_reg_base = NULL;
++
++	release_mem_region(led->res->start, resource_size(led->res));
++
++	kfree(led);
++	led = NULL;
++
++	dprintk(DEBUG_INIT, "finish\n");
++	return 0;
++}
++
++#if IS_ENABLED(CONFIG_PM)
++static inline void sunxi_led_save_regs(struct sunxi_led *led)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(sunxi_led_regs_offset); i++)
++		led->regs_backup[i] = readl(led->iomem_reg_base + sunxi_led_regs_offset[i]);
++}
++
++static inline void sunxi_led_restore_regs(struct sunxi_led *led)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(sunxi_led_regs_offset); i++)
++		writel(led->regs_backup[i], led->iomem_reg_base + sunxi_led_regs_offset[i]);
++}
++
++static void sunxi_led_enable_irq(struct sunxi_led *led)
++{
++	enable_irq(led->irqnum);
++}
++
++static void sunxi_led_disable_irq(struct sunxi_led *led)
++{
++	disable_irq_nosync(led->irqnum);
++}
++
++static int sunxi_led_gpio_state_select(struct sunxi_led *led, char *name)
++{
++	int err;
++	struct pinctrl_state *pctrl_state;
++
++	pctrl_state = pinctrl_lookup_state(led->pctrl, name);
++	if (IS_ERR(pctrl_state)) {
++		dev_err(led->dev, "pinctrl_lookup_state(%s) failed! return %p\n",
++				name, pctrl_state);
++		return PTR_ERR(pctrl_state);
++	}
++
++	err = pinctrl_select_state(led->pctrl, pctrl_state);
++	if (err < 0) {
++		dev_err(led->dev, "pinctrl_select_state(%s) failed! return %d\n",
++				name, err);
++		return err;
++	}
++
++	return 0;
++}
++
++static void sunxi_led_enable_clk(struct sunxi_led *led)
++{
++	clk_prepare_enable(led->clk_ledc);
++	clk_prepare_enable(led->clk_cpuapb);
++}
++
++static void sunxi_led_disable_clk(struct sunxi_led *led)
++{
++	clk_disable_unprepare(led->clk_cpuapb);
++	clk_disable_unprepare(led->clk_ledc);
++}
++
++static int sunxi_led_power_on(struct sunxi_led *led)
++{
++	int err;
++
++	if (led->regulator == NULL)
++		return 0;
++
++	err = regulator_enable(led->regulator);
++	if (err) {
++		dev_err(led->dev, "enable regulator %s failed!\n", led->regulator_id);
++		return err;
++	}
++	return 0;
++}
++
++static int sunxi_led_power_off(struct sunxi_led *led)
++{
++	int err;
++
++	if (led->regulator == NULL)
++		return 0;
++
++	err = regulator_disable(led->regulator);
++	if (err) {
++		dev_err(led->dev, "disable regulator %s failed!\n", led->regulator_id);
++		return err;
++	}
++	return 0;
++}
++
++static int sunxi_led_suspend(struct device *dev)
++{
++	struct platform_device *pdev = to_platform_device(dev);
++	struct sunxi_led *led = platform_get_drvdata(pdev);
++
++	dev_dbg(led->dev, "[%s] enter standby\n", __func__);
++
++	sunxi_led_disable_irq(led);
++
++	sunxi_led_save_regs(led);
++
++	sunxi_led_gpio_state_select(led, PINCTRL_STATE_SLEEP);
++
++	sunxi_led_disable_clk(led);
++
++	reset_control_assert(led->reset);
++
++	sunxi_led_power_off(led);
++
++	return 0;
++}
++
++static int sunxi_led_resume(struct device *dev)
++{
++	struct platform_device *pdev = to_platform_device(dev);
++	struct sunxi_led *led = platform_get_drvdata(pdev);
++
++	dev_dbg(led->dev, "[%s] return from standby\n", __func__);
++
++	sunxi_led_power_on(led);
++
++	reset_control_deassert(led->reset);
++
++	sunxi_led_enable_clk(led);
++
++	sunxi_led_gpio_state_select(led, PINCTRL_STATE_DEFAULT);
++
++	sunxi_led_restore_regs(led);
++
++	sunxi_led_enable_irq(led);
++
++	return 0;
++}
++
++static const struct dev_pm_ops sunxi_led_pm_ops = {
++	.suspend = sunxi_led_suspend,
++	.resume = sunxi_led_resume,
++};
++
++#define SUNXI_LED_PM_OPS (&sunxi_led_pm_ops)
++#endif
++
++static const struct of_device_id sunxi_led_dt_ids[] = {
++	{.compatible = "allwinner,sunxi-leds"},
++	{},
++};
++
++static struct platform_driver sunxi_led_driver = {
++	.probe		= sunxi_led_probe,
++	.remove		= sunxi_led_remove,
++	.driver		= {
++		.name	= "sunxi-leds",
++		.owner	= THIS_MODULE,
++#if IS_ENABLED(CONFIG_PM)
++		.pm	= SUNXI_LED_PM_OPS,
++#endif
++		.of_match_table = sunxi_led_dt_ids,
++	},
++};
++
++module_platform_driver(sunxi_led_driver);
++module_param_named(debug, debug_mask, int, 0664);
++
++MODULE_ALIAS("sunxi leds dirver");
++MODULE_ALIAS("platform : leds dirver");
++MODULE_LICENSE("GPL v2");
++MODULE_VERSION("1.1.1");
++MODULE_AUTHOR("Albert Yu <yuxyun@allwinnertech.com>");
++MODULE_AUTHOR("liuyu <SWCliuyus@allwinnertech.com>");
++MODULE_DESCRIPTION("Allwinner ledc-controller driver");
+diff --git a/drivers/leds/leds-sunxi.h b/drivers/leds/leds-sunxi.h
+new file mode 100644
+index 000000000..3f9cebbc4
+--- /dev/null
++++ b/drivers/leds/leds-sunxi.h
+@@ -0,0 +1,190 @@
++/*
++ * Copyright (C) 2018 Allwinner Technology Limited. All rights reserved.
++ * Albert Yu <yuxyun@allwinnertech.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ */
++#ifndef __LINUX_LEDS_SUNXI_H
++#define __LINUX_LEDS_SUNXI_H
++
++#include <linux/device.h>
++#include <linux/list.h>
++#include <linux/mutex.h>
++#include <linux/rwsem.h>
++#include <linux/spinlock.h>
++#include <linux/timer.h>
++#include <linux/workqueue.h>
++
++#define HEXADECIMAL	(0x10)
++#define REG_INTERVAL	(0x04)
++#define REG_CL		(0x0c)
++
++#define RESULT_COMPLETE	1
++#define RESULT_ERR	2
++
++#define SUNXI_LEDC_REG_BASE_ADDR 0x06700000
++
++#define SUNXI_MAX_LED_COUNT 1024
++
++#define SUNXI_DEFAULT_LED_COUNT 8
++
++#define SUNXI_RESET_TIME_MIN_NS 84
++#define SUNXI_RESET_TIME_MAX_NS 327000
++
++#define SUNXI_T1H_MIN_NS 84
++#define SUNXI_T1H_MAX_NS 2560
++
++#define SUNXI_T1L_MIN_NS 84
++#define SUNXI_T1L_MAX_NS 1280
++
++#define SUNXI_T0H_MIN_NS 84
++#define SUNXI_T0H_MAX_NS 1280
++
++#define SUNXI_T0L_MIN_NS 84
++#define SUNXI_T0L_MAX_NS 2560
++
++#define SUNXI_WAIT_TIME0_MIN_NS 84
++#define SUNXI_WAIT_TIME0_MAX_NS 10000
++
++#define SUNXI_WAIT_TIME1_MIN_NS 84
++#define SUNXI_WAIT_TIME1_MAX_NS 85000000000
++
++#define SUNXI_WAIT_DATA_TIME_MIN_NS 84
++#define SUNXI_WAIT_DATA_TIME_MAX_NS_IC 655000
++#define SUNXI_WAIT_DATA_TIME_MAX_NS_FPGA 20000000
++
++#define SUNXI_LEDC_FIFO_DEPTH 32 /* 32 * 4 bytes */
++#define SUNXI_LEDC_FIFO_TRIG_LEVEL 15
++
++#if defined(CONFIG_FPGA_V4_PLATFORM) || defined(CONFIG_FPGA_V7_PLATFORM)
++#define SUNXI_FPGA_LEDC
++#endif
++
++enum sunxi_ledc_output_mode_val {
++	SUNXI_OUTPUT_GRB = 0 << 6,
++	SUNXI_OUTPUT_GBR = 1 << 6,
++	SUNXI_OUTPUT_RGB = 2 << 6,
++	SUNXI_OUTPUT_RBG = 3 << 6,
++	SUNXI_OUTPUT_BGR = 4 << 6,
++	SUNXI_OUTPUT_BRG = 5 << 6
++};
++
++struct sunxi_ledc_output_mode {
++	char *str;
++	enum sunxi_ledc_output_mode_val val;
++};
++
++enum sunxi_ledc_trans_mode_val {
++	LEDC_TRANS_CPU_MODE,
++	LEDC_TRANS_DMA_MODE
++};
++
++enum sunxi_ledc_reg {
++	LEDC_CTRL_REG_OFFSET              = 0x00,
++	LED_T01_TIMING_CTRL_REG_OFFSET    = 0x04,
++	LEDC_DATA_FINISH_CNT_REG_OFFSET   = 0x08,
++	LED_RESET_TIMING_CTRL_REG_OFFSET  = 0x0c,
++	LEDC_WAIT_TIME0_CTRL_REG          = 0x10,
++	LEDC_DATA_REG_OFFSET              = 0x14,
++	LEDC_DMA_CTRL_REG                 = 0x18,
++	LEDC_INT_CTRL_REG_OFFSET          = 0x1c,
++	LEDC_INT_STS_REG_OFFSET           = 0x20,
++	LEDC_WAIT_TIME1_CTRL_REG          = 0x28,
++	LEDC_VER_NUM_REG                  = 0x2c,
++	LEDC_FIFO_DATA                    = 0x30,
++	LEDC_TOTAL_REG_SIZE = LEDC_FIFO_DATA + SUNXI_LEDC_FIFO_DEPTH
++};
++
++enum sunxi_ledc_irq_ctrl_reg {
++	LEDC_TRANS_FINISH_INT_EN     = (1 << 0),
++	LEDC_FIFO_CPUREQ_INT_EN      = (1 << 1),
++	LEDC_WAITDATA_TIMEOUT_INT_EN = (1 << 3),
++	LEDC_FIFO_OVERFLOW_INT_EN    = (1 << 4),
++	LEDC_GLOBAL_INT_EN           = (1 << 5),
++};
++
++enum sunxi_ledc_irq_status_reg {
++	LEDC_TRANS_FINISH_INT     = (1 << 0),
++	LEDC_FIFO_CPUREQ_INT      = (1 << 1),
++	LEDC_WAITDATA_TIMEOUT_INT = (1 << 3),
++	LEDC_FIFO_OVERFLOW_INT    = (1 << 4),
++	LEDC_FIFO_FULL            = (1 << 16),
++	LEDC_FIFO_EMPTY           = (1 << 17),
++};
++
++enum sunxi_led_type {
++	LED_TYPE_R,
++	LED_TYPE_G,
++	LED_TYPE_B
++};
++
++struct sunxi_led_info {
++	enum sunxi_led_type type;
++	struct led_classdev cdev;
++};
++
++struct sunxi_led_classdev_group {
++	u32 led_num;
++	struct sunxi_led_info r;
++	struct sunxi_led_info g;
++	struct sunxi_led_info b;
++};
++
++static u32 sunxi_led_regs_offset[] = {
++	LEDC_CTRL_REG_OFFSET,
++	LED_RESET_TIMING_CTRL_REG_OFFSET,
++	LED_T01_TIMING_CTRL_REG_OFFSET,
++	LEDC_WAIT_TIME0_CTRL_REG,
++	LEDC_WAIT_TIME1_CTRL_REG,
++	LEDC_INT_CTRL_REG_OFFSET,
++#ifndef SUNXI_FPGA_LEDC
++	LEDC_DATA_FINISH_CNT_REG_OFFSET,
++#endif
++};
++
++struct sunxi_led {
++	u32 reset_ns;
++	u32 t1h_ns;
++	u32 t1l_ns;
++	u32 t0h_ns;
++	u32 t0l_ns;
++	u32 wait_time0_ns;
++	unsigned long long wait_time1_ns;
++	u32 wait_data_time_ns;
++	u32 irqnum;
++	u32 led_count;
++	u32 *data;
++	u32 length;
++	u8 result;
++	spinlock_t lock;
++	struct device *dev;
++	dma_addr_t src_dma;
++	struct dma_chan *dma_chan;
++	wait_queue_head_t wait;
++	struct timespec64 start_time;
++	struct clk *clk_ledc;
++	struct clk *clk_cpuapb;
++	struct pinctrl *pctrl;
++	void __iomem *iomem_reg_base;
++	struct resource	*res;
++	struct sunxi_ledc_output_mode output_mode;
++	struct sunxi_led_classdev_group *pcdev_group;
++	struct dentry *debugfs_dir;
++	char regulator_id[16];
++	struct regulator *regulator;
++	struct reset_control *reset;
++	u32 regs_backup[ARRAY_SIZE(sunxi_led_regs_offset)];
++};
++
++enum {
++	DEBUG_INIT    = 1U << 0,
++	DEBUG_SUSPEND = 1U << 1,
++	DEBUG_INFO    = 1U << 2,
++	DEBUG_INFO1   = 1U << 3,
++	DEBUG_INFO2   = 1U << 4,
++};
++
++#endif /* __LINUX_LEDS_SUNXI_H */
+-- 
+2.17.1
+

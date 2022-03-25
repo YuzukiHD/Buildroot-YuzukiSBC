@@ -1,0 +1,211 @@
+From 59bb6ce78c8c1097f1786b317c2add095bdb5189 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 16:34:59 +0800
+Subject: [PATCH 04/93] crypto: add support for sun20i
+
+---
+ crypto/algif_skcipher.c  | 15 ++++++++++++---
+ crypto/cast6_generic.c   | 18 ++++++++++--------
+ crypto/serpent_generic.c |  6 ++++--
+ crypto/skcipher.c        | 10 ++++++++++
+ 4 files changed, 36 insertions(+), 13 deletions(-)
+
+diff --git a/crypto/algif_skcipher.c b/crypto/algif_skcipher.c
+index 81c402228..a9a10d42b 100644
+--- a/crypto/algif_skcipher.c
++++ b/crypto/algif_skcipher.c
+@@ -34,6 +34,8 @@
+ #include <linux/net.h>
+ #include <net/sock.h>
+ 
++#define SUNXI_CE_ADAPTER
++
+ static int skcipher_sendmsg(struct socket *sock, struct msghdr *msg,
+ 			    size_t size)
+ {
+@@ -100,8 +102,11 @@ static int _skcipher_recvmsg(struct socket *sock, struct msghdr *msg,
+ 		goto free;
+ 	}
+ 	sg_init_table(areq->tsgl, areq->tsgl_entries);
++#ifndef SUNXI_CE_ADAPTER
+ 	af_alg_pull_tsgl(sk, len, areq->tsgl, 0);
+-
++#else
++	af_alg_pull_tsgl(sk, ctx->used, areq->tsgl, 0);
++#endif
+ 	/* Initialize the crypto operation */
+ 	skcipher_request_set_tfm(&areq->cra_u.skcipher_req, tfm);
+ 	skcipher_request_set_crypt(&areq->cra_u.skcipher_req, areq->tsgl,
+@@ -139,7 +144,6 @@ static int _skcipher_recvmsg(struct socket *sock, struct msghdr *msg,
+ 						 &ctx->wait);
+ 	}
+ 
+-
+ free:
+ 	af_alg_free_resources(areq);
+ 
+@@ -169,7 +173,6 @@ static int skcipher_recvmsg(struct socket *sock, struct msghdr *msg,
+ 				ret = err;
+ 			goto out;
+ 		}
+-
+ 		ret += err;
+ 	}
+ 
+@@ -242,8 +245,10 @@ static int skcipher_sendmsg_nokey(struct socket *sock, struct msghdr *msg,
+ 	int err;
+ 
+ 	err = skcipher_check_key(sock);
++#ifndef SUNXI_CE_ADAPTER
+ 	if (err)
+ 		return err;
++#endif
+ 
+ 	return skcipher_sendmsg(sock, msg, size);
+ }
+@@ -254,8 +259,10 @@ static ssize_t skcipher_sendpage_nokey(struct socket *sock, struct page *page,
+ 	int err;
+ 
+ 	err = skcipher_check_key(sock);
++#ifndef SUNXI_CE_ADAPTER
+ 	if (err)
+ 		return err;
++#endif
+ 
+ 	return af_alg_sendpage(sock, page, offset, size, flags);
+ }
+@@ -266,8 +273,10 @@ static int skcipher_recvmsg_nokey(struct socket *sock, struct msghdr *msg,
+ 	int err;
+ 
+ 	err = skcipher_check_key(sock);
++#ifndef SUNXI_CE_ADAPTER
+ 	if (err)
+ 		return err;
++#endif
+ 
+ 	return skcipher_recvmsg(sock, msg, ignored, flags);
+ }
+diff --git a/crypto/cast6_generic.c b/crypto/cast6_generic.c
+index a8248f8e2..85328522c 100644
+--- a/crypto/cast6_generic.c
++++ b/crypto/cast6_generic.c
+@@ -154,7 +154,7 @@ int cast6_setkey(struct crypto_tfm *tfm, const u8 *key, unsigned int keylen)
+ EXPORT_SYMBOL_GPL(cast6_setkey);
+ 
+ /*forward quad round*/
+-static inline void Q(u32 *block, u8 *Kr, u32 *Km)
++static inline void Q(u32 *block, const u8 *Kr, const u32 *Km)
+ {
+ 	u32 I;
+ 	block[2] ^= F1(block[3], Kr[0], Km[0]);
+@@ -164,7 +164,7 @@ static inline void Q(u32 *block, u8 *Kr, u32 *Km)
+ }
+ 
+ /*reverse quad round*/
+-static inline void QBAR(u32 *block, u8 *Kr, u32 *Km)
++static inline void QBAR(u32 *block, const u8 *Kr, const u32 *Km)
+ {
+ 	u32 I;
+ 	block[3] ^= F1(block[0], Kr[3], Km[3]);
+@@ -173,13 +173,14 @@ static inline void QBAR(u32 *block, u8 *Kr, u32 *Km)
+ 	block[2] ^= F1(block[3], Kr[0], Km[0]);
+ }
+ 
+-void __cast6_encrypt(struct cast6_ctx *c, u8 *outbuf, const u8 *inbuf)
++void __cast6_encrypt(const void *ctx, u8 *outbuf, const u8 *inbuf)
+ {
++	const struct cast6_ctx *c = ctx;
+ 	const __be32 *src = (const __be32 *)inbuf;
+ 	__be32 *dst = (__be32 *)outbuf;
+ 	u32 block[4];
+-	u32 *Km;
+-	u8 *Kr;
++	const u32 *Km;
++	const u8 *Kr;
+ 
+ 	block[0] = be32_to_cpu(src[0]);
+ 	block[1] = be32_to_cpu(src[1]);
+@@ -211,13 +212,14 @@ static void cast6_encrypt(struct crypto_tfm *tfm, u8 *outbuf, const u8 *inbuf)
+ 	__cast6_encrypt(crypto_tfm_ctx(tfm), outbuf, inbuf);
+ }
+ 
+-void __cast6_decrypt(struct cast6_ctx *c, u8 *outbuf, const u8 *inbuf)
++void __cast6_decrypt(const void *ctx, u8 *outbuf, const u8 *inbuf)
+ {
++	const struct cast6_ctx *c = ctx;
+ 	const __be32 *src = (const __be32 *)inbuf;
+ 	__be32 *dst = (__be32 *)outbuf;
+ 	u32 block[4];
+-	u32 *Km;
+-	u8 *Kr;
++	const u32 *Km;
++	const u8 *Kr;
+ 
+ 	block[0] = be32_to_cpu(src[0]);
+ 	block[1] = be32_to_cpu(src[1]);
+diff --git a/crypto/serpent_generic.c b/crypto/serpent_generic.c
+index 56fa665a4..492c1d0bf 100644
+--- a/crypto/serpent_generic.c
++++ b/crypto/serpent_generic.c
+@@ -449,8 +449,9 @@ int serpent_setkey(struct crypto_tfm *tfm, const u8 *key, unsigned int keylen)
+ }
+ EXPORT_SYMBOL_GPL(serpent_setkey);
+ 
+-void __serpent_encrypt(struct serpent_ctx *ctx, u8 *dst, const u8 *src)
++void __serpent_encrypt(const void *c, u8 *dst, const u8 *src)
+ {
++	const struct serpent_ctx *ctx = c;
+ 	const u32 *k = ctx->expkey;
+ 	const __le32 *s = (const __le32 *)src;
+ 	__le32	*d = (__le32 *)dst;
+@@ -514,8 +515,9 @@ static void serpent_encrypt(struct crypto_tfm *tfm, u8 *dst, const u8 *src)
+ 	__serpent_encrypt(ctx, dst, src);
+ }
+ 
+-void __serpent_decrypt(struct serpent_ctx *ctx, u8 *dst, const u8 *src)
++void __serpent_decrypt(const void *c, u8 *dst, const u8 *src)
+ {
++	const struct serpent_ctx *ctx = c;
+ 	const u32 *k = ctx->expkey;
+ 	const __le32 *s = (const __le32 *)src;
+ 	__le32	*d = (__le32 *)dst;
+diff --git a/crypto/skcipher.c b/crypto/skcipher.c
+index 22753c1c7..6ce8dc480 100644
+--- a/crypto/skcipher.c
++++ b/crypto/skcipher.c
+@@ -23,6 +23,8 @@
+ 
+ #include "internal.h"
+ 
++#define SUNXI_CE_ADAPTER
++
+ enum {
+ 	SKCIPHER_WALK_PHYS = 1 << 0,
+ 	SKCIPHER_WALK_SLOW = 1 << 1,
+@@ -850,7 +852,11 @@ int crypto_skcipher_encrypt(struct skcipher_request *req)
+ 
+ 	crypto_stats_get(alg);
+ 	if (crypto_skcipher_get_flags(tfm) & CRYPTO_TFM_NEED_KEY)
++#ifndef SUNXI_CE_ADAPTER
+ 		ret = -ENOKEY;
++#else
++		ret = tfm->encrypt(req);
++#endif
+ 	else
+ 		ret = tfm->encrypt(req);
+ 	crypto_stats_skcipher_encrypt(cryptlen, ret, alg);
+@@ -867,7 +873,11 @@ int crypto_skcipher_decrypt(struct skcipher_request *req)
+ 
+ 	crypto_stats_get(alg);
+ 	if (crypto_skcipher_get_flags(tfm) & CRYPTO_TFM_NEED_KEY)
++#ifndef SUNXI_CE_ADAPTER
+ 		ret = -ENOKEY;
++#else
++		ret = tfm->decrypt(req);
++#endif
+ 	else
+ 		ret = tfm->decrypt(req);
+ 	crypto_stats_skcipher_decrypt(cryptlen, ret, alg);
+-- 
+2.17.1
+

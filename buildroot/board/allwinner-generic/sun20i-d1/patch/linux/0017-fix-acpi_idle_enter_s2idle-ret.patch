@@ -1,0 +1,75 @@
+From 2387a126e989d11f22ca14921384f1371ff1574f Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 16:44:26 +0800
+Subject: [PATCH 17/93] fix acpi_idle_enter_s2idle ret
+
+---
+ drivers/acpi/ec.c             |  6 ++++--
+ drivers/acpi/processor_idle.c | 10 ++++++----
+ 2 files changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/acpi/ec.c b/drivers/acpi/ec.c
+index 57eacdcbf..be64af77f 100644
+--- a/drivers/acpi/ec.c
++++ b/drivers/acpi/ec.c
+@@ -1573,7 +1573,6 @@ static int acpi_ec_add(struct acpi_device *device)
+ 
+ 		if (boot_ec && ec->command_addr == boot_ec->command_addr &&
+ 		    ec->data_addr == boot_ec->data_addr) {
+-			boot_ec_is_ecdt = false;
+ 			/*
+ 			 * Trust PNP0C09 namespace location rather than
+ 			 * ECDT ID. But trust ECDT GPE rather than _GPE
+@@ -1593,9 +1592,12 @@ static int acpi_ec_add(struct acpi_device *device)
+ 
+ 	if (ec == boot_ec)
+ 		acpi_handle_info(boot_ec->handle,
+-				 "Boot %s EC used to handle transactions and events\n",
++				 "Boot %s EC initialization complete\n",
+ 				 boot_ec_is_ecdt ? "ECDT" : "DSDT");
+ 
++	acpi_handle_info(ec->handle,
++			 "EC: Used to handle transactions and events\n");
++
+ 	device->driver_data = ec;
+ 
+ 	ret = !!request_region(ec->data_addr, 1, "EC data");
+diff --git a/drivers/acpi/processor_idle.c b/drivers/acpi/processor_idle.c
+index ed56c6d20..53b6c3bb2 100644
+--- a/drivers/acpi/processor_idle.c
++++ b/drivers/acpi/processor_idle.c
+@@ -791,8 +791,8 @@ static int acpi_idle_enter(struct cpuidle_device *dev,
+ 	return index;
+ }
+ 
+-static void acpi_idle_enter_s2idle(struct cpuidle_device *dev,
+-				   struct cpuidle_driver *drv, int index)
++static int acpi_idle_enter_s2idle(struct cpuidle_device *dev,
++				  struct cpuidle_driver *drv, int index)
+ {
+ 	struct acpi_processor_cx *cx = per_cpu(acpi_cstate[index], dev->cpu);
+ 
+@@ -800,16 +800,18 @@ static void acpi_idle_enter_s2idle(struct cpuidle_device *dev,
+ 		struct acpi_processor *pr = __this_cpu_read(processors);
+ 
+ 		if (unlikely(!pr))
+-			return;
++			return 0;
+ 
+ 		if (pr->flags.bm_check) {
+ 			acpi_idle_enter_bm(pr, cx, false);
+-			return;
++			return 0;
+ 		} else {
+ 			ACPI_FLUSH_CPU_CACHE();
+ 		}
+ 	}
+ 	acpi_idle_do_entry(cx);
++
++	return 0;
+ }
+ 
+ static int acpi_processor_setup_cpuidle_cx(struct acpi_processor *pr,
+-- 
+2.17.1
+

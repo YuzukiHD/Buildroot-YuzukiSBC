@@ -1,0 +1,33 @@
+From 513a8f7d3487eaf3514980217599890bc4c0d459 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:25:16 +0800
+Subject: [PATCH 87/93] fix kcondig
+
+---
+ drivers/platform/x86/Kconfig | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/platform/x86/Kconfig b/drivers/platform/x86/Kconfig
+index 1cab99320..e17fbe8f3 100644
+--- a/drivers/platform/x86/Kconfig
++++ b/drivers/platform/x86/Kconfig
+@@ -175,6 +175,7 @@ config DELL_LAPTOP
+ 	depends on RFKILL || RFKILL = n
+ 	depends on SERIO_I8042
+ 	depends on DELL_SMBIOS
++	depends on BROKEN
+ 	select POWER_SUPPLY
+ 	select LEDS_CLASS
+ 	select NEW_LEDS
+@@ -1016,7 +1017,7 @@ config INTEL_MFLD_THERMAL
+          platform.
+ 
+ config INTEL_IPS
+-	tristate "Intel Intelligent Power Sharing"
++	bool "Intel Intelligent Power Sharing"
+ 	depends on ACPI && PCI
+ 	---help---
+ 	  Intel Calpella platforms support dynamic power sharing between the
+-- 
+2.17.1
+

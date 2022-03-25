@@ -1,0 +1,47 @@
+From 5358b8373368a4e983d8f99697c4cf501a101995 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:09:45 +0800
+Subject: [PATCH 55/93] add qcom reset
+
+---
+ drivers/reset/Kconfig           | 2 +-
+ drivers/reset/reset-qcom-aoss.c | 3 ++-
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/reset/Kconfig b/drivers/reset/Kconfig
+index 7b07281aa..1bacffdd8 100644
+--- a/drivers/reset/Kconfig
++++ b/drivers/reset/Kconfig
+@@ -99,7 +99,7 @@ config RESET_PISTACHIO
+ 	  This enables the reset driver for ImgTec Pistachio SoCs.
+ 
+ config RESET_QCOM_AOSS
+-	bool "Qcom AOSS Reset Driver"
++	tristate "Qcom AOSS Reset Driver"
+ 	depends on ARCH_QCOM || COMPILE_TEST
+ 	help
+ 	  This enables the AOSS (always on subsystem) reset driver
+diff --git a/drivers/reset/reset-qcom-aoss.c b/drivers/reset/reset-qcom-aoss.c
+index 36db96750..9333b923d 100644
+--- a/drivers/reset/reset-qcom-aoss.c
++++ b/drivers/reset/reset-qcom-aoss.c
+@@ -118,6 +118,7 @@ static const struct of_device_id qcom_aoss_reset_of_match[] = {
+ 	{ .compatible = "qcom,sdm845-aoss-cc", .data = &sdm845_aoss_desc },
+ 	{}
+ };
++MODULE_DEVICE_TABLE(of, qcom_aoss_reset_of_match);
+ 
+ static struct platform_driver qcom_aoss_reset_driver = {
+ 	.probe = qcom_aoss_reset_probe,
+@@ -127,7 +128,7 @@ static struct platform_driver qcom_aoss_reset_driver = {
+ 	},
+ };
+ 
+-builtin_platform_driver(qcom_aoss_reset_driver);
++module_platform_driver(qcom_aoss_reset_driver);
+ 
+ MODULE_DESCRIPTION("Qualcomm AOSS Reset Driver");
+ MODULE_LICENSE("GPL v2");
+-- 
+2.17.1
+

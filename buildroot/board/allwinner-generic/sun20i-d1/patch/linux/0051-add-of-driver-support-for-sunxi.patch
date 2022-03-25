@@ -1,0 +1,820 @@
+From f136a249c5e6c3649f9e6611713d1b69e75662ce Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:07:14 +0800
+Subject: [PATCH 51/93] add of driver support for sunxi
+
+---
+ drivers/of/address.c         |  80 ++++----
+ drivers/of/base.c            |  32 +++-
+ drivers/of/fdt.c             |  74 ++++---
+ drivers/of/of_private.h      |  14 ++
+ drivers/of/of_reserved_mem.c |   2 +-
+ drivers/of/platform.c        |  14 ++
+ drivers/of/property.c        | 361 +++++++++++++++++++++++++++++++++++
+ 7 files changed, 509 insertions(+), 68 deletions(-)
+
+diff --git a/drivers/of/address.c b/drivers/of/address.c
+index 8f74c4626..e6af6aed4 100644
+--- a/drivers/of/address.c
++++ b/drivers/of/address.c
+@@ -14,6 +14,8 @@
+ #include <linux/slab.h>
+ #include <linux/string.h>
+ 
++#include "of_private.h"
++
+ /* Max address size we deal with */
+ #define OF_MAX_ADDR_CELLS	4
+ #define OF_CHECK_ADDR_COUNT(na)	((na) > 0 && (na) <= OF_MAX_ADDR_CELLS)
+@@ -241,6 +243,7 @@ static int parser_init(struct of_pci_range_parser *parser,
+ 	parser->node = node;
+ 	parser->pna = of_n_addr_cells(node);
+ 	parser->np = parser->pna + na + ns;
++	parser->dma = !strcmp(name, "dma-ranges");
+ 
+ 	parser->range = of_get_property(node, name, &rlen);
+ 	if (parser->range == NULL)
+@@ -279,7 +282,11 @@ struct of_pci_range *of_pci_range_parser_one(struct of_pci_range_parser *parser,
+ 	range->pci_space = be32_to_cpup(parser->range);
+ 	range->flags = of_bus_pci_get_flags(parser->range);
+ 	range->pci_addr = of_read_number(parser->range + 1, ns);
+-	range->cpu_addr = of_translate_address(parser->node,
++	if (parser->dma)
++		range->cpu_addr = of_translate_dma_address(parser->node,
++				parser->range + na);
++	else
++		range->cpu_addr = of_translate_address(parser->node,
+ 				parser->range + na);
+ 	range->size = of_read_number(parser->range + parser->pna + na, ns);
+ 
+@@ -292,8 +299,12 @@ struct of_pci_range *of_pci_range_parser_one(struct of_pci_range_parser *parser,
+ 
+ 		flags = of_bus_pci_get_flags(parser->range);
+ 		pci_addr = of_read_number(parser->range + 1, ns);
+-		cpu_addr = of_translate_address(parser->node,
+-				parser->range + na);
++		if (parser->dma)
++			cpu_addr = of_translate_dma_address(parser->node,
++					parser->range + na);
++		else
++			cpu_addr = of_translate_address(parser->node,
++					parser->range + na);
+ 		size = of_read_number(parser->range + parser->pna + na, ns);
+ 
+ 		if (flags != range->flags)
+@@ -517,9 +528,13 @@ static int of_translate_one(struct device_node *parent, struct of_bus *bus,
+ 	 *
+ 	 * As far as we know, this damage only exists on Apple machines, so
+ 	 * This code is only enabled on powerpc. --gcl
++	 *
++	 * This quirk also applies for 'dma-ranges' which frequently exist in
++	 * child nodes without 'dma-ranges' in the parent nodes. --RobH
+ 	 */
+ 	ranges = of_get_property(parent, rprop, &rlen);
+-	if (ranges == NULL && !of_empty_ranges_quirk(parent)) {
++	if (ranges == NULL && !of_empty_ranges_quirk(parent) &&
++	    strcmp(rprop, "dma-ranges")) {
+ 		pr_debug("no ranges; cannot translate\n");
+ 		return 1;
+ 	}
+@@ -695,6 +710,16 @@ static struct device_node *__of_get_dma_parent(const struct device_node *np)
+ 	return of_node_get(args.np);
+ }
+ 
++static struct device_node *of_get_next_dma_parent(struct device_node *np)
++{
++	struct device_node *parent;
++
++	parent = __of_get_dma_parent(np);
++	of_node_put(np);
++
++	return parent;
++}
++
+ u64 of_translate_dma_address(struct device_node *dev, const __be32 *in_addr)
+ {
+ 	struct device_node *host;
+@@ -924,47 +949,39 @@ int of_dma_get_range(struct device_node *np, u64 *dma_addr, u64 *paddr, u64 *siz
+ 	const __be32 *ranges = NULL;
+ 	int len, naddr, nsize, pna;
+ 	int ret = 0;
++	bool found_dma_ranges = false;
+ 	u64 dmaaddr;
+ 
+-	if (!node)
+-		return -EINVAL;
+-
+-	while (1) {
+-		struct device_node *parent;
+-
+-		naddr = of_n_addr_cells(node);
+-		nsize = of_n_size_cells(node);
+-
+-		parent = __of_get_dma_parent(node);
+-		of_node_put(node);
+-
+-		node = parent;
+-		if (!node)
+-			break;
+-
++	while (node) {
+ 		ranges = of_get_property(node, "dma-ranges", &len);
+ 
+ 		/* Ignore empty ranges, they imply no translation required */
+ 		if (ranges && len > 0)
+ 			break;
+ 
+-		/*
+-		 * At least empty ranges has to be defined for parent node if
+-		 * DMA is supported
+-		 */
+-		if (!ranges)
+-			break;
++		/* Once we find 'dma-ranges', then a missing one is an error */
++		if (found_dma_ranges && !ranges) {
++			ret = -ENODEV;
++			goto out;
++		}
++		found_dma_ranges = true;
++
++		node = of_get_next_dma_parent(node);
+ 	}
+ 
+-	if (!ranges) {
++	if (!node || !ranges) {
+ 		pr_debug("no dma-ranges found for node(%pOF)\n", np);
+ 		ret = -ENODEV;
+ 		goto out;
+ 	}
+ 
+-	len /= sizeof(u32);
+-
++	naddr = of_bus_n_addr_cells(node);
++	nsize = of_bus_n_size_cells(node);
+ 	pna = of_n_addr_cells(node);
++	if ((len / sizeof(__be32)) % (pna + naddr + nsize)) {
++		ret = -EINVAL;
++		goto out;
++	}
+ 
+ 	/* dma-ranges format:
+ 	 * DMA addr	: naddr cells
+@@ -972,7 +989,7 @@ int of_dma_get_range(struct device_node *np, u64 *dma_addr, u64 *paddr, u64 *siz
+ 	 * size		: nsize cells
+ 	 */
+ 	dmaaddr = of_read_number(ranges, naddr);
+-	*paddr = of_translate_dma_address(np, ranges);
++	*paddr = of_translate_dma_address(node, ranges + naddr);
+ 	if (*paddr == OF_BAD_ADDR) {
+ 		pr_err("translation of DMA address(%pad) to CPU address failed node(%pOF)\n",
+ 		       dma_addr, np);
+@@ -991,7 +1008,6 @@ int of_dma_get_range(struct device_node *np, u64 *dma_addr, u64 *paddr, u64 *siz
+ 
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(of_dma_get_range);
+ 
+ /**
+  * of_dma_is_coherent - Check if device is coherent
+@@ -1013,7 +1029,7 @@ bool of_dma_is_coherent(struct device_node *np)
+ 			of_node_put(node);
+ 			return true;
+ 		}
+-		node = of_get_next_parent(node);
++		node = of_get_next_dma_parent(node);
+ 	}
+ 	of_node_put(node);
+ 	return false;
+diff --git a/drivers/of/base.c b/drivers/of/base.c
+index 1d667eb73..db7fbc0c0 100644
+--- a/drivers/of/base.c
++++ b/drivers/of/base.c
+@@ -86,34 +86,46 @@ static bool __of_node_is_type(const struct device_node *np, const char *type)
+ 	return np && match && type && !strcmp(match, type);
+ }
+ 
+-int of_n_addr_cells(struct device_node *np)
++int of_bus_n_addr_cells(struct device_node *np)
+ {
+ 	u32 cells;
+ 
+-	do {
+-		if (np->parent)
+-			np = np->parent;
++	for (; np; np = np->parent)
+ 		if (!of_property_read_u32(np, "#address-cells", &cells))
+ 			return cells;
+-	} while (np->parent);
++
+ 	/* No #address-cells property for the root node */
+ 	return OF_ROOT_NODE_ADDR_CELLS_DEFAULT;
+ }
++
++int of_n_addr_cells(struct device_node *np)
++{
++	if (np->parent)
++		np = np->parent;
++
++	return of_bus_n_addr_cells(np);
++}
+ EXPORT_SYMBOL(of_n_addr_cells);
+ 
+-int of_n_size_cells(struct device_node *np)
++int of_bus_n_size_cells(struct device_node *np)
+ {
+ 	u32 cells;
+ 
+-	do {
+-		if (np->parent)
+-			np = np->parent;
++	for (; np; np = np->parent)
+ 		if (!of_property_read_u32(np, "#size-cells", &cells))
+ 			return cells;
+-	} while (np->parent);
++
+ 	/* No #size-cells property for the root node */
+ 	return OF_ROOT_NODE_SIZE_CELLS_DEFAULT;
+ }
++
++int of_n_size_cells(struct device_node *np)
++{
++	if (np->parent)
++		np = np->parent;
++
++	return of_bus_n_size_cells(np);
++}
+ EXPORT_SYMBOL(of_n_size_cells);
+ 
+ #ifdef CONFIG_NUMA
+diff --git a/drivers/of/fdt.c b/drivers/of/fdt.c
+index 223d617ec..650c028de 100644
+--- a/drivers/of/fdt.c
++++ b/drivers/of/fdt.c
+@@ -1040,43 +1040,67 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
+ 	return 0;
+ }
+ 
++/*
++ * Convert configs to something easy to use in C code
++ */
++#if defined(CONFIG_CMDLINE_FORCE)
++static const int overwrite_incoming_cmdline = 1;
++static const int read_dt_cmdline;
++static const int concat_cmdline;
++#elif defined(CONFIG_CMDLINE_EXTEND)
++static const int overwrite_incoming_cmdline;
++static const int read_dt_cmdline = 1;
++static const int concat_cmdline = 1;
++#else /* CMDLINE_FROM_BOOTLOADER */
++static const int overwrite_incoming_cmdline;
++static const int read_dt_cmdline = 1;
++static const int concat_cmdline;
++#endif
++
++#ifdef CONFIG_CMDLINE
++static const char *config_cmdline = CONFIG_CMDLINE;
++#else
++static const char *config_cmdline = "";
++#endif
++
+ int __init early_init_dt_scan_chosen(unsigned long node, const char *uname,
+ 				     int depth, void *data)
+ {
+-	int l;
+-	const char *p;
++	int l = 0;
++	const char *p = NULL;
+ 	const void *rng_seed;
++	char *cmdline = data;
+ 
+ 	pr_debug("search \"chosen\", depth: %d, uname: %s\n", depth, uname);
+ 
+-	if (depth != 1 || !data ||
++	if (depth != 1 || !cmdline ||
+ 	    (strcmp(uname, "chosen") != 0 && strcmp(uname, "chosen@0") != 0))
+ 		return 0;
+ 
+ 	early_init_dt_check_for_initrd(node);
+ 
+-	/* Retrieve command line */
+-	p = of_get_flat_dt_prop(node, "bootargs", &l);
+-	if (p != NULL && l > 0)
+-		strlcpy(data, p, min(l, COMMAND_LINE_SIZE));
+-
+-	/*
+-	 * CONFIG_CMDLINE is meant to be a default in case nothing else
+-	 * managed to set the command line, unless CONFIG_CMDLINE_FORCE
+-	 * is set in which case we override whatever was found earlier.
+-	 */
+-#ifdef CONFIG_CMDLINE
+-#if defined(CONFIG_CMDLINE_EXTEND)
+-	strlcat(data, " ", COMMAND_LINE_SIZE);
+-	strlcat(data, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+-#elif defined(CONFIG_CMDLINE_FORCE)
+-	strlcpy(data, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+-#else
+-	/* No arguments from boot loader, use kernel's  cmdl*/
+-	if (!((char *)data)[0])
+-		strlcpy(data, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+-#endif
+-#endif /* CONFIG_CMDLINE */
++	/* Put CONFIG_CMDLINE in if forced or if data had nothing in it to start */
++	if (overwrite_incoming_cmdline || !cmdline[0])
++		strlcpy(cmdline, config_cmdline, COMMAND_LINE_SIZE);
++
++	/* Retrieve command line unless forcing */
++	if (read_dt_cmdline)
++		p = of_get_flat_dt_prop(node, "bootargs", &l);
++
++	if (p != NULL && l > 0) {
++		if (concat_cmdline) {
++			int cmdline_len;
++			int copy_len;
++			strlcat(cmdline, " ", COMMAND_LINE_SIZE);
++			cmdline_len = strlen(cmdline);
++			copy_len = COMMAND_LINE_SIZE - cmdline_len - 1;
++			copy_len = min((int)l, copy_len);
++			strncpy(cmdline + cmdline_len, p, copy_len);
++			cmdline[cmdline_len + copy_len] = '\0';
++		} else {
++			strlcpy(cmdline, p, min(l, COMMAND_LINE_SIZE));
++		}
++	}
+ 
+ 	pr_debug("Command line is: %s\n", (char*)data);
+ 
+diff --git a/drivers/of/of_private.h b/drivers/of/of_private.h
+index 24786818e..66294d299 100644
+--- a/drivers/of/of_private.h
++++ b/drivers/of/of_private.h
+@@ -158,4 +158,18 @@ extern void __of_sysfs_remove_bin_file(struct device_node *np,
+ #define for_each_transaction_entry_reverse(_oft, _te) \
+ 	list_for_each_entry_reverse(_te, &(_oft)->te_list, node)
+ 
++extern int of_bus_n_addr_cells(struct device_node *np);
++extern int of_bus_n_size_cells(struct device_node *np);
++
++#ifdef CONFIG_OF_ADDRESS
++extern int of_dma_get_range(struct device_node *np, u64 *dma_addr,
++			    u64 *paddr, u64 *size);
++#else
++static inline int of_dma_get_range(struct device_node *np, u64 *dma_addr,
++				   u64 *paddr, u64 *size)
++{
++	return -ENODEV;
++}
++#endif
++
+ #endif /* _LINUX_OF_PRIVATE_H */
+diff --git a/drivers/of/of_reserved_mem.c b/drivers/of/of_reserved_mem.c
+index 6bd610ee2..1a84bc0d5 100644
+--- a/drivers/of/of_reserved_mem.c
++++ b/drivers/of/of_reserved_mem.c
+@@ -22,7 +22,7 @@
+ #include <linux/slab.h>
+ #include <linux/memblock.h>
+ 
+-#define MAX_RESERVED_REGIONS	32
++#define MAX_RESERVED_REGIONS	64
+ static struct reserved_mem reserved_mem[MAX_RESERVED_REGIONS];
+ static int reserved_mem_count;
+ 
+diff --git a/drivers/of/platform.c b/drivers/of/platform.c
+index b47a2292f..55d719347 100644
+--- a/drivers/of/platform.c
++++ b/drivers/of/platform.c
+@@ -480,6 +480,7 @@ int of_platform_populate(struct device_node *root,
+ 	pr_debug("%s()\n", __func__);
+ 	pr_debug(" starting at: %pOF\n", root);
+ 
++	device_links_supplier_sync_state_pause();
+ 	for_each_child_of_node(root, child) {
+ 		rc = of_platform_bus_create(child, matches, lookup, parent, true);
+ 		if (rc) {
+@@ -487,6 +488,8 @@ int of_platform_populate(struct device_node *root,
+ 			break;
+ 		}
+ 	}
++	device_links_supplier_sync_state_resume();
++
+ 	of_node_set_flag(root, OF_POPULATED_BUS);
+ 
+ 	of_node_put(root);
+@@ -515,6 +518,8 @@ static int __init of_platform_default_populate_init(void)
+ {
+ 	struct device_node *node;
+ 
++	device_links_supplier_sync_state_pause();
++
+ 	if (!of_have_populated_dt())
+ 		return -ENODEV;
+ 
+@@ -533,11 +538,20 @@ static int __init of_platform_default_populate_init(void)
+ 	}
+ 
+ 	/* Populate everything else. */
++	fw_devlink_pause();
+ 	of_platform_default_populate(NULL, NULL, NULL);
++	fw_devlink_resume();
+ 
+ 	return 0;
+ }
+ arch_initcall_sync(of_platform_default_populate_init);
++
++static int __init of_platform_sync_state_init(void)
++{
++	device_links_supplier_sync_state_resume();
++	return 0;
++}
++late_initcall_sync(of_platform_sync_state_init);
+ #endif
+ 
+ int of_platform_device_destroy(struct device *dev, void *data)
+diff --git a/drivers/of/property.c b/drivers/of/property.c
+index d7fa75e31..c3cca636e 100644
+--- a/drivers/of/property.c
++++ b/drivers/of/property.c
+@@ -25,6 +25,7 @@
+ #include <linux/of_device.h>
+ #include <linux/of_graph.h>
+ #include <linux/string.h>
++#include <linux/moduleparam.h>
+ 
+ #include "of_private.h"
+ 
+@@ -985,6 +986,365 @@ of_fwnode_device_get_match_data(const struct fwnode_handle *fwnode,
+ 	return of_device_get_match_data(dev);
+ }
+ 
++static bool of_is_ancestor_of(struct device_node *test_ancestor,
++			      struct device_node *child)
++{
++	of_node_get(child);
++	while (child) {
++		if (child == test_ancestor) {
++			of_node_put(child);
++			return true;
++		}
++		child = of_get_next_parent(child);
++	}
++	return false;
++}
++
++/**
++ * of_link_to_phandle - Add device link to supplier from supplier phandle
++ * @dev: consumer device
++ * @sup_np: phandle to supplier device tree node
++ *
++ * Given a phandle to a supplier device tree node (@sup_np), this function
++ * finds the device that owns the supplier device tree node and creates a
++ * device link from @dev consumer device to the supplier device. This function
++ * doesn't create device links for invalid scenarios such as trying to create a
++ * link with a parent device as the consumer of its child device. In such
++ * cases, it returns an error.
++ *
++ * Returns:
++ * - 0 if link successfully created to supplier
++ * - -EAGAIN if linking to the supplier should be reattempted
++ * - -EINVAL if the supplier link is invalid and should not be created
++ * - -ENODEV if there is no device that corresponds to the supplier phandle
++ */
++static int of_link_to_phandle(struct device *dev, struct device_node *sup_np,
++			      u32 dl_flags)
++{
++	struct device *sup_dev;
++	int ret = 0;
++	struct device_node *tmp_np = sup_np;
++	int is_populated;
++
++	of_node_get(sup_np);
++	/*
++	 * Find the device node that contains the supplier phandle.  It may be
++	 * @sup_np or it may be an ancestor of @sup_np.
++	 */
++	while (sup_np) {
++
++		/* Don't allow linking to a disabled supplier */
++		if (!of_device_is_available(sup_np)) {
++			of_node_put(sup_np);
++			sup_np = NULL;
++		}
++
++		if (of_find_property(sup_np, "compatible", NULL))
++			break;
++
++		sup_np = of_get_next_parent(sup_np);
++	}
++
++	if (!sup_np) {
++		dev_dbg(dev, "Not linking to %pOFP - No device\n", tmp_np);
++		return -ENODEV;
++	}
++
++	/*
++	 * Don't allow linking a device node as a consumer of one of its
++	 * descendant nodes. By definition, a child node can't be a functional
++	 * dependency for the parent node.
++	 */
++	if (of_is_ancestor_of(dev->of_node, sup_np)) {
++		dev_dbg(dev, "Not linking to %pOFP - is descendant\n", sup_np);
++		of_node_put(sup_np);
++		return -EINVAL;
++	}
++	sup_dev = get_dev_from_fwnode(&sup_np->fwnode);
++	is_populated = of_node_check_flag(sup_np, OF_POPULATED);
++	of_node_put(sup_np);
++	if (!sup_dev && is_populated) {
++		/* Early device without struct device. */
++		dev_dbg(dev, "Not linking to %pOFP - No struct device\n",
++			sup_np);
++		return -ENODEV;
++	} else if (!sup_dev) {
++		return -EAGAIN;
++	}
++	if (!device_link_add(dev, sup_dev, dl_flags))
++		ret = -EAGAIN;
++	put_device(sup_dev);
++	return ret;
++}
++
++/**
++ * parse_prop_cells - Property parsing function for suppliers
++ *
++ * @np:		Pointer to device tree node containing a list
++ * @prop_name:	Name of property to be parsed. Expected to hold phandle values
++ * @index:	For properties holding a list of phandles, this is the index
++ *		into the list.
++ * @list_name:	Property name that is known to contain list of phandle(s) to
++ *		supplier(s)
++ * @cells_name:	property name that specifies phandles' arguments count
++ *
++ * This is a helper function to parse properties that have a known fixed name
++ * and are a list of phandles and phandle arguments.
++ *
++ * Returns:
++ * - phandle node pointer with refcount incremented. Caller must of_node_put()
++ *   on it when done.
++ * - NULL if no phandle found at index
++ */
++static struct device_node *parse_prop_cells(struct device_node *np,
++					    const char *prop_name, int index,
++					    const char *list_name,
++					    const char *cells_name)
++{
++	struct of_phandle_args sup_args;
++
++	if (strcmp(prop_name, list_name))
++		return NULL;
++
++	if (of_parse_phandle_with_args(np, list_name, cells_name, index,
++				       &sup_args))
++		return NULL;
++
++	return sup_args.np;
++}
++
++#define DEFINE_SIMPLE_PROP(fname, name, cells)				  \
++static struct device_node *parse_##fname(struct device_node *np,	  \
++					const char *prop_name, int index) \
++{									  \
++	return parse_prop_cells(np, prop_name, index, name, cells);	  \
++}
++
++static int strcmp_suffix(const char *str, const char *suffix)
++{
++	unsigned int len, suffix_len;
++
++	len = strlen(str);
++	suffix_len = strlen(suffix);
++	if (len <= suffix_len)
++		return -1;
++	return strcmp(str + len - suffix_len, suffix);
++}
++
++/**
++ * parse_suffix_prop_cells - Suffix property parsing function for suppliers
++ *
++ * @np:		Pointer to device tree node containing a list
++ * @prop_name:	Name of property to be parsed. Expected to hold phandle values
++ * @index:	For properties holding a list of phandles, this is the index
++ *		into the list.
++ * @suffix:	Property suffix that is known to contain list of phandle(s) to
++ *		supplier(s)
++ * @cells_name:	property name that specifies phandles' arguments count
++ *
++ * This is a helper function to parse properties that have a known fixed suffix
++ * and are a list of phandles and phandle arguments.
++ *
++ * Returns:
++ * - phandle node pointer with refcount incremented. Caller must of_node_put()
++ *   on it when done.
++ * - NULL if no phandle found at index
++ */
++static struct device_node *parse_suffix_prop_cells(struct device_node *np,
++					    const char *prop_name, int index,
++					    const char *suffix,
++					    const char *cells_name)
++{
++	struct of_phandle_args sup_args;
++
++	if (strcmp_suffix(prop_name, suffix))
++		return NULL;
++
++	if (of_parse_phandle_with_args(np, prop_name, cells_name, index,
++				       &sup_args))
++		return NULL;
++
++	return sup_args.np;
++}
++
++#define DEFINE_SUFFIX_PROP(fname, suffix, cells)			     \
++static struct device_node *parse_##fname(struct device_node *np,	     \
++					const char *prop_name, int index)    \
++{									     \
++	return parse_suffix_prop_cells(np, prop_name, index, suffix, cells); \
++}
++
++/**
++ * struct supplier_bindings - Property parsing functions for suppliers
++ *
++ * @parse_prop: function name
++ *	parse_prop() finds the node corresponding to a supplier phandle
++ * @parse_prop.np: Pointer to device node holding supplier phandle property
++ * @parse_prop.prop_name: Name of property holding a phandle value
++ * @parse_prop.index: For properties holding a list of phandles, this is the
++ *		      index into the list
++ *
++ * Returns:
++ * parse_prop() return values are
++ * - phandle node pointer with refcount incremented. Caller must of_node_put()
++ *   on it when done.
++ * - NULL if no phandle found at index
++ */
++struct supplier_bindings {
++	struct device_node *(*parse_prop)(struct device_node *np,
++					  const char *prop_name, int index);
++};
++
++DEFINE_SIMPLE_PROP(clocks, "clocks", "#clock-cells")
++DEFINE_SIMPLE_PROP(interconnects, "interconnects", "#interconnect-cells")
++DEFINE_SIMPLE_PROP(iommus, "iommus", "#iommu-cells")
++DEFINE_SIMPLE_PROP(mboxes, "mboxes", "#mbox-cells")
++DEFINE_SIMPLE_PROP(io_channels, "io-channel", "#io-channel-cells")
++DEFINE_SIMPLE_PROP(interrupt_parent, "interrupt-parent", NULL)
++DEFINE_SIMPLE_PROP(dmas, "dmas", "#dma-cells")
++DEFINE_SIMPLE_PROP(power_domains, "power-domains", "#power-domain-cells")
++DEFINE_SIMPLE_PROP(hwlocks, "hwlocks", "#hwlock-cells")
++DEFINE_SIMPLE_PROP(extcon, "extcon", NULL)
++DEFINE_SIMPLE_PROP(interrupts_extended, "interrupts-extended",
++					"#interrupt-cells")
++DEFINE_SIMPLE_PROP(nvmem_cells, "nvmem-cells", NULL)
++DEFINE_SIMPLE_PROP(phys, "phys", "#phy-cells")
++DEFINE_SIMPLE_PROP(wakeup_parent, "wakeup-parent", NULL)
++DEFINE_SIMPLE_PROP(pinctrl0, "pinctrl-0", NULL)
++DEFINE_SIMPLE_PROP(pinctrl1, "pinctrl-1", NULL)
++DEFINE_SIMPLE_PROP(pinctrl2, "pinctrl-2", NULL)
++DEFINE_SIMPLE_PROP(pinctrl3, "pinctrl-3", NULL)
++DEFINE_SIMPLE_PROP(pinctrl4, "pinctrl-4", NULL)
++DEFINE_SIMPLE_PROP(pinctrl5, "pinctrl-5", NULL)
++DEFINE_SIMPLE_PROP(pinctrl6, "pinctrl-6", NULL)
++DEFINE_SIMPLE_PROP(pinctrl7, "pinctrl-7", NULL)
++DEFINE_SIMPLE_PROP(pinctrl8, "pinctrl-8", NULL)
++DEFINE_SUFFIX_PROP(regulators, "-supply", NULL)
++DEFINE_SUFFIX_PROP(gpio, "-gpio", "#gpio-cells")
++DEFINE_SUFFIX_PROP(gpios, "-gpios", "#gpio-cells")
++
++static struct device_node *parse_iommu_maps(struct device_node *np,
++					    const char *prop_name, int index)
++{
++	if (strcmp(prop_name, "iommu-map"))
++		return NULL;
++
++	return of_parse_phandle(np, prop_name, (index * 4) + 1);
++}
++
++static const struct supplier_bindings of_supplier_bindings[] = {
++	{ .parse_prop = parse_clocks, },
++	{ .parse_prop = parse_interconnects, },
++	{ .parse_prop = parse_iommus, },
++	{ .parse_prop = parse_iommu_maps, },
++	{ .parse_prop = parse_mboxes, },
++	{ .parse_prop = parse_io_channels, },
++	{ .parse_prop = parse_interrupt_parent, },
++	{ .parse_prop = parse_dmas, },
++	{ .parse_prop = parse_power_domains, },
++	{ .parse_prop = parse_hwlocks, },
++	{ .parse_prop = parse_extcon, },
++	{ .parse_prop = parse_interrupts_extended, },
++	{ .parse_prop = parse_nvmem_cells, },
++	{ .parse_prop = parse_phys, },
++	{ .parse_prop = parse_wakeup_parent, },
++	{ .parse_prop = parse_pinctrl0, },
++	{ .parse_prop = parse_pinctrl1, },
++	{ .parse_prop = parse_pinctrl2, },
++	{ .parse_prop = parse_pinctrl3, },
++	{ .parse_prop = parse_pinctrl4, },
++	{ .parse_prop = parse_pinctrl5, },
++	{ .parse_prop = parse_pinctrl6, },
++	{ .parse_prop = parse_pinctrl7, },
++	{ .parse_prop = parse_pinctrl8, },
++	{ .parse_prop = parse_regulators, },
++	{ .parse_prop = parse_gpio, },
++	{ .parse_prop = parse_gpios, },
++	{}
++};
++
++/**
++ * of_link_property - Create device links to suppliers listed in a property
++ * @dev: Consumer device
++ * @con_np: The consumer device tree node which contains the property
++ * @prop_name: Name of property to be parsed
++ *
++ * This function checks if the property @prop_name that is present in the
++ * @con_np device tree node is one of the known common device tree bindings
++ * that list phandles to suppliers. If @prop_name isn't one, this function
++ * doesn't do anything.
++ *
++ * If @prop_name is one, this function attempts to create device links from the
++ * consumer device @dev to all the devices of the suppliers listed in
++ * @prop_name.
++ *
++ * Any failed attempt to create a device link will NOT result in an immediate
++ * return.  of_link_property() must create links to all the available supplier
++ * devices even when attempts to create a link to one or more suppliers fail.
++ */
++static int of_link_property(struct device *dev, struct device_node *con_np,
++			     const char *prop_name)
++{
++	struct device_node *phandle;
++	const struct supplier_bindings *s = of_supplier_bindings;
++	unsigned int i = 0;
++	bool matched = false;
++	int ret = 0;
++	u32 dl_flags;
++
++	if (dev->of_node == con_np)
++		dl_flags = DL_FLAG_AUTOPROBE_CONSUMER;
++	else
++		dl_flags = DL_FLAG_SYNC_STATE_ONLY;
++
++	/* Do not stop at first failed link, link all available suppliers. */
++	while (!matched && s->parse_prop) {
++		while ((phandle = s->parse_prop(con_np, prop_name, i))) {
++			matched = true;
++			i++;
++			if (of_link_to_phandle(dev, phandle, dl_flags)
++								== -EAGAIN)
++				ret = -EAGAIN;
++			of_node_put(phandle);
++		}
++		s++;
++	}
++	return ret;
++}
++
++static int of_link_to_suppliers(struct device *dev,
++				  struct device_node *con_np)
++{
++	struct device_node *child;
++	struct property *p;
++	int ret = 0;
++
++	for_each_property_of_node(con_np, p)
++		if (of_link_property(dev, con_np, p->name))
++			ret = -ENODEV;
++
++	for_each_available_child_of_node(con_np, child)
++		if (of_link_to_suppliers(dev, child) && !ret)
++			ret = -EAGAIN;
++
++	return ret;
++}
++
++static bool of_devlink = true;
++core_param(of_devlink, of_devlink, bool, 0);
++
++static int of_fwnode_add_links(const struct fwnode_handle *fwnode,
++			       struct device *dev)
++{
++	if (!of_devlink)
++		return 0;
++
++	if (unlikely(!is_of_node(fwnode)))
++		return 0;
++
++	return of_link_to_suppliers(dev, to_of_node(fwnode));
++}
++
+ const struct fwnode_operations of_fwnode_ops = {
+ 	.get = of_fwnode_get,
+ 	.put = of_fwnode_put,
+@@ -1001,5 +1361,6 @@ const struct fwnode_operations of_fwnode_ops = {
+ 	.graph_get_remote_endpoint = of_fwnode_graph_get_remote_endpoint,
+ 	.graph_get_port_parent = of_fwnode_graph_get_port_parent,
+ 	.graph_parse_endpoint = of_fwnode_graph_parse_endpoint,
++	.add_links = of_fwnode_add_links,
+ };
+ EXPORT_SYMBOL_GPL(of_fwnode_ops);
+-- 
+2.17.1
+

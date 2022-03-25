@@ -1,0 +1,1019 @@
+From 4780f71a5f391fcd896c6d97b344b45a0f8cdc03 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:15:04 +0800
+Subject: [PATCH 64/93] add sunxi drm heap driver
+
+---
+ drivers/sunxi_drm_heap/Kconfig                |   8 +
+ drivers/sunxi_drm_heap/Makefile               |   1 +
+ drivers/sunxi_drm_heap/sunxi_drm_heap.c       | 183 +++++++++++
+ .../sunxi_drm_heap/third-party/heap-helpers.c | 270 ++++++++++++++++
+ .../sunxi_drm_heap/third-party/heap-helpers.h |  53 +++
+ drivers/sunxi_drm_heap/third-party/heap.c     | 306 ++++++++++++++++++
+ drivers/sunxi_drm_heap/third-party/heap.h     |  61 ++++
+ .../sunxi_drm_heap/third-party/uapi-heap.h    |  62 ++++
+ 8 files changed, 944 insertions(+)
+ create mode 100644 drivers/sunxi_drm_heap/Kconfig
+ create mode 100644 drivers/sunxi_drm_heap/Makefile
+ create mode 100644 drivers/sunxi_drm_heap/sunxi_drm_heap.c
+ create mode 100644 drivers/sunxi_drm_heap/third-party/heap-helpers.c
+ create mode 100644 drivers/sunxi_drm_heap/third-party/heap-helpers.h
+ create mode 100644 drivers/sunxi_drm_heap/third-party/heap.c
+ create mode 100644 drivers/sunxi_drm_heap/third-party/heap.h
+ create mode 100644 drivers/sunxi_drm_heap/third-party/uapi-heap.h
+
+diff --git a/drivers/sunxi_drm_heap/Kconfig b/drivers/sunxi_drm_heap/Kconfig
+new file mode 100644
+index 000000000..f186dc773
+--- /dev/null
++++ b/drivers/sunxi_drm_heap/Kconfig
+@@ -0,0 +1,8 @@
++# SPDX-License-Identifier: GPL-2.0-only
++# Generic Trusted Execution Environment Configuration
++config SUNXI_DRM_HEAP
++	tristate "sunxi drm heap"
++	depends on TEE
++	help
++	  This implements a interface for sunxi drm management
++
+diff --git a/drivers/sunxi_drm_heap/Makefile b/drivers/sunxi_drm_heap/Makefile
+new file mode 100644
+index 000000000..d9ba4731c
+--- /dev/null
++++ b/drivers/sunxi_drm_heap/Makefile
+@@ -0,0 +1 @@
++obj-$(CONFIG_SUNXI_DRM_HEAP) += sunxi_drm_heap.o
+diff --git a/drivers/sunxi_drm_heap/sunxi_drm_heap.c b/drivers/sunxi_drm_heap/sunxi_drm_heap.c
+new file mode 100644
+index 000000000..7273a04fa
+--- /dev/null
++++ b/drivers/sunxi_drm_heap/sunxi_drm_heap.c
+@@ -0,0 +1,183 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * DMABUF System heap exporter
++ *
++ * Copyright (C) 2011 Google, Inc.
++ * Copyright (C) 2019 Linaro Ltd.
++ */
++
++#include <linux/dma-buf.h>
++#include <linux/dma-mapping.h>
++#include <linux/err.h>
++#include <linux/highmem.h>
++#include <linux/mm.h>
++#include <linux/module.h>
++#include <linux/scatterlist.h>
++#include <linux/slab.h>
++#include <linux/sched/signal.h>
++#include <asm/page.h>
++
++#include <linux/sunxi-smc.h>
++#include <linux/genalloc.h>
++
++/*
++ * google gonna use these source in GKI 2.0 (suppose
++ * to lunch in 2021), so these source may encounter
++ * namespace conflict in less than one year, just
++ * inclue them with all function static, so no conflict
++ * with other sources
++ * 							--ouyangkun 2020.09.12
++ */
++#include "third-party/heap.c"
++#include "third-party/heap-helpers.c"
++
++struct dma_heap *sunxi_drm_heap;
++struct {
++	unsigned long drm_base;
++	size_t drm_size;
++	unsigned long tee_base;
++} sunxi_drm_info;
++
++static struct gen_pool *drm_pool;
++
++static void sunxi_drm_heap_free(struct heap_helper_buffer *buffer)
++{
++//	printk("release buffer at 0x%llx with size 0x%lx\n",
++//	       (unsigned long long)buffer->vaddr, buffer->size);
++	gen_pool_free(drm_pool, (unsigned long)buffer->vaddr, buffer->size);
++	kfree(buffer->pages);
++	kfree(buffer);
++}
++
++static int sunxi_drm_heap_allocate(struct dma_heap *heap, unsigned long len,
++				   unsigned long fd_flags,
++				   unsigned long heap_flags)
++{
++	struct heap_helper_buffer *helper_buffer;
++	struct dma_buf *dmabuf;
++	int ret = -ENOMEM;
++	pgoff_t pg;
++	unsigned long va;
++	struct page *allocated_page;
++
++	helper_buffer = kzalloc(sizeof(*helper_buffer), GFP_KERNEL);
++	if (!helper_buffer)
++		return -ENOMEM;
++
++	init_heap_helper_buffer(helper_buffer, sunxi_drm_heap_free);
++	helper_buffer->heap = heap;
++	helper_buffer->size = len;
++
++	helper_buffer->pagecount = len / PAGE_SIZE;
++
++	va = gen_pool_alloc(drm_pool, helper_buffer->pagecount * PAGE_SIZE);
++	if (!va) {
++		ret = -ENOMEM;
++		goto err0;
++	}
++	helper_buffer->vaddr = (void *)va;
++//	printk("allocate buffer at 0x%llx (phy 0x%llx) with size 0x%lx\n",
++//	       (unsigned long long)helper_buffer->vaddr,
++//	       gen_pool_virt_to_phys(drm_pool, va), helper_buffer->size);
++
++	helper_buffer->pages =
++		kmalloc_array(helper_buffer->pagecount,
++			      sizeof(*helper_buffer->pages), GFP_KERNEL);
++	if (!helper_buffer->pages) {
++		ret = -ENOMEM;
++		goto err0;
++	}
++
++	allocated_page = phys_to_page(gen_pool_virt_to_phys(drm_pool, va));
++	for (pg = 0; pg < helper_buffer->pagecount; pg++) {
++		helper_buffer->pages[pg] = &allocated_page[pg];
++	}
++
++	/* create the dmabuf */
++	dmabuf = heap_helper_export_dmabuf(helper_buffer, fd_flags);
++	if (IS_ERR(dmabuf)) {
++		ret = PTR_ERR(dmabuf);
++		goto err1;
++	}
++
++	helper_buffer->dmabuf = dmabuf;
++
++	ret = dma_buf_fd(dmabuf, fd_flags);
++	if (ret < 0) {
++		dma_buf_put(dmabuf);
++		/* just return, as put will call release and that will free */
++		return ret;
++	}
++
++	return ret;
++
++err1:
++	while (pg > 0)
++		__free_page(helper_buffer->pages[--pg]);
++	kfree(helper_buffer->pages);
++err0:
++	kfree(helper_buffer);
++
++	return ret;
++}
++
++int sunxi_drm_heap_phys(struct dma_heap *heap, int dma_buf_fd,
++			unsigned int *tee_addr, unsigned int *phy_addr, unsigned int *len)
++{
++	struct dma_buf *dma_buf;
++	struct heap_helper_buffer *helper;
++	dma_buf = dma_buf_get(dma_buf_fd);
++	helper = (struct heap_helper_buffer *)dma_buf->priv;
++	*phy_addr = page_to_phys(helper->pages[0]);
++	*tee_addr = *phy_addr - sunxi_drm_info.drm_base +
++		sunxi_drm_info.tee_base;
++	*len = helper->size;
++	dma_buf_put(dma_buf);
++	return 0;
++}
++
++static const struct dma_heap_ops sunxi_drm_heap_ops = {
++	.allocate = sunxi_drm_heap_allocate,
++	.phys = sunxi_drm_heap_phys,
++};
++
++static int sunxi_drm_heap_create(void)
++{
++	struct dma_heap_export_info exp_info;
++	int ret = 0;
++	ret = optee_probe_drm_configure(&sunxi_drm_info.drm_base,
++					&sunxi_drm_info.drm_size,
++					&sunxi_drm_info.tee_base);
++	if (ret)
++		return ret;
++	drm_pool = gen_pool_create(PAGE_SHIFT, -1);
++	if (!drm_pool)
++		return -ENOMEM;
++	gen_pool_set_algo(drm_pool, gen_pool_best_fit, NULL);
++	ret = gen_pool_add_virt(drm_pool, sunxi_drm_info.tee_base,
++				sunxi_drm_info.drm_base,
++				sunxi_drm_info.drm_size, -1);
++	if (ret)
++		goto exit;
++	ret = dma_heap_init();
++	if (ret)
++		goto exit;
++
++	exp_info.name = "sunxi_drm_heap";
++	exp_info.ops = &sunxi_drm_heap_ops;
++	exp_info.priv = NULL;
++
++	sunxi_drm_heap = dma_heap_add(&exp_info);
++	if (IS_ERR(sunxi_drm_heap)) {
++		ret = PTR_ERR(sunxi_drm_heap);
++		goto exit;
++	}
++
++	return 0;
++
++exit:
++	gen_pool_destroy(drm_pool);
++	return ret;
++}
++module_init(sunxi_drm_heap_create);
++MODULE_LICENSE("GPL v2");
+diff --git a/drivers/sunxi_drm_heap/third-party/heap-helpers.c b/drivers/sunxi_drm_heap/third-party/heap-helpers.c
+new file mode 100644
+index 000000000..a5a7a4f03
+--- /dev/null
++++ b/drivers/sunxi_drm_heap/third-party/heap-helpers.c
+@@ -0,0 +1,270 @@
++// SPDX-License-Identifier: GPL-2.0
++#include <linux/device.h>
++#include <linux/dma-buf.h>
++#include <linux/err.h>
++#include <linux/highmem.h>
++#include <linux/idr.h>
++#include <linux/list.h>
++#include <linux/slab.h>
++#include <linux/uaccess.h>
++#include <linux/vmalloc.h>
++#include "uapi-heap.h"
++
++#include "heap-helpers.h"
++
++static void init_heap_helper_buffer(struct heap_helper_buffer *buffer,
++				    void (*free)(struct heap_helper_buffer *))
++{
++	buffer->priv_virt = NULL;
++	mutex_init(&buffer->lock);
++	buffer->vmap_cnt = 0;
++	buffer->vaddr = NULL;
++	buffer->pagecount = 0;
++	buffer->pages = NULL;
++	INIT_LIST_HEAD(&buffer->attachments);
++	buffer->free = free;
++}
++
++static struct dma_buf *
++heap_helper_export_dmabuf(struct heap_helper_buffer *buffer, int fd_flags)
++{
++	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
++
++	exp_info.ops = &heap_helper_ops;
++	exp_info.size = buffer->size;
++	exp_info.flags = fd_flags;
++	exp_info.priv = buffer;
++
++	return dma_buf_export(&exp_info);
++}
++
++static void *dma_heap_map_kernel(struct heap_helper_buffer *buffer)
++{
++	void *vaddr;
++
++	vaddr = vmap(buffer->pages, buffer->pagecount, VM_MAP, PAGE_KERNEL);
++	if (!vaddr)
++		return ERR_PTR(-ENOMEM);
++
++	return vaddr;
++}
++
++static void dma_heap_buffer_destroy(struct heap_helper_buffer *buffer)
++{
++	if (buffer->vmap_cnt > 0) {
++		WARN(1, "%s: buffer still mapped in the kernel\n", __func__);
++		vunmap(buffer->vaddr);
++	}
++
++	buffer->free(buffer);
++}
++
++static void *dma_heap_buffer_vmap_get(struct heap_helper_buffer *buffer)
++{
++	void *vaddr;
++
++	if (buffer->vmap_cnt) {
++		buffer->vmap_cnt++;
++		return buffer->vaddr;
++	}
++	vaddr = dma_heap_map_kernel(buffer);
++	if (IS_ERR(vaddr))
++		return vaddr;
++	buffer->vaddr = vaddr;
++	buffer->vmap_cnt++;
++	return vaddr;
++}
++
++static void dma_heap_buffer_vmap_put(struct heap_helper_buffer *buffer)
++{
++	if (!--buffer->vmap_cnt) {
++		vunmap(buffer->vaddr);
++		buffer->vaddr = NULL;
++	}
++}
++
++struct dma_heaps_attachment {
++	struct device *dev;
++	struct sg_table table;
++	struct list_head list;
++};
++
++static int dma_heap_attach(struct dma_buf *dmabuf,
++			   struct dma_buf_attachment *attachment)
++{
++	struct dma_heaps_attachment *a;
++	struct heap_helper_buffer *buffer = dmabuf->priv;
++	int ret;
++
++	a = kzalloc(sizeof(*a), GFP_KERNEL);
++	if (!a)
++		return -ENOMEM;
++
++	ret = sg_alloc_table_from_pages(&a->table, buffer->pages,
++					buffer->pagecount, 0,
++					buffer->pagecount << PAGE_SHIFT,
++					GFP_KERNEL);
++	if (ret) {
++		kfree(a);
++		return ret;
++	}
++
++	a->dev = attachment->dev;
++	INIT_LIST_HEAD(&a->list);
++
++	attachment->priv = a;
++
++	mutex_lock(&buffer->lock);
++	list_add(&a->list, &buffer->attachments);
++	mutex_unlock(&buffer->lock);
++
++	return 0;
++}
++
++static void dma_heap_detach(struct dma_buf *dmabuf,
++			    struct dma_buf_attachment *attachment)
++{
++	struct dma_heaps_attachment *a = attachment->priv;
++	struct heap_helper_buffer *buffer = dmabuf->priv;
++
++	mutex_lock(&buffer->lock);
++	list_del(&a->list);
++	mutex_unlock(&buffer->lock);
++
++	sg_free_table(&a->table);
++	kfree(a);
++}
++
++static struct sg_table *
++dma_heap_map_dma_buf(struct dma_buf_attachment *attachment,
++		     enum dma_data_direction direction)
++{
++	struct dma_heaps_attachment *a = attachment->priv;
++	struct sg_table *table;
++
++	table = &a->table;
++
++	if (!dma_map_sg(attachment->dev, table->sgl, table->nents, direction))
++		table = ERR_PTR(-ENOMEM);
++	return table;
++}
++
++static void dma_heap_unmap_dma_buf(struct dma_buf_attachment *attachment,
++				   struct sg_table *table,
++				   enum dma_data_direction direction)
++{
++	dma_unmap_sg(attachment->dev, table->sgl, table->nents, direction);
++}
++
++static vm_fault_t dma_heap_vm_fault(struct vm_fault *vmf)
++{
++	struct vm_area_struct *vma = vmf->vma;
++	struct heap_helper_buffer *buffer = vma->vm_private_data;
++
++	if (vmf->pgoff > buffer->pagecount)
++		return VM_FAULT_SIGBUS;
++
++	vmf->page = buffer->pages[vmf->pgoff];
++	get_page(vmf->page);
++
++	return 0;
++}
++
++static const struct vm_operations_struct dma_heap_vm_ops = {
++	.fault = dma_heap_vm_fault,
++};
++
++static int dma_heap_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
++{
++	struct heap_helper_buffer *buffer = dmabuf->priv;
++
++	if ((vma->vm_flags & (VM_SHARED | VM_MAYSHARE)) == 0)
++		return -EINVAL;
++
++	vma->vm_ops = &dma_heap_vm_ops;
++	vma->vm_private_data = buffer;
++
++	return 0;
++}
++
++static void dma_heap_dma_buf_release(struct dma_buf *dmabuf)
++{
++	struct heap_helper_buffer *buffer = dmabuf->priv;
++
++	dma_heap_buffer_destroy(buffer);
++}
++
++static int dma_heap_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
++					     enum dma_data_direction direction)
++{
++	struct heap_helper_buffer *buffer = dmabuf->priv;
++	struct dma_heaps_attachment *a;
++	int ret = 0;
++
++	mutex_lock(&buffer->lock);
++
++	if (buffer->vmap_cnt)
++		invalidate_kernel_vmap_range(buffer->vaddr, buffer->size);
++
++	list_for_each_entry (a, &buffer->attachments, list) {
++		dma_sync_sg_for_cpu(a->dev, a->table.sgl, a->table.nents,
++				    direction);
++	}
++	mutex_unlock(&buffer->lock);
++
++	return ret;
++}
++
++static int dma_heap_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
++					   enum dma_data_direction direction)
++{
++	struct heap_helper_buffer *buffer = dmabuf->priv;
++	struct dma_heaps_attachment *a;
++
++	mutex_lock(&buffer->lock);
++
++	if (buffer->vmap_cnt)
++		flush_kernel_vmap_range(buffer->vaddr, buffer->size);
++
++	list_for_each_entry (a, &buffer->attachments, list) {
++		dma_sync_sg_for_device(a->dev, a->table.sgl, a->table.nents,
++				       direction);
++	}
++	mutex_unlock(&buffer->lock);
++
++	return 0;
++}
++
++static void *dma_heap_dma_buf_vmap(struct dma_buf *dmabuf)
++{
++	struct heap_helper_buffer *buffer = dmabuf->priv;
++	void *vaddr;
++
++	mutex_lock(&buffer->lock);
++	vaddr = dma_heap_buffer_vmap_get(buffer);
++	mutex_unlock(&buffer->lock);
++
++	return vaddr;
++}
++
++static void dma_heap_dma_buf_vunmap(struct dma_buf *dmabuf, void *vaddr)
++{
++	struct heap_helper_buffer *buffer = dmabuf->priv;
++
++	mutex_lock(&buffer->lock);
++	dma_heap_buffer_vmap_put(buffer);
++	mutex_unlock(&buffer->lock);
++}
++
++const struct dma_buf_ops heap_helper_ops = {
++	.map_dma_buf = dma_heap_map_dma_buf,
++	.unmap_dma_buf = dma_heap_unmap_dma_buf,
++	.mmap = dma_heap_mmap,
++	.release = dma_heap_dma_buf_release,
++	.attach = dma_heap_attach,
++	.detach = dma_heap_detach,
++	.begin_cpu_access = dma_heap_dma_buf_begin_cpu_access,
++	.end_cpu_access = dma_heap_dma_buf_end_cpu_access,
++	.vmap = dma_heap_dma_buf_vmap,
++	.vunmap = dma_heap_dma_buf_vunmap,
++};
+diff --git a/drivers/sunxi_drm_heap/third-party/heap-helpers.h b/drivers/sunxi_drm_heap/third-party/heap-helpers.h
+new file mode 100644
+index 000000000..f40dc14d2
+--- /dev/null
++++ b/drivers/sunxi_drm_heap/third-party/heap-helpers.h
+@@ -0,0 +1,53 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * DMABUF Heaps helper code
++ *
++ * Copyright (C) 2011 Google, Inc.
++ * Copyright (C) 2019 Linaro Ltd.
++ */
++
++#ifndef _HEAP_HELPERS_H
++#define _HEAP_HELPERS_H
++
++#include "heap.h"
++#include <linux/list.h>
++
++/**
++ * struct heap_helper_buffer - helper buffer metadata
++ * @heap:		back pointer to the heap the buffer came from
++ * @dmabuf:		backing dma-buf for this buffer
++ * @size:		size of the buffer
++ * @priv_virt		pointer to heap specific private value
++ * @lock		mutext to protect the data in this structure
++ * @vmap_cnt		count of vmap references on the buffer
++ * @vaddr		vmap'ed virtual address
++ * @pagecount		number of pages in the buffer
++ * @pages		list of page pointers
++ * @attachments		list of device attachments
++ *
++ * @free		heap callback to free the buffer
++ */
++struct heap_helper_buffer {
++	struct dma_heap *heap;
++	struct dma_buf *dmabuf;
++	size_t size;
++
++	void *priv_virt;
++	struct mutex lock;
++	int vmap_cnt;
++	void *vaddr;
++	pgoff_t pagecount;
++	struct page **pages;
++	struct list_head attachments;
++
++	void (*free)(struct heap_helper_buffer *buffer);
++};
++
++static void init_heap_helper_buffer(struct heap_helper_buffer *buffer,
++				    void (*free)(struct heap_helper_buffer *));
++
++static struct dma_buf *
++heap_helper_export_dmabuf(struct heap_helper_buffer *buffer, int fd_flags);
++
++extern const struct dma_buf_ops heap_helper_ops;
++#endif /* _HEAP_HELPERS_H */
+diff --git a/drivers/sunxi_drm_heap/third-party/heap.c b/drivers/sunxi_drm_heap/third-party/heap.c
+new file mode 100644
+index 000000000..eba0abf6c
+--- /dev/null
++++ b/drivers/sunxi_drm_heap/third-party/heap.c
+@@ -0,0 +1,306 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Framework for userspace DMA-BUF allocations
++ *
++ * Copyright (C) 2011 Google, Inc.
++ * Copyright (C) 2019 Linaro Ltd.
++ */
++
++#include <linux/cdev.h>
++#include <linux/debugfs.h>
++#include <linux/device.h>
++#include <linux/dma-buf.h>
++#include <linux/err.h>
++#include <linux/xarray.h>
++#include <linux/list.h>
++#include <linux/slab.h>
++#include <linux/uaccess.h>
++#include <linux/syscalls.h>
++#include "heap.h"
++#include "uapi-heap.h"
++
++#define DEVNAME "sunxi_heap"
++
++#define NUM_HEAP_MINORS 128
++
++/**
++ * struct dma_heap - represents a dmabuf heap in the system
++ * @name:		used for debugging/device-node name
++ * @ops:		ops struct for this heap
++ * @heap_devt		heap device node
++ * @list		list head connecting to list of heaps
++ * @heap_cdev		heap char device
++ *
++ * Represents a heap of memory from which buffers can be made.
++ */
++struct dma_heap {
++	const char *name;
++	const struct dma_heap_ops *ops;
++	void *priv;
++	dev_t heap_devt;
++	struct list_head list;
++	struct cdev heap_cdev;
++};
++
++static LIST_HEAD(heap_list);
++static DEFINE_MUTEX(heap_list_lock);
++static dev_t dma_heap_devt;
++static struct class *dma_heap_class;
++static DEFINE_XARRAY_ALLOC(dma_heap_minors);
++
++static int dma_heap_buffer_alloc(struct dma_heap *heap, size_t len,
++				 unsigned int fd_flags, unsigned int heap_flags)
++{
++	/*
++	 * Allocations from all heaps have to begin
++	 * and end on page boundaries.
++	 */
++	len = PAGE_ALIGN(len);
++	if (!len)
++		return -EINVAL;
++
++	return heap->ops->allocate(heap, len, fd_flags, heap_flags);
++}
++
++static int dma_heap_open(struct inode *inode, struct file *file)
++{
++	struct dma_heap *heap;
++
++	heap = xa_load(&dma_heap_minors, iminor(inode));
++	if (!heap) {
++		pr_err("dma_heap: minor %d unknown.\n", iminor(inode));
++		return -ENODEV;
++	}
++
++	/* instance data as context */
++	file->private_data = heap;
++	nonseekable_open(inode, file);
++
++	return 0;
++}
++
++static long dma_heap_ioctl_allocate(struct file *file, void *data)
++{
++	struct dma_heap_allocation_data *heap_allocation = data;
++	struct dma_heap *heap = file->private_data;
++	int fd;
++
++	if (heap_allocation->fd)
++		return -EINVAL;
++
++	if (heap_allocation->fd_flags & ~DMA_HEAP_VALID_FD_FLAGS)
++		return -EINVAL;
++
++	if (heap_allocation->heap_flags & ~DMA_HEAP_VALID_HEAP_FLAGS)
++		return -EINVAL;
++
++	fd = dma_heap_buffer_alloc(heap, heap_allocation->len,
++				   heap_allocation->fd_flags,
++				   heap_allocation->heap_flags);
++	if (fd < 0)
++		return fd;
++
++	heap_allocation->fd = fd;
++
++	return 0;
++}
++
++static long dma_heap_ioctl_phys(struct file *file, void *data)
++{
++	sunxi_drm_phys_data *phys_data = data;
++	struct dma_heap *heap = file->private_data;
++	return heap->ops->phys(heap, phys_data->handle, &phys_data->tee_addr, &phys_data->phys_addr,
++			       &phys_data->size);
++}
++
++unsigned int dma_heap_ioctl_cmds[] = {
++	DMA_HEAP_IOC_ALLOC,
++	DMA_HEAP_GET_ADDR,
++};
++
++static long dma_heap_ioctl(struct file *file, unsigned int ucmd,
++			   unsigned long arg)
++{
++	char stack_kdata[128];
++	char *kdata = stack_kdata;
++	unsigned int kcmd;
++	unsigned int in_size, out_size, drv_size, ksize;
++	int nr = _IOC_NR(ucmd);
++	int ret = 0;
++
++	if (nr >= ARRAY_SIZE(dma_heap_ioctl_cmds))
++		return -EINVAL;
++
++	/* Get the kernel ioctl cmd that matches */
++	kcmd = dma_heap_ioctl_cmds[nr];
++
++	/* Figure out the delta between user cmd size and kernel cmd size */
++	drv_size = _IOC_SIZE(kcmd);
++	out_size = _IOC_SIZE(ucmd);
++	in_size = out_size;
++	if ((ucmd & kcmd & IOC_IN) == 0)
++		in_size = 0;
++	if ((ucmd & kcmd & IOC_OUT) == 0)
++		out_size = 0;
++	ksize = max(max(in_size, out_size), drv_size);
++
++	/* If necessary, allocate buffer for ioctl argument */
++	if (ksize > sizeof(stack_kdata)) {
++		kdata = kmalloc(ksize, GFP_KERNEL);
++		if (!kdata)
++			return -ENOMEM;
++	}
++
++	if (copy_from_user(kdata, (void __user *)arg, in_size) != 0) {
++		ret = -EFAULT;
++		goto err;
++	}
++
++	/* zero out any difference between the kernel/user structure size */
++	if (ksize > in_size)
++		memset(kdata + in_size, 0, ksize - in_size);
++
++	switch (kcmd) {
++	case DMA_HEAP_IOC_ALLOC:
++		ret = dma_heap_ioctl_allocate(file, kdata);
++		break;
++	case DMA_HEAP_GET_ADDR:
++		ret = dma_heap_ioctl_phys(file, kdata);
++		break;
++	default:
++		return -ENOTTY;
++	}
++
++	if (copy_to_user((void __user *)arg, kdata, out_size) != 0)
++		ret = -EFAULT;
++err:
++	if (kdata != stack_kdata)
++		kfree(kdata);
++	return ret;
++}
++
++static const struct file_operations dma_heap_fops = {
++	.owner = THIS_MODULE,
++	.open = dma_heap_open,
++	.unlocked_ioctl = dma_heap_ioctl,
++#ifdef CONFIG_COMPAT
++	.compat_ioctl = dma_heap_ioctl,
++#endif
++};
++
++/**
++ * dma_heap_get_drvdata() - get per-subdriver data for the heap
++ * @heap: DMA-Heap to retrieve private data for
++ *
++ * Returns:
++ * The per-subdriver data for the heap.
++ */
++//static void *dma_heap_get_drvdata(struct dma_heap *heap)
++//{
++//	return heap->priv;
++//}
++
++static struct dma_heap *
++dma_heap_add(const struct dma_heap_export_info *exp_info)
++{
++	struct dma_heap *heap, *h, *err_ret;
++	struct device *dev_ret;
++	unsigned int minor;
++	int ret;
++
++	if (!exp_info->name || !strcmp(exp_info->name, "")) {
++		pr_err("dma_heap: Cannot add heap without a name\n");
++		return ERR_PTR(-EINVAL);
++	}
++
++	if (!exp_info->ops || !exp_info->ops->allocate) {
++		pr_err("dma_heap: Cannot add heap with invalid ops struct\n");
++		return ERR_PTR(-EINVAL);
++	}
++
++	/* check the name is unique */
++	mutex_lock(&heap_list_lock);
++	list_for_each_entry (h, &heap_list, list) {
++		if (!strcmp(h->name, exp_info->name)) {
++			mutex_unlock(&heap_list_lock);
++			pr_err("dma_heap: Already registered heap named %s\n",
++			       exp_info->name);
++			return ERR_PTR(-EINVAL);
++		}
++	}
++	mutex_unlock(&heap_list_lock);
++
++	heap = kzalloc(sizeof(*heap), GFP_KERNEL);
++	if (!heap)
++		return ERR_PTR(-ENOMEM);
++
++	heap->name = exp_info->name;
++	heap->ops = exp_info->ops;
++	heap->priv = exp_info->priv;
++
++	/* Find unused minor number */
++	ret = xa_alloc(&dma_heap_minors, &minor, heap,
++		       XA_LIMIT(0, NUM_HEAP_MINORS - 1), GFP_KERNEL);
++	if (ret < 0) {
++		pr_err("dma_heap: Unable to get minor number for heap\n");
++		err_ret = ERR_PTR(ret);
++		goto err0;
++	}
++
++	/* Create device */
++	heap->heap_devt = MKDEV(MAJOR(dma_heap_devt), minor);
++
++	cdev_init(&heap->heap_cdev, &dma_heap_fops);
++	ret = cdev_add(&heap->heap_cdev, heap->heap_devt, 1);
++	if (ret < 0) {
++		pr_err("dma_heap: Unable to add char device\n");
++		err_ret = ERR_PTR(ret);
++		goto err1;
++	}
++
++	dev_ret = device_create(dma_heap_class, NULL, heap->heap_devt, NULL,
++				heap->name);
++	if (IS_ERR(dev_ret)) {
++		pr_err("dma_heap: Unable to create device\n");
++		err_ret = ERR_CAST(dev_ret);
++		goto err2;
++	}
++	/* Add heap to the list */
++	mutex_lock(&heap_list_lock);
++	list_add(&heap->list, &heap_list);
++	mutex_unlock(&heap_list_lock);
++
++	return heap;
++
++err2:
++	cdev_del(&heap->heap_cdev);
++err1:
++	xa_erase(&dma_heap_minors, minor);
++err0:
++	kfree(heap);
++	return err_ret;
++}
++
++//static char *dma_heap_devnode(struct device *dev, umode_t *mode)
++//{
++//	return kasprintf(GFP_KERNEL, "sunxi_heap/%s", dev_name(dev));
++//}
++
++static int dma_heap_init(void)
++{
++	int ret;
++
++	ret = alloc_chrdev_region(&dma_heap_devt, 0, NUM_HEAP_MINORS, DEVNAME);
++	if (ret)
++		return ret;
++
++	dma_heap_class = class_create(THIS_MODULE, DEVNAME);
++	if (IS_ERR(dma_heap_class)) {
++		unregister_chrdev_region(dma_heap_devt, NUM_HEAP_MINORS);
++		return PTR_ERR(dma_heap_class);
++	}
++	//dma_heap_class->devnode = dma_heap_devnode;
++
++	return 0;
++}
++//subsys_initcall(dma_heap_init);
+diff --git a/drivers/sunxi_drm_heap/third-party/heap.h b/drivers/sunxi_drm_heap/third-party/heap.h
+new file mode 100644
+index 000000000..2b811a997
+--- /dev/null
++++ b/drivers/sunxi_drm_heap/third-party/heap.h
+@@ -0,0 +1,61 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * DMABUF Heaps Allocation Infrastructure
++ *
++ * Copyright (C) 2011 Google, Inc.
++ * Copyright (C) 2019 Linaro Ltd.
++ */
++
++#ifndef _DMA_HEAPS_H
++#define _DMA_HEAPS_H
++
++#include <linux/cdev.h>
++#include <linux/types.h>
++
++struct dma_heap;
++
++/**
++ * struct dma_heap_ops - ops to operate on a given heap
++ * @allocate:		allocate dmabuf and return fd
++ *
++ * allocate returns dmabuf fd  on success, -errno on error.
++ */
++struct dma_heap_ops {
++	int (*allocate)(struct dma_heap *heap, unsigned long len,
++			unsigned long fd_flags, unsigned long heap_flags);
++	int (*phys)(struct dma_heap *heap, int dma_buf_fd,
++		    unsigned int *tee_addr, unsigned int *phy_addr,
++		    unsigned int *len);
++};
++
++/**
++ * struct dma_heap_export_info - information needed to export a new dmabuf heap
++ * @name:	used for debugging/device-node name
++ * @ops:	ops struct for this heap
++ * @priv:	heap exporter private data
++ *
++ * Information needed to export a new dmabuf heap.
++ */
++struct dma_heap_export_info {
++	const char *name;
++	const struct dma_heap_ops *ops;
++	void *priv;
++};
++
++/**
++ * dma_heap_get_drvdata() - get per-heap driver data
++ * @heap: DMA-Heap to retrieve private data for
++ *
++ * Returns:
++ * The per-heap data for the heap.
++ */
++//static void *dma_heap_get_drvdata(struct dma_heap *heap);
++
++/**
++ * dma_heap_add - adds a heap to dmabuf heaps
++ * @exp_info:		information needed to register this heap
++ */
++static struct dma_heap *
++dma_heap_add(const struct dma_heap_export_info *exp_info);
++
++#endif /* _DMA_HEAPS_H */
+diff --git a/drivers/sunxi_drm_heap/third-party/uapi-heap.h b/drivers/sunxi_drm_heap/third-party/uapi-heap.h
+new file mode 100644
+index 000000000..3c52b023e
+--- /dev/null
++++ b/drivers/sunxi_drm_heap/third-party/uapi-heap.h
+@@ -0,0 +1,62 @@
++/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++/*
++ * DMABUF Heaps Userspace API
++ *
++ * Copyright (C) 2011 Google, Inc.
++ * Copyright (C) 2019 Linaro Ltd.
++ */
++#ifndef _UAPI_LINUX_DMABUF_POOL_H
++#define _UAPI_LINUX_DMABUF_POOL_H
++
++#include <linux/ioctl.h>
++#include <linux/types.h>
++
++/**
++ * DOC: DMABUF Heaps Userspace API
++ */
++
++/* Valid FD_FLAGS are O_CLOEXEC, O_RDONLY, O_WRONLY, O_RDWR */
++#define DMA_HEAP_VALID_FD_FLAGS (O_CLOEXEC | O_ACCMODE)
++
++/* Currently no heap flags */
++#define DMA_HEAP_VALID_HEAP_FLAGS (0)
++
++/**
++ * struct dma_heap_allocation_data - metadata passed from userspace for
++ *                                      allocations
++ * @len:		size of the allocation
++ * @fd:			will be populated with a fd which provides the
++ *			handle to the allocated dma-buf
++ * @fd_flags:		file descriptor flags used when allocating
++ * @heap_flags:		flags passed to heap
++ *
++ * Provided by userspace as an argument to the ioctl
++ */
++struct dma_heap_allocation_data {
++	__u64 len;
++	__u32 fd;
++	__u32 fd_flags;
++	__u64 heap_flags;
++};
++
++typedef struct sunxi_drm_phys_data {
++	int handle;
++	unsigned int tee_addr;
++	unsigned int phys_addr;
++	unsigned int size;
++} sunxi_drm_phys_data;
++
++#define DMA_HEAP_IOC_MAGIC 'H'
++
++/**
++ * DOC: DMA_HEAP_IOC_ALLOC - allocate memory from pool
++ *
++ * Takes a dma_heap_allocation_data struct and returns it with the fd field
++ * populated with the dmabuf handle of the allocation.
++ */
++#define DMA_HEAP_IOC_ALLOC                                                     \
++	_IOWR(DMA_HEAP_IOC_MAGIC, 0x0, struct dma_heap_allocation_data)
++
++#define DMA_HEAP_GET_ADDR _IOWR(DMA_HEAP_IOC_MAGIC, 0x1, sunxi_drm_phys_data)
++
++#endif /* _UAPI_LINUX_DMABUF_POOL_H */
+-- 
+2.17.1
+

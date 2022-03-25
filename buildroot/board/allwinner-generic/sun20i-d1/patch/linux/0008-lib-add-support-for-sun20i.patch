@@ -1,0 +1,526 @@
+From 35f71388c803e48ccfeb5bd68fe436b428a3dba7 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 16:37:04 +0800
+Subject: [PATCH 08/93] lib: add support for sun20i
+
+---
+ lib/Kconfig.debug       | 19 +++++++--
+ lib/Makefile            |  3 +-
+ lib/dynamic_debug.c     | 29 ++++++++++----
+ lib/list_sort.c         |  8 ++--
+ lib/test_stackinit.c    | 28 +++++++++-----
+ lib/vdso/Kconfig        |  4 --
+ lib/vdso/gettimeofday.c | 85 ++++++++++++++++++-----------------------
+ lib/vsprintf.c          | 40 +++++++++++++------
+ 8 files changed, 129 insertions(+), 87 deletions(-)
+
+diff --git a/lib/Kconfig.debug b/lib/Kconfig.debug
+index 6118d9911..c3f1a2414 100644
+--- a/lib/Kconfig.debug
++++ b/lib/Kconfig.debug
+@@ -98,7 +98,8 @@ config DYNAMIC_DEBUG
+ 	bool "Enable dynamic printk() support"
+ 	default n
+ 	depends on PRINTK
+-	depends on DEBUG_FS
++	depends on (DEBUG_FS || PROC_FS)
++	select DYNAMIC_DEBUG_CORE
+ 	help
+ 
+ 	  Compiles debug level messages into the kernel, which would not
+@@ -116,8 +117,9 @@ config DYNAMIC_DEBUG
+ 	  Usage:
+ 
+ 	  Dynamic debugging is controlled via the 'dynamic_debug/control' file,
+-	  which is contained in the 'debugfs' filesystem. Thus, the debugfs
+-	  filesystem must first be mounted before making use of this feature.
++	  which is contained in the 'debugfs' filesystem or procfs.
++	  Thus, the debugfs or procfs filesystem must first be mounted before
++	  making use of this feature.
+ 	  We refer the control file as: <debugfs>/dynamic_debug/control. This
+ 	  file contains a list of the debug statements that can be enabled. The
+ 	  format for each line of the file is:
+@@ -164,6 +166,17 @@ config DYNAMIC_DEBUG
+ 	  See Documentation/admin-guide/dynamic-debug-howto.rst for additional
+ 	  information.
+ 
++config DYNAMIC_DEBUG_CORE
++	bool "Enable core function of dynamic debug support"
++	depends on PRINTK
++	depends on (DEBUG_FS || PROC_FS)
++	help
++	  Enable core functional support of dynamic debug. It is useful
++	  when you want to tie dynamic debug to your kernel modules with
++	  DYNAMIC_DEBUG_MODULE defined for each of them, especially for
++	  the case of embedded system where the kernel image size is
++	  sensitive for people.
++
+ endmenu # "printk and dmesg options"
+ 
+ menu "Compile-time checks and compiler options"
+diff --git a/lib/Makefile b/lib/Makefile
+index c5892807e..31600c980 100644
+--- a/lib/Makefile
++++ b/lib/Makefile
+@@ -86,6 +86,7 @@ obj-$(CONFIG_TEST_KMOD) += test_kmod.o
+ obj-$(CONFIG_TEST_DEBUG_VIRTUAL) += test_debug_virtual.o
+ obj-$(CONFIG_TEST_MEMCAT_P) += test_memcat_p.o
+ obj-$(CONFIG_TEST_OBJAGG) += test_objagg.o
++CFLAGS_test_stackinit.o += $(call cc-disable-warning, switch-unreachable)
+ obj-$(CONFIG_TEST_STACKINIT) += test_stackinit.o
+ obj-$(CONFIG_TEST_BLACKHOLE_DEV) += test_blackhole_dev.o
+ obj-$(CONFIG_TEST_MEMINIT) += test_meminit.o
+@@ -180,7 +181,7 @@ lib-$(CONFIG_GENERIC_BUG) += bug.o
+ 
+ obj-$(CONFIG_HAVE_ARCH_TRACEHOOK) += syscall.o
+ 
+-obj-$(CONFIG_DYNAMIC_DEBUG) += dynamic_debug.o
++obj-$(CONFIG_DYNAMIC_DEBUG_CORE) += dynamic_debug.o
+ 
+ obj-$(CONFIG_NLATTR) += nlattr.o
+ 
+diff --git a/lib/dynamic_debug.c b/lib/dynamic_debug.c
+index ccf05719b..f428e838a 100644
+--- a/lib/dynamic_debug.c
++++ b/lib/dynamic_debug.c
+@@ -990,15 +990,25 @@ static void ddebug_remove_all_tables(void)
+ 
+ static __initdata int ddebug_init_success;
+ 
+-static int __init dynamic_debug_init_debugfs(void)
++static int __init dynamic_debug_init_control(void)
+ {
+-	struct dentry *dir;
++	struct proc_dir_entry *procfs_dir;
++	struct dentry *debugfs_dir;
+ 
+ 	if (!ddebug_init_success)
+ 		return -ENODEV;
+ 
+-	dir = debugfs_create_dir("dynamic_debug", NULL);
+-	debugfs_create_file("control", 0644, dir, NULL, &ddebug_proc_fops);
++	/* Create the control file in debugfs if it is enabled */
++	if (debugfs_initialized()) {
++		debugfs_dir = debugfs_create_dir("dynamic_debug", NULL);
++		debugfs_create_file("control", 0644, debugfs_dir, NULL,
++				    &ddebug_proc_fops);
++	}
++
++	/* Also create the control file in procfs */
++	procfs_dir = proc_mkdir("dynamic_debug", NULL);
++	if (procfs_dir)
++		proc_create("control", 0644, procfs_dir, &ddebug_proc_fops);
+ 
+ 	return 0;
+ }
+@@ -1013,8 +1023,13 @@ static int __init dynamic_debug_init(void)
+ 	int verbose_bytes = 0;
+ 
+ 	if (__start___verbose == __stop___verbose) {
+-		pr_warn("_ddebug table is empty in a CONFIG_DYNAMIC_DEBUG build\n");
+-		return 1;
++		if (IS_ENABLED(CONFIG_DYNAMIC_DEBUG)) {
++			pr_warn("_ddebug table is empty in a CONFIG_DYNAMIC_DEBUG build\n");
++			return 1;
++		}
++		pr_info("Ignore empty _ddebug table in a CONFIG_DYNAMIC_DEBUG_CORE build\n");
++		ddebug_init_success = 1;
++		return 0;
+ 	}
+ 	iter = __start___verbose;
+ 	modname = iter->modname;
+@@ -1076,4 +1091,4 @@ static int __init dynamic_debug_init(void)
+ early_initcall(dynamic_debug_init);
+ 
+ /* Debugfs setup must be done later */
+-fs_initcall(dynamic_debug_init_debugfs);
++fs_initcall(dynamic_debug_init_control);
+diff --git a/lib/list_sort.c b/lib/list_sort.c
+index 52f0c258c..b14accf4e 100644
+--- a/lib/list_sort.c
++++ b/lib/list_sort.c
+@@ -8,7 +8,7 @@
+ #include <linux/list.h>
+ 
+ typedef int __attribute__((nonnull(2,3))) (*cmp_func)(void *,
+-		struct list_head const *, struct list_head const *);
++		struct list_head *, struct list_head *);
+ 
+ /*
+  * Returns a list organized in an intermediate format suited
+@@ -227,7 +227,7 @@ void list_sort(void *priv, struct list_head *head,
+ 		if (likely(bits)) {
+ 			struct list_head *a = *tail, *b = a->prev;
+ 
+-			a = merge(priv, (cmp_func)cmp, b, a);
++			a = merge(priv, cmp, b, a);
+ 			/* Install the merged result in place of the inputs */
+ 			a->prev = b->prev;
+ 			*tail = a;
+@@ -249,10 +249,10 @@ void list_sort(void *priv, struct list_head *head,
+ 
+ 		if (!next)
+ 			break;
+-		list = merge(priv, (cmp_func)cmp, pending, list);
++		list = merge(priv, cmp, pending, list);
+ 		pending = next;
+ 	}
+ 	/* The final merge, rebuilding prev links */
+-	merge_final(priv, (cmp_func)cmp, head, pending, list);
++	merge_final(priv, cmp, head, pending, list);
+ }
+ EXPORT_SYMBOL(list_sort);
+diff --git a/lib/test_stackinit.c b/lib/test_stackinit.c
+index 2d7d257a4..f93b1e145 100644
+--- a/lib/test_stackinit.c
++++ b/lib/test_stackinit.c
+@@ -92,8 +92,9 @@ static bool range_contains(char *haystack_start, size_t haystack_size,
+  * @var_type: type to be tested for zeroing initialization
+  * @which: is this a SCALAR, STRING, or STRUCT type?
+  * @init_level: what kind of initialization is performed
++ * @xfail: is this test expected to fail?
+  */
+-#define DEFINE_TEST_DRIVER(name, var_type, which)		\
++#define DEFINE_TEST_DRIVER(name, var_type, which, xfail)	\
+ /* Returns 0 on success, 1 on failure. */			\
+ static noinline __init int test_ ## name (void)			\
+ {								\
+@@ -139,13 +140,14 @@ static noinline __init int test_ ## name (void)			\
+ 	for (sum = 0, i = 0; i < target_size; i++)		\
+ 		sum += (check_buf[i] == 0xFF);			\
+ 								\
+-	if (sum == 0)						\
++	if (sum == 0) {						\
+ 		pr_info(#name " ok\n");				\
+-	else							\
+-		pr_warn(#name " FAIL (uninit bytes: %d)\n",	\
+-			sum);					\
+-								\
+-	return (sum != 0);					\
++		return 0;					\
++	} else {						\
++		pr_warn(#name " %sFAIL (uninit bytes: %d)\n",	\
++			(xfail) ? "X" : "", sum);		\
++		return (xfail) ? 0 : 1;				\
++	}							\
+ }
+ #define DEFINE_TEST(name, var_type, which, init_level)		\
+ /* no-op to force compiler into ignoring "uninitialized" vars */\
+@@ -189,7 +191,7 @@ static noinline __init int leaf_ ## name(unsigned long sp,	\
+ 								\
+ 	return (int)buf[0] | (int)buf[sizeof(buf) - 1];		\
+ }								\
+-DEFINE_TEST_DRIVER(name, var_type, which)
++DEFINE_TEST_DRIVER(name, var_type, which, 0)
+ 
+ /* Structure with no padding. */
+ struct test_packed {
+@@ -326,8 +328,14 @@ static noinline __init int leaf_switch_2_none(unsigned long sp, bool fill,
+ 	return __leaf_switch_none(2, fill);
+ }
+ 
+-DEFINE_TEST_DRIVER(switch_1_none, uint64_t, SCALAR);
+-DEFINE_TEST_DRIVER(switch_2_none, uint64_t, SCALAR);
++/*
++ * These are expected to fail for most configurations because neither
++ * GCC nor Clang have a way to perform initialization of variables in
++ * non-code areas (i.e. in a switch statement before the first "case").
++ * https://bugs.llvm.org/show_bug.cgi?id=44916
++ */
++DEFINE_TEST_DRIVER(switch_1_none, uint64_t, SCALAR, 1);
++DEFINE_TEST_DRIVER(switch_2_none, uint64_t, SCALAR, 1);
+ 
+ static int __init test_stackinit_init(void)
+ {
+diff --git a/lib/vdso/Kconfig b/lib/vdso/Kconfig
+index 9fe698ff6..e53a672bf 100644
+--- a/lib/vdso/Kconfig
++++ b/lib/vdso/Kconfig
+@@ -3,8 +3,6 @@
+ config HAVE_GENERIC_VDSO
+ 	bool
+ 
+-if HAVE_GENERIC_VDSO
+-
+ config GENERIC_GETTIMEOFDAY
+ 	bool
+ 	help
+@@ -23,5 +21,3 @@ config GENERIC_COMPAT_VDSO
+ 	bool
+ 	help
+ 	  This config option enables the compat VDSO layer.
+-
+-endif
+diff --git a/lib/vdso/gettimeofday.c b/lib/vdso/gettimeofday.c
+index 45f57fd2d..4f82b7abe 100644
+--- a/lib/vdso/gettimeofday.c
++++ b/lib/vdso/gettimeofday.c
+@@ -2,30 +2,9 @@
+ /*
+  * Generic userspace implementations of gettimeofday() and similar.
+  */
+-#include <linux/compiler.h>
+-#include <linux/math64.h>
+-#include <linux/time.h>
+-#include <linux/kernel.h>
+-#include <linux/hrtimer_defs.h>
+ #include <vdso/datapage.h>
+ #include <vdso/helpers.h>
+ 
+-/*
+- * The generic vDSO implementation requires that gettimeofday.h
+- * provides:
+- * - __arch_get_vdso_data(): to get the vdso datapage.
+- * - __arch_get_hw_counter(): to get the hw counter based on the
+- *   clock_mode.
+- * - gettimeofday_fallback(): fallback for gettimeofday.
+- * - clock_gettime_fallback(): fallback for clock_gettime.
+- * - clock_getres_fallback(): fallback for clock_getres.
+- */
+-#ifdef ENABLE_COMPAT_VDSO
+-#include <asm/vdso/compat_gettimeofday.h>
+-#else
+-#include <asm/vdso/gettimeofday.h>
+-#endif /* ENABLE_COMPAT_VDSO */
+-
+ #ifndef vdso_calc_delta
+ /*
+  * Default implementation which works for all sane clocksources. That
+@@ -38,13 +17,24 @@ u64 vdso_calc_delta(u64 cycles, u64 last, u64 mask, u32 mult)
+ }
+ #endif
+ 
+-static int do_hres(const struct vdso_data *vd, clockid_t clk,
++#ifndef __arch_vdso_hres_capable
++static inline bool __arch_vdso_hres_capable(void)
++{
++	return true;
++}
++#endif
++
++static __always_inline int do_hres(const struct vdso_data *vd, clockid_t clk,
+ 		   struct __kernel_timespec *ts)
+ {
+ 	const struct vdso_timestamp *vdso_ts = &vd->basetime[clk];
+ 	u64 cycles, last, sec, ns;
+ 	u32 seq;
+ 
++	/* Allows to compile the high resolution parts out */
++	if (!__arch_vdso_hres_capable())
++		return -1;
++
+ 	do {
+ 		seq = vdso_read_begin(vd);
+ 		cycles = __arch_get_hw_counter(vd->clock_mode);
+@@ -68,8 +58,8 @@ static int do_hres(const struct vdso_data *vd, clockid_t clk,
+ 	return 0;
+ }
+ 
+-static void do_coarse(const struct vdso_data *vd, clockid_t clk,
+-		      struct __kernel_timespec *ts)
++static __always_inline int do_coarse(const struct vdso_data *vd, clockid_t clk,
++				     struct __kernel_timespec *ts)
+ {
+ 	const struct vdso_timestamp *vdso_ts = &vd->basetime[clk];
+ 	u32 seq;
+@@ -79,6 +69,8 @@ static void do_coarse(const struct vdso_data *vd, clockid_t clk,
+ 		ts->tv_sec = vdso_ts->sec;
+ 		ts->tv_nsec = vdso_ts->nsec;
+ 	} while (unlikely(vdso_read_retry(vd, seq)));
++
++	return 0;
+ }
+ 
+ static __maybe_unused int
+@@ -96,15 +88,16 @@ __cvdso_clock_gettime_common(clockid_t clock, struct __kernel_timespec *ts)
+ 	 * clocks are handled in the VDSO directly.
+ 	 */
+ 	msk = 1U << clock;
+-	if (likely(msk & VDSO_HRES)) {
+-		return do_hres(&vd[CS_HRES_COARSE], clock, ts);
+-	} else if (msk & VDSO_COARSE) {
+-		do_coarse(&vd[CS_HRES_COARSE], clock, ts);
+-		return 0;
+-	} else if (msk & VDSO_RAW) {
+-		return do_hres(&vd[CS_RAW], clock, ts);
+-	}
+-	return -1;
++	if (likely(msk & VDSO_HRES))
++		vd = &vd[CS_HRES_COARSE];
++	else if (msk & VDSO_COARSE)
++		return do_coarse(&vd[CS_HRES_COARSE], clock, ts);
++	else if (msk & VDSO_RAW)
++		vd = &vd[CS_RAW];
++	else
++		return -1;
++
++	return do_hres(vd, clock, ts);
+ }
+ 
+ static __maybe_unused int
+@@ -117,6 +110,7 @@ __cvdso_clock_gettime(clockid_t clock, struct __kernel_timespec *ts)
+ 	return 0;
+ }
+ 
++#ifdef BUILD_VDSO32
+ static __maybe_unused int
+ __cvdso_clock_gettime32(clockid_t clock, struct old_timespec32 *res)
+ {
+@@ -133,12 +127,13 @@ __cvdso_clock_gettime32(clockid_t clock, struct old_timespec32 *res)
+ 		ret = clock_gettime_fallback(clock, &ts);
+ #endif
+ 
+-	if (likely(!ret)) {
+-		res->tv_sec = ts.tv_sec;
+-		res->tv_nsec = ts.tv_nsec;
+-	}
++	/* For ret == 0 */
++	res->tv_sec = ts.tv_sec;
++	res->tv_nsec = ts.tv_nsec;
++
+ 	return ret;
+ }
++#endif /* BUILD_VDSO32 */
+ 
+ static __maybe_unused int
+ __cvdso_gettimeofday(struct __kernel_old_timeval *tv, struct timezone *tz)
+@@ -181,7 +176,6 @@ static __maybe_unused
+ int __cvdso_clock_getres_common(clockid_t clock, struct __kernel_timespec *res)
+ {
+ 	const struct vdso_data *vd = __arch_get_vdso_data();
+-	u64 hrtimer_res;
+ 	u32 msk;
+ 	u64 ns;
+ 
+@@ -189,27 +183,21 @@ int __cvdso_clock_getres_common(clockid_t clock, struct __kernel_timespec *res)
+ 	if (unlikely((u32) clock >= MAX_CLOCKS))
+ 		return -1;
+ 
+-	hrtimer_res = READ_ONCE(vd[CS_HRES_COARSE].hrtimer_res);
+ 	/*
+ 	 * Convert the clockid to a bitmask and use it to check which
+ 	 * clocks are handled in the VDSO directly.
+ 	 */
+ 	msk = 1U << clock;
+-	if (msk & VDSO_HRES) {
++	if (msk & (VDSO_HRES | VDSO_RAW)) {
+ 		/*
+ 		 * Preserves the behaviour of posix_get_hrtimer_res().
+ 		 */
+-		ns = hrtimer_res;
++		ns = READ_ONCE(vd[CS_HRES_COARSE].hrtimer_res);
+ 	} else if (msk & VDSO_COARSE) {
+ 		/*
+ 		 * Preserves the behaviour of posix_get_coarse_res().
+ 		 */
+ 		ns = LOW_RES_NSEC;
+-	} else if (msk & VDSO_RAW) {
+-		/*
+-		 * Preserves the behaviour of posix_get_hrtimer_res().
+-		 */
+-		ns = hrtimer_res;
+ 	} else {
+ 		return -1;
+ 	}
+@@ -221,6 +209,7 @@ int __cvdso_clock_getres_common(clockid_t clock, struct __kernel_timespec *res)
+ 	return 0;
+ }
+ 
++static __maybe_unused
+ int __cvdso_clock_getres(clockid_t clock, struct __kernel_timespec *res)
+ {
+ 	int ret = __cvdso_clock_getres_common(clock, res);
+@@ -230,6 +219,7 @@ int __cvdso_clock_getres(clockid_t clock, struct __kernel_timespec *res)
+ 	return 0;
+ }
+ 
++#ifdef BUILD_VDSO32
+ static __maybe_unused int
+ __cvdso_clock_getres_time32(clockid_t clock, struct old_timespec32 *res)
+ {
+@@ -246,10 +236,11 @@ __cvdso_clock_getres_time32(clockid_t clock, struct old_timespec32 *res)
+ 		ret = clock_getres_fallback(clock, &ts);
+ #endif
+ 
+-	if (likely(!ret && res)) {
++	if (likely(res)) {
+ 		res->tv_sec = ts.tv_sec;
+ 		res->tv_nsec = ts.tv_nsec;
+ 	}
+ 	return ret;
+ }
++#endif /* BUILD_VDSO32 */
+ #endif /* VDSO_HAS_CLOCK_GETRES */
+diff --git a/lib/vsprintf.c b/lib/vsprintf.c
+index fb4af7314..bbfba455c 100644
+--- a/lib/vsprintf.c
++++ b/lib/vsprintf.c
+@@ -738,6 +738,32 @@ static int __init initialize_ptr_random(void)
+ 	return ret;
+ }
+ early_initcall(initialize_ptr_random);
++ 
++static inline int __ptr_to_hashval(const void *ptr, unsigned long *hashval_out)
++{
++	unsigned long hashval;
++
++	if (static_branch_unlikely(&not_filled_random_ptr_key))
++		return -EAGAIN;
++
++#ifdef CONFIG_64BIT
++	hashval = (unsigned long)siphash_1u64((u64)ptr, &ptr_key);
++	/*
++	 * Mask off the first 32 bits, this makes explicit that we have
++	 * modified the address (and 32 bits is plenty for a unique ID).
++	 */
++	hashval = hashval & 0xffffffff;
++#else
++	hashval = (unsigned long)siphash_1u32((u32)ptr, &ptr_key);
++#endif
++	*hashval_out = hashval;
++	return 0;
++}
++
++int ptr_to_hashval(const void *ptr, unsigned long *hashval_out)
++{
++	return __ptr_to_hashval(ptr, hashval_out);
++}
+ 
+ /* Maps a pointer to a 32 bit unique identifier. */
+ static char *ptr_to_id(char *buf, char *end, const void *ptr,
+@@ -745,6 +771,7 @@ static char *ptr_to_id(char *buf, char *end, const void *ptr,
+ {
+ 	const char *str = sizeof(ptr) == 8 ? "(____ptrval____)" : "(ptrval)";
+ 	unsigned long hashval;
++	int ret;
+ 
+ 	/*
+ 	 * Print the real pointer value for NULL and error pointers,
+@@ -759,22 +786,13 @@ static char *ptr_to_id(char *buf, char *end, const void *ptr,
+ 		return pointer_string(buf, end, (const void *)hashval, spec);
+ 	}
+ 
+-	if (static_branch_unlikely(&not_filled_random_ptr_key)) {
++	ret = __ptr_to_hashval(ptr, &hashval);
++	if (ret) {
+ 		spec.field_width = 2 * sizeof(ptr);
+ 		/* string length must be less than default_width */
+ 		return error_string(buf, end, str, spec);
+ 	}
+ 
+-#ifdef CONFIG_64BIT
+-	hashval = (unsigned long)siphash_1u64((u64)ptr, &ptr_key);
+-	/*
+-	 * Mask off the first 32 bits, this makes explicit that we have
+-	 * modified the address (and 32 bits is plenty for a unique ID).
+-	 */
+-	hashval = hashval & 0xffffffff;
+-#else
+-	hashval = (unsigned long)siphash_1u32((u32)ptr, &ptr_key);
+-#endif
+ 	return pointer_string(buf, end, (const void *)hashval, spec);
+ }
+ 
+-- 
+2.17.1
+

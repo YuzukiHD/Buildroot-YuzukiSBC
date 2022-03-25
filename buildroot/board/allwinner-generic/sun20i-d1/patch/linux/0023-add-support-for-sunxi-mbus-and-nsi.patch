@@ -1,0 +1,2400 @@
+From de013147853a1d8b5985d485df55d1ce3b4e3d2f Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 16:48:49 +0800
+Subject: [PATCH 23/93] add support for sunxi mbus and nsi
+
+---
+ drivers/bus/Kconfig      |   13 +
+ drivers/bus/Makefile     |    2 +
+ drivers/bus/sunxi_mbus.c | 1175 ++++++++++++++++++++++++++++++++++++++
+ drivers/bus/sunxi_nsi.c  | 1159 +++++++++++++++++++++++++++++++++++++
+ 4 files changed, 2349 insertions(+)
+ create mode 100644 drivers/bus/sunxi_mbus.c
+ create mode 100644 drivers/bus/sunxi_nsi.c
+
+diff --git a/drivers/bus/Kconfig b/drivers/bus/Kconfig
+index 47c2bb444..96a8616f3 100644
+--- a/drivers/bus/Kconfig
++++ b/drivers/bus/Kconfig
+@@ -134,6 +134,19 @@ config SUNXI_RSB
+ 	  with various RSB based devices, such as AXP223, AXP8XX PMICs,
+ 	  and AC100/AC200 ICs.
+ 
++config SUNXI_MBUS
++	tristate "SUNXI MBUS driver support"
++	depends on ARCH_SUNXI
++	select HWMON
++	help
++	  Driver supporting the mbus for sunxi platforms.
++
++config SUNXI_NSI
++	tristate "SUNXI NSI driver support"
++	  depends on ARCH_SUNXI
++	  help
++	  Driver supporting the mbus for sunxi platforms.
++
+ config TEGRA_ACONNECT
+ 	tristate "Tegra ACONNECT Bus Driver"
+ 	depends on ARCH_TEGRA_210_SOC
+diff --git a/drivers/bus/Makefile b/drivers/bus/Makefile
+index 16b43d346..a1e34fa30 100644
+--- a/drivers/bus/Makefile
++++ b/drivers/bus/Makefile
+@@ -24,6 +24,8 @@ obj-$(CONFIG_OMAP_OCP2SCP)	+= omap-ocp2scp.o
+ obj-$(CONFIG_QCOM_EBI2)		+= qcom-ebi2.o
+ obj-$(CONFIG_SUN50I_DE2_BUS)	+= sun50i-de2.o
+ obj-$(CONFIG_SUNXI_RSB)		+= sunxi-rsb.o
++obj-$(CONFIG_SUNXI_MBUS)	+= sunxi_mbus.o
++obj-$(CONFIG_SUNXI_NSI)  	+= sunxi_nsi.o
+ obj-$(CONFIG_SIMPLE_PM_BUS)	+= simple-pm-bus.o
+ obj-$(CONFIG_TEGRA_ACONNECT)	+= tegra-aconnect.o
+ obj-$(CONFIG_TEGRA_GMI)		+= tegra-gmi.o
+diff --git a/drivers/bus/sunxi_mbus.c b/drivers/bus/sunxi_mbus.c
+new file mode 100644
+index 000000000..480653883
+--- /dev/null
++++ b/drivers/bus/sunxi_mbus.c
+@@ -0,0 +1,1175 @@
++/*
++ * SUNXI MBUS driver
++ *
++ * Copyright (C) 2015 AllWinnertech Ltd.
++ * Author: xiafeng <xiafeng@allwinnertech.com>
++ *         Martin <wuyan@allwinnertech.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
++ * kind, whether express or implied; without even the implied warranty
++ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#include <linux/sunxi_mbus.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/of_address.h>
++#include <linux/slab.h>
++#include <linux/hwmon.h>
++#include <linux/hwmon-sysfs.h>
++#include <asm/cacheflush.h>
++//#include <asm/smp_plat.h>
++
++#define DRIVER_NAME                 "MBUS"
++#define DRIVER_NAME_PMU             DRIVER_NAME"_PMU"
++
++/* Time Measurement Register */
++#define MBUS_MAST_TMR_REG(n)        (0x000c)
++
++/* Master N Configuration Register 0 */
++/* Master N Configuration Register 1 */
++/* Master N BW Limit Register */
++#if IS_ENABLED(CONFIG_ARCH_SUN8IW20) || IS_ENABLED(CONFIG_ARCH_SUN50IW9) || IS_ENABLED(CONFIG_ARCH_SUN20IW1)
++#define MBUS_MAST_CFG0_REG(n)       (0x0210 + (0x10 * (n)))
++#define MBUS_MAST_CFG1_REG(n)       (0x0214 + (0x10 * (n)))
++#define MBUS_MAST_ABS_BWL_REG(n)    (0x0218 + (0x10 * (n)))
++#else
++#define MBUS_MAST_CFG0_REG(n)       (0x0010 + (0x8 * (n)))
++#define MBUS_MAST_CFG1_REG(n)       (0x0014 + (0x8 * (n)))
++#define MBUS_MAST_ABS_BWL_REG(n)    (0x0018 + (0x8 * (n)))
++#endif
++
++/* Bandwidth Window Configuration Register */
++#if IS_ENABLED(CONFIG_ARCH_SUN8IW20) || IS_ENABLED(CONFIG_ARCH_SUN50IW9) || IS_ENABLED(CONFIG_ARCH_SUN20IW1)
++#define MBUS_BW_CFG_REG             (0x0200)
++#else
++#define MBUS_BW_CFG_REG             (0x0090)
++#endif
++
++/* Master Access Enable Register 0 ~ 2 */
++/* 0:disable, 1:enable */
++#if IS_ENABLED(CONFIG_ARCH_SUN8IW20) || IS_ENABLED(CONFIG_ARCH_SUN50IW9) || IS_ENABLED(CONFIG_ARCH_SUN20IW1)
++#define MBUS_MAST_ACEN_CFG_REG(n)   (0x0020 + (0x04 * (n)))
++#else
++#define MBUS_MAST_ACEN_CFG_REG(n)   (0x0094 + (0x04 * (n)))
++#endif
++
++/* Some platform implement master access priority
++ * in register MBUS_MAST_CFG0_REG(n)
++ * register: Master Access Priority, 0:low, 1:hg
++ */
++#if (!IS_ENABLED(CONFIG_ARCH_SUN8IW20)) && (!IS_ENABLED(CONFIG_ARCH_SUN50IW9)) && (!IS_ENABLED(CONFIG_ARCH_SUN20IW1))
++#define MBUS_MAST_ACPR_CFG_REG      (0x0098)
++#endif
++
++/* Master Counter General Configuration Register */
++/* Counter Enable, 0x1:enable all */
++#define MBUS_PMU_CNTEB_CFG_REG      (0x009c)
++
++/* BW Counter Register */
++/* Counter n = 0 ~ 7 */
++#define MBUS_PMU_CNT_REG(n)         (0x00a0 + (0x4 * (n)))
++
++/* Software Clock ON  Register 0: 0=open by hws */
++/* Software Clock OFF Register 0: 1=dis-access */
++#if IS_ENABLED(CONFIG_ARCH_SUN8IW20) || IS_ENABLED(CONFIG_ARCH_SUN50IW9) || IS_ENABLED(CONFIG_ARCH_SUN20IW1)
++#define MBUS_SW_CLK_ON_REG          (0x0030)
++#define MBUS_SW_CLK_OFF_REG         (0x0040)
++#else
++#define MBUS_SW_CLK_ON_REG          (0x00c0)
++#define MBUS_SW_CLK_OFF_REG         (0x00c4)
++//#define MBUS_RESOURCE_SIZE          (MBUS_SW_CLK_OFF_REG)
++#endif
++
++/* For MBUS_MAST_CFG0_REG */
++#define MBUS_QOS_MAX            0x03  /* bit mask of MASTER_N_QOS_VALUE */
++#define MBUS_WT_MAX             0x0f  /* bit mask of MASTER_N_WAIT_TIME */
++#define MBUS_ACS_MAX            0x0ff /* bit mask of COMMAND_NUMBER (access commands sequence) */
++#define MBUS_BWL_MAX            0x0ffff  /* bit mask of BANDWIDTH_LIMIT_0 */
++#define MBUS_BWLEN_SHIFT        0   /* bit shift of BANDWIDTH_LIMIT_ENABLE. 0:dis */
++#define MBUS_PRI_SHIFT          1   /* bit shift of MASTER_N_ACCESS_PRIORITY. 0:low */
++#define MBUS_QOS_SHIFT          2   /* bit shift of MASTER_N_QOS_VALUE. 0:lowest, 3:highest */
++#define MBUS_WT_SHIFT           4   /* bit shift of MASTER_N_WAIT_TIME */
++#define MBUS_ACS_SHIFT          8   /* bit shift of COMMAND_NUMBER */
++#define MBUS_BWL0_SHIFT         16  /* bit shift of BANDWIDTH_LIMIT_0. 0: no limit */
++
++/* For MBUS_MAST_CFG1_REG */
++#define MBUS_BWL1_SHIFT         0   /* bit shift of BANDWIDTH_LIMIT_1 */
++#define MBUS_BWL2_SHIFT         16  /* bit shift of BANDWIDTH_LIMIT_2 */
++
++/* For MBUS_MAST_ABS_BWL_REG */
++#define MBUS_ABS_BWL_MAX        0x0fff  /* bit mask of LIMIT_BANDWIDTH */
++#define MBUS_BW_SATU_MAX        0x0fff  /* bit mask of BANDWIDTH_SATURATION */
++#define MBUS_ABS_BWL_SHIFT      16      /* bit shift of LIMIT_BANDWIDTH */
++#define MBUS_ABS_BWLEN_SHIFT    31      /* bit shift of BANDWIDTH_LIMIT_ENABLE */
++
++/* For MBUS_BW_CFG_REG */
++#define MBUS_BWSIZE_MAX         0x0f
++#define MBUS_BWEN_SHIFT         16
++
++/* MBUS PMU ids */
++/* See SDRAM Controller Spec: DRAMC BW Counter Register (offset:0xa0) */
++enum mbus_pmu {
++	MBUS_PMU_CPU        = 0,
++#if IS_ENABLED(CONFIG_ARCH_SUN8IW20) || IS_ENABLED(CONFIG_ARCH_SUN20IW1)
++	MBUS_PMU_RISCV_SYS  = 1,
++	MBUS_PMU_MAHB       = 2,
++	MBUS_PMU_DMA        = 3,
++	MBUS_PMU_VE         = 4,
++	MBUS_PMU_CE         = 5,
++	MBUS_PMU_TVD        = 6,
++	MBUS_PMU_CSI        = 7,
++	MBUS_PMU_DSP_SYS    = 8,
++	MBUS_PMU_G2D        = 9,
++	MBUS_PMU_DI         = 10,
++	MBUS_PMU_DE         = 11,
++	MBUS_PMU_IOMMU      = 12,
++	MBUS_PMU_OTH        = 14,
++	MBUS_PMU_TOTAL      = 15,
++	MBUS_PMU_MAX        = 16,
++#elif IS_ENABLED(CONFIG_ARCH_SUN50IW9)
++	MBUS_PMU_MAHB       = 1,
++	MBUS_PMU_DMA        = 2,
++	MBUS_PMU_VE         = 3,
++	MBUS_PMU_CE         = 4,
++	MBUS_PMU_DISP       = 5,
++	MBUS_PMU_CSI0       = 6,
++	MBUS_PMU_DI         = 7,
++	MBUS_PMU_CSI1       = 8,
++	MBUS_PMU_G2D        = 9,
++	MBUS_PMU_VE1        = 10,
++	MBUS_PMU_IOMMU      = 11,
++	MBUS_PMU_GPU        = 12,
++	MBUS_PMU_TOTAL      = 13,
++	MBUS_PMU_MAX        = 14,
++#else
++	/* ... */
++#endif
++};
++
++#define MBUS_PORT_PRI           (MBUS_PMU_MAX + 0)
++#define MBUS_PORT_QOS           (MBUS_PMU_MAX + 1)
++#define MBUS_PORT_WT            (MBUS_PMU_MAX + 2)
++#define MBUS_PORT_ACS           (MBUS_PMU_MAX + 3)
++#define MBUS_PORT_BWL0          (MBUS_PMU_MAX + 4)
++#define MBUS_PORT_BWL1          (MBUS_PMU_MAX + 5)
++#define MBUS_PORT_BWL2          (MBUS_PMU_MAX + 6)
++#define MBUS_PORT_BWLEN         (MBUS_PMU_MAX + 7)
++#define MBUS_PORT_ABS_BWLEN     (MBUS_PMU_MAX + 8)
++#define MBUS_PORT_ABS_BWL       (MBUS_PMU_MAX + 9)
++#define MBUS_PORT_BW_SATU       (MBUS_PMU_MAX + 10)
++
++struct sunxi_mbus_port {
++	void __iomem *base;
++	unsigned long phys;
++	struct device_node *dn;
++};
++
++static struct sunxi_mbus_port *ports;
++static void __iomem *mbus_ctrl_base;
++static unsigned long mbus_ctrl_phys;
++
++static DEFINE_MUTEX(mbus_seting);
++static DEFINE_MUTEX(mbus_pmureading);
++
++#define mbus_pmu_getstate() \
++	(readl_relaxed(mbus_ctrl_base + MBUS_PMU_CNTEB_CFG_REG) & 1)
++#define mbus_pmu_enable() \
++	writel_relaxed( \
++	((readl_relaxed(mbus_ctrl_base + MBUS_PMU_CNTEB_CFG_REG)) | 1), \
++		       mbus_ctrl_base + MBUS_PMU_CNTEB_CFG_REG)
++
++/**
++ * mbus_port_set_abs_bwlen() - enable a master absolutely bandwidth limit
++ * function
++ *
++ * @port: index of the port to setup
++ * @en: 0-disable, 1-enable
++ */
++int notrace mbus_port_set_abs_bwlen(enum mbus_port port, bool en)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	mutex_lock(&mbus_seting);
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_ABS_BWL_REG(port));
++	value &= ~(1U << MBUS_ABS_BWLEN_SHIFT);
++	writel_relaxed(value | (en << MBUS_ABS_BWLEN_SHIFT),
++			mbus_ctrl_base + MBUS_MAST_ABS_BWL_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_set_abs_bwlen);
++
++/**
++ * mbus_port_set_abs_bwl() - set a master absolutely bandwidth limit
++ *
++ * @bwl: the number of bandwidth limit
++ */
++int notrace mbus_port_set_abs_bwl(enum mbus_port port, unsigned int bwl)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	if (bwl > MBUS_ABS_BWL_MAX)
++		return -EPERM;
++
++	mutex_lock(&mbus_seting);
++	/* absolutely bwl, used when en BWL */
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_ABS_BWL_REG(port));
++	value &= ~(MBUS_ABS_BWL_MAX << MBUS_ABS_BWL_SHIFT);
++	writel_relaxed(value | (bwl << MBUS_ABS_BWL_SHIFT),
++			mbus_ctrl_base + MBUS_MAST_ABS_BWL_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_set_abs_bwl);
++
++/**
++ * mbus_port_set_bw_saturation() - set a master bandwidth saturation
++ *
++ * @bw_satu: the number of bandwidth saturation
++ */
++int notrace mbus_port_set_bw_saturation(enum mbus_port port,
++							unsigned int bw_satu)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	if (bw_satu > MBUS_BW_SATU_MAX)
++		return -EPERM;
++
++	mutex_lock(&mbus_seting);
++	/* absolutely bw_satu, used when en BWL */
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_ABS_BWL_REG(port));
++	value &= ~MBUS_BW_SATU_MAX;
++	writel_relaxed(value | bw_satu,
++		mbus_ctrl_base + MBUS_MAST_ABS_BWL_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_set_bw_saturation);
++
++/**
++ * mbus_port_setreqn() - enable a master bandwidth limit function
++ *
++ * @port: index of the port to setup
++ * @en: 0-disable, 1-enable
++ */
++int notrace mbus_port_setbwlen(enum mbus_port port, bool en)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	mutex_lock(&mbus_seting);
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	value &= ~(1 << MBUS_BWLEN_SHIFT);
++	writel_relaxed(value | (en << MBUS_BWLEN_SHIFT),
++		       mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_setbwlen);
++
++/**
++ * mbus_port_setthd() - set a master priority
++ *
++ * @pri, priority
++ */
++int notrace mbus_port_setpri(enum mbus_port port, bool pri)
++{
++	unsigned int value = 0;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	mutex_lock(&mbus_seting);
++#if (defined MBUS_MAST_ACPR_CFG_REG)
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_ACPR_CFG_REG);
++	value &= ~(1 << port);
++	writel_relaxed(value | (pri << port),
++			mbus_ctrl_base + MBUS_MAST_ACPR_CFG_REG);
++#else
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	value &= ~(1 << MBUS_PRI_SHIFT);
++	writel_relaxed(value | (pri << MBUS_PRI_SHIFT),
++			mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++#endif
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_setpri);
++
++/**
++ * mbus_port_setqos() - set a master QOS
++ *
++ * @qos: the qos value want to set
++ */
++int notrace mbus_port_setqos(enum mbus_port port, unsigned int qos)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	if (qos > MBUS_QOS_MAX)
++		return -EPERM;
++
++	mutex_lock(&mbus_seting);
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	value &= ~(MBUS_QOS_MAX << MBUS_QOS_SHIFT);
++	writel_relaxed(value | (qos << MBUS_QOS_SHIFT),
++		       mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_setqos);
++
++/**
++ * mbus_bw_setbw() - set a master wait time
++ *
++ * @wt: the wait time want to set, based on MCLK
++ */
++int notrace mbus_port_setwt(enum mbus_port port, unsigned int wt)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	if (wt > MBUS_WT_MAX)
++		return -EPERM;
++
++	mutex_lock(&mbus_seting);
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	value &= ~(MBUS_WT_MAX << MBUS_WT_SHIFT);
++	writel_relaxed(value | (wt << MBUS_WT_SHIFT),
++		       mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_setwt);
++
++/**
++ * mbus_bw_setams() - set a master access commands sequence
++ *
++ * @acs: the number of access commands sequency
++ */
++int notrace mbus_port_setacs(enum mbus_port port, unsigned int acs)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	if (acs > MBUS_ACS_MAX)
++		return -EPERM;
++
++	mutex_lock(&mbus_seting);
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	value &= ~(MBUS_ACS_MAX << MBUS_ACS_SHIFT);
++	writel_relaxed(value | (acs << MBUS_ACS_SHIFT),
++		       mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_setacs);
++
++/**
++ * mbus_bw_setbwl0() - function to set bandwidth limit0
++ *
++ * @bwl: the number of bandwidth limit
++ */
++int notrace mbus_port_setbwl0(enum mbus_port port, unsigned int bwl0)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	if (bwl0 > MBUS_BWL_MAX)
++		return -EPERM;
++
++	mutex_lock(&mbus_seting);
++	/* bwl0, used when BWL function enable */
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	value &= ~(MBUS_BWL_MAX << MBUS_BWL0_SHIFT);
++	writel_relaxed(value | (bwl0 << MBUS_BWL0_SHIFT),
++		       mbus_ctrl_base + MBUS_MAST_CFG0_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_setbwl0);
++
++/**
++ * mbus_bw_setbwl1() - set a master bandwidth limit1
++ *
++ * @bwl: the number of bandwidth limit
++ */
++int notrace mbus_port_setbwl1(enum mbus_port port, unsigned int bwl1)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	if (bwl1 > MBUS_BWL_MAX)
++		return -EPERM;
++
++	mutex_lock(&mbus_seting);
++	/* bwl1, used when en BWL */
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_CFG1_REG(port));
++	value &= ~(MBUS_BWL_MAX << MBUS_BWL1_SHIFT);
++	writel_relaxed(value | (bwl1 << MBUS_BWL1_SHIFT),
++		       mbus_ctrl_base + MBUS_MAST_CFG1_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_setbwl1);
++
++/**
++ * mbus_bw_setbwl2() - set a master bandwidth limit2
++ *
++ * @bwl: the number of bandwidth limit
++ */
++int notrace mbus_port_setbwl2(enum mbus_port port, unsigned int bwl2)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	if (bwl2 > MBUS_BWL_MAX)
++		return -EPERM;
++
++	mutex_lock(&mbus_seting);
++	/* bwl2, used when en BWL */
++	value = readl_relaxed(mbus_ctrl_base + MBUS_MAST_CFG1_REG(port));
++	value &= ~(MBUS_BWL_MAX << MBUS_BWL2_SHIFT);
++	writel_relaxed(value | (bwl2 << MBUS_BWL2_SHIFT),
++		       mbus_ctrl_base + MBUS_MAST_CFG1_REG(port));
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_setbwl2);
++
++/**
++ * mbus_bw_setbwl() - set a master bandwidth limit
++ *
++ * @bwl0/1/2: the number of bandwidth limit0/1/2
++ */
++int notrace mbus_port_setbwl(enum mbus_port port, unsigned int bwl0,
++			     unsigned int bwl1, unsigned int bwl2)
++{
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++
++	if ((bwl0 > MBUS_BWL_MAX) || (bwl1 > MBUS_BWL_MAX)
++	    || (bwl2 > MBUS_BWL_MAX))
++		return -EPERM;
++
++	mbus_port_setbwl0(port, bwl0);
++	mbus_port_setbwl1(port, bwl1);
++	mbus_port_setbwl2(port, bwl2);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_setbwl);
++
++/**
++ * mbus_bw_control() - set BandWidth limit window enable or disable
++ *
++ * @enable: if true enables the bwlw, if false disables it
++ */
++int notrace mbus_set_bwlwen(bool enable)
++{
++	unsigned int value;
++
++	mutex_lock(&mbus_seting);
++	value = readl_relaxed(mbus_ctrl_base + MBUS_BW_CFG_REG);
++
++	writel_relaxed(enable ? (value | (1 << MBUS_BWEN_SHIFT))
++		       : (value & ~(1 << MBUS_BWEN_SHIFT)),
++		       mbus_ctrl_base + MBUS_BW_CFG_REG);
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_set_bwlwen);
++
++/**
++ * mbus_bw_control() - set BandWidth limit window size
++ *
++ * @size: the size of bwl window, base on MCLK
++ */
++int notrace mbus_set_bwlwsiz(unsigned int size)
++{
++	unsigned int value;
++
++	mutex_lock(&mbus_seting);
++	value = readl_relaxed(mbus_ctrl_base + MBUS_BW_CFG_REG);
++	value &= ~MBUS_BWSIZE_MAX;
++	writel_relaxed(value | size, mbus_ctrl_base + MBUS_BW_CFG_REG);
++	mutex_unlock(&mbus_seting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_set_bwlwsiz);
++
++/**
++ * They are called by low-level power management code to disable slave
++ * interfaces snoops and DVM broadcast.
++ */
++
++/**
++ * mbus_port_control() - control a master port access DRAM
++ *
++ * @enable: if true enables the port, if false disables it
++ */
++static void notrace mbus_port_control(enum mbus_port port, bool enable)
++{
++	unsigned int value, reg, pos;
++
++	reg = MBUS_MAST_ACEN_CFG_REG(port/32);
++	pos = port%32;
++
++	/*
++	 * This function is called from power down procedures
++	 * and must not execute any instruction that might
++	 * cause the processor to be put in a quiescent state
++	 * (eg wfi). Hence, cpu_relax() can not be added to this
++	 * read loop to optimize power, since it might hide possibly
++	 * disruptive operations.
++	 */
++	mutex_lock(&mbus_seting);
++	value = readl_relaxed(mbus_ctrl_base + reg);
++	if (enable)
++		value |= (1 << pos);
++	else
++		value &= ~(1 << pos);
++	writel_relaxed(value, mbus_ctrl_base + reg);
++	mutex_unlock(&mbus_seting);
++}
++
++/**
++ * mbus_control_port_by_index() - control a master port by port index
++ *
++ * @port: port index previously retrieved with mbus_ace_get_port()
++ * @enable: if true enables the port, if false disables it
++ *
++ * Return:
++ *	0 on success
++ *	-ENODEV on port index out of range
++ *	-EPERM if operation carried out on an ACE PORT
++ */
++int notrace mbus_port_control_by_index(enum mbus_port port, bool enable)
++{
++	if (port >= MBUS_PORTS_MAX)
++		return -ENODEV;
++	/*
++	 * MBUS control for ports connected to CPUS is extremely fragile
++	 * and must be made to go through a specific.
++	 */
++
++	mbus_port_control(port, enable);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mbus_port_control_by_index);
++
++static const struct of_device_id sunxi_mbus_matches[] = {
++	{.compatible = "allwinner,sun8i-mbus", },
++	{.compatible = "allwinner,sun50i-mbus", },
++	{},
++};
++
++static int mbus_probe(void)
++{
++	int ret;
++	struct device_node *np;
++	struct resource res;
++
++	np = of_find_matching_node(NULL, sunxi_mbus_matches);
++	if (!np)
++		return -ENODEV;
++
++	ports = kcalloc(1, sizeof(*ports), GFP_KERNEL);
++	if (!ports)
++		return -ENOMEM;
++
++	ret = of_address_to_resource(np, 0, &res);
++	if (!ret) {
++		mbus_ctrl_base = ioremap(res.start, resource_size(&res));
++		mbus_ctrl_phys = res.start;
++
++	}
++	if (ret || !mbus_ctrl_base) {
++		WARN(1, "unable to ioremap mbus ctrl\n");
++		ret = -ENXIO;
++		goto memalloc_err;
++	}
++
++	/* the purpose freq of MBUS is 400M, has been configied by boot */
++
++	/* all the port is default opened */
++
++	/* set default bandwidth */
++
++	/* set default QOS */
++
++	/* set masters' request number sequency */
++
++	/* set masters' bandwidth limit0/1/2 */
++
++	/* sync_cache_w(&mbus_ctrl_base); */
++	/* sync_cache_w(&mbus_ctrl_phys); */
++	/* sync_cache_w(&ports); */
++	/* __sync_cache_range_w(ports, sizeof(*ports)); */
++
++memalloc_err:
++	kfree(ports);
++
++	return 0;
++}
++
++static int mbus_init_status = -EAGAIN;
++static DEFINE_MUTEX(mbus_proing);
++
++static int mbus_init(void)
++{
++	if (mbus_init_status != -EAGAIN)
++		return mbus_init_status;
++
++	mutex_lock(&mbus_proing);
++	if (mbus_init_status == -EAGAIN)
++		mbus_init_status = mbus_probe();
++	mutex_unlock(&mbus_proing);
++
++	return mbus_init_status;
++}
++
++/**
++ * To sort out early init calls ordering a helper function is provided to
++ * check if the mbus driver has beed initialized. Function check if the driver
++ * has been initialized, if not it calls the init function that probes
++ * the driver and updates the return value.
++ */
++bool mbus_probed(void)
++{
++	return mbus_init() == 0;
++}
++EXPORT_SYMBOL_GPL(mbus_probed);
++
++struct mbus_data {
++	struct device *hwmon_dev;
++	struct mutex update_lock;
++	bool valid;
++	unsigned long last_updated;
++	int kind;
++};
++
++static struct mbus_data hw_mbus_pmu;
++
++static unsigned int mbus_update_device(struct mbus_data *data,
++				       enum mbus_pmu port)
++{
++	unsigned int value = 0;
++
++	mutex_lock(&data->update_lock);
++
++	/* confirm the pmu is enabled */
++	if (!mbus_pmu_getstate())
++		mbus_pmu_enable();
++
++	/* read pmu conter */
++	value = readl_relaxed(mbus_ctrl_base + MBUS_PMU_CNT_REG(port));
++
++	mutex_unlock(&data->update_lock);
++
++	return value;
++}
++
++#define for_each_ports(port) for (port = 0; port < MBUS_PORTS_MAX; port++)
++
++static unsigned int mbus_get_value(struct mbus_data *data,
++				   unsigned int index, char *buf)
++{
++	unsigned int i, size = 0;
++	unsigned int value;
++
++	mutex_lock(&data->update_lock);
++	switch (index) {
++	case MBUS_PORT_PRI:
++		for_each_ports(i) {
++#if (defined MBUS_MAST_ACPR_CFG_REG)
++			value = readl_relaxed(mbus_ctrl_base +
++					MBUS_MAST_ACPR_CFG_REG);
++			value >>= i;
++#else
++			value = readl_relaxed(mbus_ctrl_base +
++					MBUS_MAST_CFG0_REG(i));
++			value >>= MBUS_PRI_SHIFT;
++#endif
++			size += sprintf(buf + size, "master%2u priority:%1u\n",
++					i, (value & 1));
++		}
++		break;
++	case MBUS_PORT_QOS:
++		for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					      MBUS_MAST_CFG0_REG(i));
++			value >>= MBUS_QOS_SHIFT;
++			value &= MBUS_QOS_MAX;
++			size += sprintf(buf + size, "master%2u qos:%1u\n",
++					i, value);
++		}
++		break;
++	case MBUS_PORT_WT:
++		for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					      MBUS_MAST_CFG0_REG(i));
++			value >>= MBUS_WT_SHIFT;
++			value &= MBUS_WT_MAX;
++			size += sprintf(buf + size,
++				"master%2u threshold0:%2u\n", i, value);
++		}
++		break;
++	case MBUS_PORT_ACS:
++		for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					      MBUS_MAST_CFG0_REG(i));
++			value >>= MBUS_ACS_SHIFT;
++			value &= MBUS_ACS_MAX;
++			size += sprintf(buf + size,
++					"master%2u accsess commands:%4u\n",
++					i, value);
++		}
++		break;
++	case MBUS_PORT_BWL0:
++		 for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					      MBUS_MAST_CFG0_REG(i));
++			value >>= MBUS_BWL0_SHIFT;
++			value &= MBUS_BWL_MAX;
++			size += sprintf(buf + size,
++					"master%2u bandwidth limit0:%5u\n",
++					i, value);
++		}
++		break;
++	case MBUS_PORT_BWL1:
++		for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					      MBUS_MAST_CFG1_REG(i));
++			value >>= MBUS_BWL1_SHIFT;
++			value &= MBUS_BWL_MAX;
++			size += sprintf(buf + size,
++					"master%2u bandwidth limit1:%5u\n",
++					i, value);
++		}
++		break;
++	case MBUS_PORT_BWL2:
++		for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					      MBUS_MAST_CFG1_REG(i));
++			value >>= MBUS_BWL2_SHIFT;
++			value &= MBUS_BWL_MAX;
++			size += sprintf(buf + size,
++					"master%2u bandwidth limit2:%5u\n",
++					i, value);
++		}
++		break;
++	case MBUS_PORT_BWLEN:
++		for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					      MBUS_MAST_CFG0_REG(i));
++			value &= 1;
++			size += sprintf(buf + size,
++					"master%2u BWLimit_en:%1u\n",
++					i, value);
++		}
++		break;
++	case MBUS_PORT_ABS_BWLEN:
++		for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					MBUS_MAST_ABS_BWL_REG(i));
++			value >>= MBUS_ABS_BWLEN_SHIFT;
++			value &= 1;
++			size += sprintf(buf + size,
++			"master%2u absolutely BWLimit_en:%1u\n", i, value);
++		}
++		break;
++	case MBUS_PORT_ABS_BWL:
++		for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					MBUS_MAST_ABS_BWL_REG(i));
++			value >>= MBUS_ABS_BWL_SHIFT;
++			value &= MBUS_ABS_BWL_MAX;
++			size += sprintf(buf + size,
++			"master%2u absolutely bandwidth limit:%5u\n", i, value);
++		}
++		break;
++	case MBUS_PORT_BW_SATU:
++		for_each_ports(i) {
++			value = readl_relaxed(mbus_ctrl_base +
++					MBUS_MAST_ABS_BWL_REG(i));
++			value &= MBUS_BW_SATU_MAX;
++			size += sprintf(buf + size,
++			"master%2u bandwidth saturation:%5u\n", i, value);
++		}
++		break;
++	default:
++		/* programmer goofed */
++		WARN_ON_ONCE(1);
++		value = 0;
++		break;
++	}
++	mutex_unlock(&data->update_lock);
++
++	return size;
++}
++
++static ssize_t mbus_show_value(struct device *dev,
++			       struct device_attribute *da, char *buf)
++{
++	struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
++	unsigned int len;
++
++	if (attr->index >= MBUS_PMU_MAX) {
++		len = mbus_get_value(&hw_mbus_pmu, attr->index, buf);
++		len = (len < PAGE_SIZE) ? len : PAGE_SIZE;
++		return len;
++	}
++
++	return snprintf(buf, PAGE_SIZE, "%u\n",
++			mbus_update_device(&hw_mbus_pmu, attr->index));
++}
++
++static unsigned int mbus_set_value(struct mbus_data *data, unsigned int index,
++				   enum mbus_port port, unsigned int val)
++{
++	unsigned int value;
++
++	mutex_lock(&data->update_lock);
++	switch (index) {
++	case MBUS_PORT_PRI:
++		mbus_port_setpri(port, val);
++		break;
++	case MBUS_PORT_QOS:
++		mbus_port_setqos(port, val);
++		break;
++	case MBUS_PORT_WT:
++		mbus_port_setwt(port, val);
++		break;
++	case MBUS_PORT_ACS:
++		mbus_port_setacs(port, val);
++		break;
++	case MBUS_PORT_BWL0:
++		mbus_port_setbwl0(port, val);
++		break;
++	case MBUS_PORT_BWL1:
++		mbus_port_setbwl1(port, val);
++		break;
++	case MBUS_PORT_BWL2:
++		mbus_port_setbwl2(port, val);
++		break;
++	case MBUS_PORT_BWLEN:
++		mbus_port_setbwlen(port, val);
++		break;
++	case MBUS_PORT_ABS_BWLEN:
++		mbus_port_set_abs_bwlen(port, val);
++		break;
++	case MBUS_PORT_ABS_BWL:
++		mbus_port_set_abs_bwl(port, val);
++		break;
++	case MBUS_PORT_BW_SATU:
++		mbus_port_set_bw_saturation(port, val);
++		break;
++	default:
++		/* programmer goofed */
++		WARN_ON_ONCE(1);
++		value = 0;
++		break;
++	}
++	mutex_unlock(&data->update_lock);
++
++	return 0;
++}
++
++static ssize_t mbus_store_value(struct device *dev,
++				struct device_attribute *attr,
++				const char *buf, size_t count)
++{
++	int nr = to_sensor_dev_attr(attr)->index;
++	unsigned long port, val;
++	unsigned char buffer[64];
++	unsigned char *pbuf, *pbufi;
++	int err;
++
++	if (strlen(buf) >= 64) {
++		dev_err(dev, "arguments out of range!\n");
++		return -EINVAL;
++	}
++
++	while (*buf == ' ') /* find the first unblank character */
++		buf++;
++	strncpy(buffer, buf, strlen(buf));
++
++	pbufi = buffer;
++	while (*pbufi != ' ') /* find the first argument */
++		pbufi++;
++	*pbufi = 0x0;
++	pbuf = (unsigned char *)buffer;
++	err = kstrtoul(pbuf, 10, &port);
++	if (err < 0)
++		return err;
++	if (port >= MBUS_PORTS_MAX) {
++		dev_err(dev, "master is illegal\n");
++		return -EINVAL;
++	}
++
++	pbuf = ++pbufi;
++	while (*pbuf == ' ') /* remove extra space character */
++		pbuf++;
++	pbufi = pbuf;
++	while ((*pbufi != ' ') && (*pbufi != '\n'))
++		pbufi++;
++	*pbufi = 0x0;
++
++	err = kstrtoul(pbuf, 10, &val);
++	if (err < 0)
++		return err;
++
++	mbus_set_value(&hw_mbus_pmu, nr,
++		(enum mbus_port)port, (unsigned int)val);
++
++	return count;
++}
++
++#define MBUS_SENSOR_DEVICE_ATTR_RO(name, index)  \
++	static SENSOR_DEVICE_ATTR(name, 0400, mbus_show_value, NULL, index)
++#define MBUS_SENSOR_DEVICE_ATTR_RW(name, index)  \
++	static SENSOR_DEVICE_ATTR(name, 0644, mbus_show_value, mbus_store_value, index)
++#define SENSOR_DEVICE_ATTR_PTR(name)	&sensor_dev_attr_##name.dev_attr.attr
++
++#if IS_ENABLED(CONFIG_ARCH_SUN8IW20) || IS_ENABLED(CONFIG_ARCH_SUN20IW1)
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_cpuddr,     MBUS_PMU_CPU);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_riscv_sys,  MBUS_PMU_RISCV_SYS);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_mahb_ddr,   MBUS_PMU_MAHB);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_dma_ddr,    MBUS_PMU_DMA);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_ve_ddr,     MBUS_PMU_VE);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_ce_ddr,     MBUS_PMU_CE);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_tvd_ddr,    MBUS_PMU_TVD);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_csi_ddr,    MBUS_PMU_CSI);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_dsp_sys,    MBUS_PMU_DSP_SYS);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_g2d_ddr,    MBUS_PMU_G2D);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_di_ddr,     MBUS_PMU_DI);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_de_ddr,     MBUS_PMU_DE);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_iommu_ddr,  MBUS_PMU_IOMMU);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_othddr,     MBUS_PMU_OTH);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_totddr,     MBUS_PMU_TOTAL);
++#elif IS_ENABLED(CONFIG_ARCH_SUN50IW9)
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_cpuddr,     MBUS_PMU_CPU);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_mahb_ddr,   MBUS_PMU_MAHB);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_dma_ddr,    MBUS_PMU_DMA);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_ve_ddr,     MBUS_PMU_VE);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_ce_ddr,     MBUS_PMU_CE);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_de_ddr,     MBUS_PMU_DISP);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_csi0_ddr,   MBUS_PMU_CSI0);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_di_ddr,     MBUS_PMU_DI);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_csi1_ddr,   MBUS_PMU_CSI1);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_g2d_ddr,    MBUS_PMU_G2D);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_ve1_ddr,    MBUS_PMU_VE1);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_iommu_ddr,  MBUS_PMU_IOMMU);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_gpuddr,    MBUS_PMU_GPU);
++MBUS_SENSOR_DEVICE_ATTR_RO(pmu_totddr,     MBUS_PMU_TOTAL);
++#else
++/* ... */
++#endif
++
++MBUS_SENSOR_DEVICE_ATTR_RW(port_prio,      MBUS_PORT_PRI);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_qos,       MBUS_PORT_QOS);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_watt,      MBUS_PORT_WT);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_acs,       MBUS_PORT_ACS);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_bwl0,      MBUS_PORT_BWL0);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_bwl1,      MBUS_PORT_BWL1);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_bwl2,      MBUS_PORT_BWL2);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_bwlen,     MBUS_PORT_BWLEN);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_abs_bwlen, MBUS_PORT_ABS_BWLEN);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_abs_bwl,   MBUS_PORT_ABS_BWL);
++MBUS_SENSOR_DEVICE_ATTR_RW(port_bw_satu,   MBUS_PORT_BW_SATU);
++
++/* pointers to created device attributes */
++static struct attribute *mbus_attributes[] = {
++#if IS_ENABLED(CONFIG_ARCH_SUN8IW20) || IS_ENABLED(CONFIG_ARCH_SUN20IW1)
++	SENSOR_DEVICE_ATTR_PTR(pmu_cpuddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_riscv_sys),
++	SENSOR_DEVICE_ATTR_PTR(pmu_mahb_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_dma_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_ve_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_ce_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_tvd_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_csi_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_dsp_sys),
++	SENSOR_DEVICE_ATTR_PTR(pmu_g2d_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_di_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_de_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_iommu_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_othddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_totddr),
++#elif IS_ENABLED(CONFIG_ARCH_SUN50IW9)
++	SENSOR_DEVICE_ATTR_PTR(pmu_cpuddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_mahb_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_dma_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_ve_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_ce_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_de_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_csi0_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_di_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_csi1_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_g2d_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_ve1_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_iommu_ddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_gpuddr),
++	SENSOR_DEVICE_ATTR_PTR(pmu_totddr),
++#else
++	/* ... */
++#endif
++	SENSOR_DEVICE_ATTR_PTR(port_prio),
++	SENSOR_DEVICE_ATTR_PTR(port_qos),
++	SENSOR_DEVICE_ATTR_PTR(port_watt),
++	SENSOR_DEVICE_ATTR_PTR(port_acs),
++	SENSOR_DEVICE_ATTR_PTR(port_bwl0),
++	SENSOR_DEVICE_ATTR_PTR(port_bwl1),
++	SENSOR_DEVICE_ATTR_PTR(port_bwl2),
++	SENSOR_DEVICE_ATTR_PTR(port_bwlen),
++	SENSOR_DEVICE_ATTR_PTR(port_abs_bwlen),
++	SENSOR_DEVICE_ATTR_PTR(port_abs_bwl),
++	SENSOR_DEVICE_ATTR_PTR(port_bw_satu),
++	NULL,
++};
++
++static struct attribute_group mbus_group = {
++	.attrs = mbus_attributes,
++};
++
++static const struct attribute_group *mbus_groups[] = {
++	&mbus_group,
++	NULL,
++};
++
++static int mbus_pmu_probe(struct platform_device *pdev)
++{
++	int ret;
++
++	hw_mbus_pmu.hwmon_dev = devm_hwmon_device_register_with_groups(
++				&pdev->dev, "mbus_pmu", NULL, mbus_groups);
++	if (IS_ERR(hw_mbus_pmu.hwmon_dev)) {
++		ret = PTR_ERR(hw_mbus_pmu.hwmon_dev);
++		goto out_err;
++	}
++
++	hw_mbus_pmu.last_updated = 0;
++	hw_mbus_pmu.valid = 0;
++	mutex_init(&hw_mbus_pmu.update_lock);
++
++	return 0;
++
++out_err:
++	dev_err(&(pdev->dev), "probed failed\n");
++	sysfs_remove_group(&pdev->dev.kobj, &mbus_group);
++
++	return ret;
++}
++
++static int mbus_pmu_remove(struct platform_device *pdev)
++{
++	hwmon_device_unregister(hw_mbus_pmu.hwmon_dev);
++	sysfs_remove_group(&pdev->dev.kobj, &mbus_group);
++
++	return 0;
++}
++
++#ifdef CONFIG_PM
++static int sunxi_mbus_suspend(struct device *dev)
++{
++	dev_info(dev, "suspend okay\n");
++
++	return 0;
++}
++
++static int sunxi_mbus_resume(struct device *dev)
++{
++	dev_info(dev, "resume okay\n");
++
++	return 0;
++}
++
++static const struct dev_pm_ops sunxi_mbus_pm_ops = {
++	.suspend = sunxi_mbus_suspend,
++	.resume = sunxi_mbus_resume,
++};
++
++#define SUNXI_MBUS_PM_OPS (&sunxi_mbus_pm_ops)
++#else
++#define SUNXI_MBUS_PM_OPS NULL
++#endif
++
++static struct platform_driver mbus_pmu_driver = {
++	.driver = {
++		.name   = DRIVER_NAME_PMU,
++		.owner  = THIS_MODULE,
++		.pm     = SUNXI_MBUS_PM_OPS,
++		.of_match_table = sunxi_mbus_matches,
++	},
++	.probe = mbus_pmu_probe,
++	.remove = mbus_pmu_remove,
++};
++
++static int __init mbus_pmu_init(void)
++{
++	int ret;
++
++	ret = platform_driver_register(&mbus_pmu_driver);
++	if (ret) {
++		pr_err("register sunxi mbus platform driver failed\n");
++		goto drv_err;
++	}
++
++	return ret;
++
++drv_err:
++	platform_driver_unregister(&mbus_pmu_driver);
++
++	return -EINVAL;
++}
++
++early_initcall(mbus_init);
++device_initcall(mbus_pmu_init);
++
++MODULE_LICENSE("GPL v2");
++MODULE_DESCRIPTION("SUNXI MBUS support");
++MODULE_AUTHOR("xiafeng");
+diff --git a/drivers/bus/sunxi_nsi.c b/drivers/bus/sunxi_nsi.c
+new file mode 100644
+index 000000000..cdbfd97ac
+--- /dev/null
++++ b/drivers/bus/sunxi_nsi.c
+@@ -0,0 +1,1159 @@
++/*
++ * SUNXI NSI driver
++ *
++ * Copyright (C) 2015 AllWinnertech Ltd.
++ * Author: xiafeng <xiafeng@allwinnertech.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
++ * kind, whether express or implied; without even the implied warranty
++ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#include <linux/sunxi_nsi.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/of_address.h>
++#include <linux/slab.h>
++#include <linux/hwmon.h>
++#include <linux/hwmon-sysfs.h>
++#include <linux/clk.h>
++#include <linux/reset.h>
++#include <linux/delay.h>
++#include <linux/err.h>
++#include <linux/spinlock.h>
++#include <linux/ioctl.h>
++#include <linux/cdev.h>
++
++#include <asm/cacheflush.h>
++#include <asm/smp_plat.h>
++
++#define DRIVER_NAME          "NSI"
++#define DRIVER_NAME_PMU      DRIVER_NAME"_PMU"
++#define NSI_MAJOR         137
++#define NSI_MINORS        256
++
++#define MBUS_PRI_MAX      0x3
++#define MBUS_QOS_MAX      0x2
++
++#define for_each_ports(port) for (port = 0; port < MBUS_PMU_IAG_MAX; port++)
++
++/* n = 0~19 */
++#define IAG_MODE(n)		   (0x0010 + (0x200 * n))
++#define IAG_PRI_CFG(n)		   (0x0014 + (0x200 * n))
++#define IAG_INPUT_OUTPUT_CFG(n)	   (0x0018 + (0x200 * n))
++#define IAG_BAND_WIDTH(n)	   (0x0028 + (0x200 * n))
++#define IAG_SATURATION(n)	   (0x002c + (0x200 * n))
++#define IAG_QOS_CFG(n)		   (0x0094 + (0x200 * 23) + (0x4 * (n / 16)))
++/* Counter n = 0 ~ 19 */
++#define MBUS_PMU_ENABLE(n)         (0x00c0 + (0x200 * n))
++#define MBUS_PMU_CLR(n)            (0x00c4 + (0x200 * n))
++#define MBUS_PMU_CYCLE(n)          (0x00c8 + (0x200 * n))
++#define MBUS_PMU_RQ_RD(n)          (0x00cc + (0x200 * n))
++#define MBUS_PMU_RQ_WR(n)          (0x00d0 + (0x200 * n))
++#define MBUS_PMU_DT_RD(n)          (0x00d4 + (0x200 * n))
++#define MBUS_PMU_DT_WR(n)          (0x00d8 + (0x200 * n))
++#define MBUS_PMU_LA_RD(n)          (0x00dc + (0x200 * n))
++#define MBUS_PMU_LA_WR(n)          (0x00e0 + (0x200 * n))
++
++#define MBUS_PORT_MODE          (MBUS_PMU_MAX + 0)
++#define MBUS_PORT_PRI           (MBUS_PMU_MAX + 1)
++#define MBUS_INPUT_OUTPUT       (MBUS_PMU_MAX + 2)
++#define MBUS_PORT_QOS           (MBUS_PMU_MAX + 3)
++#define MBUS_PORT_ABS_BWL	(MBUS_PMU_MAX + 4)
++#define MBUS_PORT_ABS_BWLEN	(MBUS_PMU_MAX + 5)
++
++
++struct nsi_bus {
++	struct cdev cdev;
++	struct device *dev;
++	void __iomem *base;
++	struct clk *pclk;  /* PLL clock */
++	struct clk *mclk;  /* mbus clock */
++	struct clk *dclk; /* dram clock */
++	struct reset_control *reset;
++	unsigned long rate;
++};
++
++struct nsi_pmu_data {
++	struct device *dev_nsi;
++	unsigned long period;
++	spinlock_t bwlock;
++};
++
++unsigned long latency_sum[MBUS_PMU_IAG_MAX];
++unsigned long latency_aver[MBUS_PMU_IAG_MAX];
++unsigned long request_sum[MBUS_PMU_IAG_MAX];
++
++static struct nsi_pmu_data hw_nsi_pmu;
++static struct nsi_bus sunxi_nsi;
++static struct class *nsi_pmu_class;
++
++static int nsi_init_status = -EAGAIN;
++
++static DEFINE_MUTEX(nsi_setting);
++
++/**
++ * nsi_port_setthd() - set a master priority
++ *
++ * @pri, priority
++ */
++int notrace nsi_port_setmode(enum nsi_pmu port, unsigned int mode)
++{
++	unsigned int value = 0;
++
++	if (port >= MBUS_PMU_IAG_MAX)
++		return -ENODEV;
++
++	mutex_lock(&nsi_setting);
++	value = readl_relaxed(sunxi_nsi.base + IAG_MODE(port));
++	value &= ~0x3;
++	writel_relaxed(value | mode, sunxi_nsi.base + IAG_MODE(port));
++	mutex_unlock(&nsi_setting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(nsi_port_setmode);
++
++/**
++ * nsi_port_setpri() - set a master priority
++ *
++ * @qos: the qos value want to set
++ */
++int notrace nsi_port_setpri(enum nsi_pmu port, unsigned int pri)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PMU_IAG_MAX)
++		return -ENODEV;
++
++	if (pri > MBUS_PRI_MAX)
++		return -EPERM;
++
++	mutex_lock(&nsi_setting);
++	value = readl_relaxed(sunxi_nsi.base + IAG_PRI_CFG(port));
++	value &= ~0xf;
++	writel_relaxed(value | (pri << 2) | pri,
++		       sunxi_nsi.base + IAG_PRI_CFG(port));
++	mutex_unlock(&nsi_setting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(nsi_port_setpri);
++
++/**
++ * nsi_port_setqos() - set a master qos(hpr/lpr)
++ *
++ * @qos: the qos value want to set
++ */
++int notrace nsi_port_setqos(enum nsi_pmu port, unsigned int qos)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PMU_IAG_MAX)
++		return -ENODEV;
++
++	if (qos > MBUS_QOS_MAX)
++		return -EPERM;
++
++	mutex_lock(&nsi_setting);
++	value = readl_relaxed(sunxi_nsi.base + IAG_QOS_CFG(port));
++	value &= ~(0x3 << ((port % 16) * 2));
++	writel_relaxed(value | (qos << ((port % 16) * 2)),
++		       sunxi_nsi.base + IAG_QOS_CFG(port));
++	mutex_unlock(&nsi_setting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(nsi_port_setqos);
++
++/**
++ * nsi_port_setio() - set a master's qos in or out
++ *
++ * @wt: the wait time want to set, based on MCLK
++ */
++int notrace nsi_port_setio(enum nsi_pmu port, bool io)
++{
++	unsigned int value;
++
++	if (port >= MBUS_PMU_IAG_MAX)
++		return -ENODEV;
++
++	mutex_lock(&nsi_setting);
++	value = readl_relaxed(sunxi_nsi.base + IAG_INPUT_OUTPUT_CFG(port));
++	value &= ~0x1;
++	writel_relaxed(value | io,
++		       sunxi_nsi.base + IAG_INPUT_OUTPUT_CFG(port));
++	mutex_unlock(&nsi_setting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(nsi_port_setio);
++
++/**
++ * nsi_port_set_abs_bwl() - set a master absolutely bandwidth limit
++ *
++ * @bwl: the number of bandwidth limit
++ */
++int notrace nsi_port_set_abs_bwl(enum nsi_pmu port, unsigned int bwl)
++{
++	unsigned int bw_val, sat_val;
++	unsigned int n, t;
++	unsigned long mrate = clk_get_rate(sunxi_nsi.mclk);
++	unsigned long drate;
++
++	if (port >= MBUS_PMU_IAG_MAX)
++		return -ENODEV;
++
++	if (bwl == 0)
++		return -EPERM;
++
++	mutex_lock(&nsi_setting);
++	if (IS_ERR_OR_NULL(sunxi_nsi.dclk)) {
++		sunxi_nsi.dclk = devm_clk_get(sunxi_nsi.dev, "sdram");
++		if (IS_ERR_OR_NULL(sunxi_nsi.dclk)) {
++			sunxi_nsi.dclk = sunxi_nsi.pclk;
++			dev_err(sunxi_nsi.dev, "get sdram clock failed\n");
++		}
++	}
++	/* cpu pmu clk : pll_ddr/4 */
++	drate = clk_get_rate(sunxi_nsi.dclk) / 4;
++
++	/* cpu */
++	if (port == 0) {
++		bw_val = 256 * bwl / (drate / 1000000);
++		t = 1000 * 10 / (drate / 1000000);
++	} else {
++		bw_val = 256 * bwl / (mrate / 1000000);
++		t = 1000 * 10 / (mrate / 1000000);
++	}
++	n = 5 * 1000 / t * 10;
++	sat_val = n * bw_val / (256 * 16);
++
++	writel_relaxed(bw_val, sunxi_nsi.base + IAG_BAND_WIDTH(port));
++	writel_relaxed(sat_val, sunxi_nsi.base + IAG_SATURATION(port));
++	mutex_unlock(&nsi_setting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(nsi_port_set_abs_bwl);
++
++/**
++ * nsi_port_set_abs_bwlen() - enable a master absolutely bandwidth limit
++ * function
++ *
++ * @port: index of the port to setup
++ * @en: 0-disable, 1-enable
++ */
++int notrace nsi_port_set_abs_bwlen(enum nsi_pmu port, bool en)
++{
++	if (port >= MBUS_PMU_IAG_MAX)
++		return -ENODEV;
++
++	mutex_lock(&nsi_setting);
++	writel_relaxed(en, sunxi_nsi.base + IAG_MODE(port));
++	mutex_unlock(&nsi_setting);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(nsi_port_set_abs_bwlen);
++
++static void nsi_pmu_disable(enum nsi_pmu port)
++{
++	unsigned int value;
++
++	value = readl_relaxed(sunxi_nsi.base + MBUS_PMU_ENABLE(port));
++	value &= ~(0x1);
++	writel_relaxed(value, sunxi_nsi.base + MBUS_PMU_ENABLE(port));
++}
++
++static void nsi_pmu_enable(enum nsi_pmu port)
++{
++	unsigned int value;
++
++	value = readl_relaxed(sunxi_nsi.base + MBUS_PMU_ENABLE(port));
++	value |= (0x1);
++	writel_relaxed(value, sunxi_nsi.base + MBUS_PMU_ENABLE(port));
++}
++
++static void nsi_pmu_clear(enum nsi_pmu port)
++{
++	unsigned int value = readl_relaxed(sunxi_nsi.base + MBUS_PMU_CLR(port));
++	value |= (0x1);
++	writel_relaxed(value, sunxi_nsi.base + MBUS_PMU_CLR(port));
++}
++
++ssize_t nsi_pmu_timer_store(struct device *dev,
++				struct device_attribute *attr,
++				const char *buf, size_t count)
++{
++	unsigned int cycle, port;
++	unsigned long mrate = clk_get_rate(sunxi_nsi.mclk);
++	unsigned long drate;
++	unsigned char *buffer = kmalloc(64, GFP_KERNEL);
++	unsigned long period, flags;
++	int ret = 0;
++	/*
++	 *if mclk = 400MHZ, the signel time = 1000*1000*1000/(400*1000*1000)=2.5ns
++	 *if check the 10us, the cycle count = 10*1000ns/2.5us = 4000
++	 * us*1000/(1s/400Mhz) = us*1000*400000000(rate)/1000000000
++	 */
++
++	if (IS_ERR_OR_NULL(sunxi_nsi.dclk)) {
++		sunxi_nsi.dclk = devm_clk_get(sunxi_nsi.dev, "sdram");
++		if (IS_ERR_OR_NULL(sunxi_nsi.dclk)) {
++			sunxi_nsi.dclk = sunxi_nsi.pclk;
++			dev_err(dev, "get sdram clock failed\n");
++		} else {
++			dev_info(dev, "get sdram clock success\n");
++		}
++	}
++
++	if (sunxi_nsi.dclk == sunxi_nsi.pclk)
++		drate = clk_get_rate(sunxi_nsi.dclk) / 2;
++	else
++		drate = clk_get_rate(sunxi_nsi.dclk) / 4;  // cpu pmu clk : pll_ddr/4
++
++	ret = kstrtoul(buf, 10, &period);
++	if (ret < 0)
++		goto end;
++
++	spin_lock_irqsave(&hw_nsi_pmu.bwlock, flags);
++
++	for (port = 0; port < MBUS_PMU_IAG_MAX; port++) {
++		latency_sum[port] = 0;
++		latency_aver[port] = 0;
++		request_sum[port] = 0;
++	}
++
++	/* set pmu period */
++	cycle = period * mrate / 1000000;
++	for (port = 1; port < MBUS_PMU_IAG_MAX; port++) {
++		writel_relaxed(cycle, sunxi_nsi.base + MBUS_PMU_CYCLE(port));
++
++		/* disabled the pmu count */
++		nsi_pmu_disable(port);
++
++		/* clean the insight counter */
++		nsi_pmu_clear(port);
++
++	}
++	cycle = period * drate/ 1000000;
++	writel_relaxed(cycle, sunxi_nsi.base + MBUS_PMU_CYCLE(MBUS_PMU_CPU));
++	hw_nsi_pmu.period = period;
++	nsi_pmu_disable(MBUS_PMU_CPU);
++	nsi_pmu_clear(MBUS_PMU_CPU);
++
++	writel_relaxed(cycle, sunxi_nsi.base + MBUS_PMU_CYCLE(MBUS_PMU_TAG));
++	nsi_pmu_disable(MBUS_PMU_TAG);
++	nsi_pmu_clear(MBUS_PMU_TAG);
++
++	/* enable iag pmu */
++	for (port = 0; port < MBUS_PMU_IAG_MAX; port++)
++		nsi_pmu_enable(port);		/* enabled the pmu count */
++
++	/* enable tag pmu */
++	nsi_pmu_enable(MBUS_PMU_TAG);
++
++	udelay(10);
++	spin_unlock_irqrestore(&hw_nsi_pmu.bwlock, flags);
++
++end:
++	kfree(buffer);
++	return count;
++}
++
++static ssize_t nsi_pmu_timer_show(struct device *dev,
++			       struct device_attribute *da, char *buf)
++{
++	unsigned int len;
++
++	len = sprintf(buf, "%-6lu\n", hw_nsi_pmu.period);
++
++	return len;
++}
++
++static const struct of_device_id sunxi_nsi_matches[] = {
++#if IS_ENABLED(CONFIG_ARCH_SUN8I)
++	{.compatible = "allwinner,sun8i-nsi", },
++#endif
++#if IS_ENABLED(CONFIG_ARCH_SUN50I)
++	{.compatible = "allwinner,sun50i-nsi", },
++#endif
++	{},
++};
++
++#if IS_ENABLED(CONFIG_ARCH_SUN50IW10)
++static void set_limit_for_old_version(void)
++{
++	/*GPU: limiter mode, limit to 1500MB/s, sat as 5us, nsi clk 400MHz*/
++	writel_relaxed(0x3c0, sunxi_nsi.base + IAG_BAND_WIDTH(1));
++	writel_relaxed(0x1d4, sunxi_nsi.base + IAG_SATURATION(1));
++	writel_relaxed(0x1, sunxi_nsi.base + IAG_MODE(1));
++
++	/*G2D: limiter mode, limit to 500MB/s, sat as 5us, nsi clk 400MHz*/
++	writel_relaxed(0x140, sunxi_nsi.base + IAG_BAND_WIDTH(16));
++	writel_relaxed(0x9c, sunxi_nsi.base + IAG_SATURATION(16));
++	writel_relaxed(0x1, sunxi_nsi.base + IAG_MODE(16));
++}
++
++static void set_limit_for_old_version_720p(void)
++{
++	/*GPU: limiter mode, limit to 1800MB/s, sat as 5us, nsi clk 400MHz*/
++	writel_relaxed(0x480, sunxi_nsi.base + IAG_BAND_WIDTH(1));
++	writel_relaxed(0x232, sunxi_nsi.base + IAG_SATURATION(1));
++	writel_relaxed(0x1, sunxi_nsi.base + IAG_MODE(1));
++}
++
++static int sunxi_nsi_set_limit(struct device *dev)
++{
++	int ret;
++	struct device_node *disp_np, *dram_np;
++	unsigned int ic_version, fb0_width, fb0_height, dram_type;
++
++	disp_np = of_find_node_by_name(NULL, "disp");
++	ret = of_property_read_u32(disp_np, "fb0_width", &fb0_width);
++	if (ret) {
++		dev_err(dev, "get fb0_width failed\n");
++		return -EINVAL;
++	}
++	of_property_read_u32(disp_np, "fb0_height", &fb0_height);
++	if (ret) {
++		dev_err(dev, "get fb0_height failed\n");
++		return -EINVAL;
++	}
++	dram_np = of_find_node_by_name(NULL, "dram");
++	of_property_read_u32(dram_np, "dram_type", &dram_type);
++	if (ret) {
++		dev_err(dev, "get dram_type failed\n");
++		return -EINVAL;
++	}
++	/*
++	unsigned int dram_clk;
++
++	of_property_read_u32(dram_np, "dram_clk", &dram_clk);
++	if (ret) {
++		dev_err(dev, "get dram_clk failed\n");
++		return -EINVAL;
++	}
++	*/
++
++	ic_version = readl(ioremap(0x03000024, 4)) & 0x00000007;
++	if (ic_version == 0 || ic_version == 0x3 || ic_version == 0x4) {
++		if (fb0_width >= 1080 && fb0_height >= 1080) {
++			set_limit_for_old_version();
++			dev_info(dev, "set limit to fit 1080P(ABCDE)\n");
++		} else {
++			set_limit_for_old_version_720p();
++			dev_info(dev, "set limit to fit 720P(ABCDE)\n");
++		}
++	} else {
++		if (fb0_width >= 1080 && fb0_height >= 1080 && dram_type == 8) {
++			set_limit_for_old_version();
++			dev_info(dev, "set limit to fit 1080P-LP4(F)\n");
++		} else {
++			dev_info(dev, "no limit for F version(except 1080P-LP4)\n");
++		}
++	}
++
++	return 0;
++}
++
++static int sunxi_nsi_unset_limit(struct device *dev)
++{
++	/* disable limit for GPU/G2D */
++	writel_relaxed(0x0, sunxi_nsi.base + IAG_MODE(1));
++	writel_relaxed(0x0, sunxi_nsi.base + IAG_MODE(16));
++	dev_info(dev, "unset limit\n");
++
++	return 0;
++}
++#else
++static int sunxi_nsi_set_limit(struct device *dev)
++{
++	return -ENODEV;
++}
++static int sunxi_nsi_unset_limit(struct device *dev)
++{
++	return -ENODEV;
++}
++#endif
++
++static int nsi_probe(struct platform_device *pdev)
++{
++	int ret;
++	unsigned int port;
++	struct device_node *np = pdev->dev.of_node;
++	struct resource res;
++	struct device_node *child;
++	struct clk *pclk;
++	struct clk *mclk;
++	struct reset_control *reset;
++	unsigned int bus_rate;
++
++	if (!np)
++		return -ENODEV;
++
++	ret = of_address_to_resource(np, 0, &res);
++	if (!ret)
++		sunxi_nsi.base = ioremap(res.start, resource_size(&res));
++
++	if (ret || !sunxi_nsi.base) {
++		WARN(1, "unable to ioremap nsi ctrl\n");
++		return -ENXIO;
++	}
++
++	reset = devm_reset_control_get(&pdev->dev, NULL);
++	if (IS_ERR_OR_NULL(reset)) {
++		pr_err("Unable to get reset, return %x\n",
++		PTR_RET(reset));
++		return -1;
++	}
++
++	pclk = devm_clk_get(&pdev->dev, "pll");
++	if (IS_ERR_OR_NULL(pclk)) {
++		pr_err("Unable to acquire pll clock, return %x\n",
++		PTR_RET(pclk));
++		return -1;
++	}
++
++	mclk = devm_clk_get(&pdev->dev, "bus");
++	if (IS_ERR_OR_NULL(mclk)) {
++		pr_err("Unable to acquire module clock, return %x\n",
++		PTR_RET(mclk));
++		return -1;
++	}
++
++	ret = of_property_read_u32(np, "clock-frequency", &bus_rate);
++	if (ret) {
++		pr_err("Get clock-frequency property failed\n");
++		return -1;
++	}
++
++	ret = clk_set_parent(mclk, pclk);
++	if (ret != 0) {
++		pr_err("clk_set_parent() failed! return\n");
++		return -1;
++	}
++
++	sunxi_nsi.rate = clk_round_rate(mclk, bus_rate);
++
++	if (clk_set_rate(mclk, sunxi_nsi.rate)) {
++		pr_err("clk_set_rate failed\n");
++		return -1;
++	}
++
++	sunxi_nsi.mclk = mclk;
++	sunxi_nsi.pclk = pclk;
++	sunxi_nsi.reset = reset;
++
++	if (reset_control_deassert(sunxi_nsi.reset)) {
++		pr_err("Couldnt reset control deassert\n");
++		return -EBUSY;
++	}
++
++	if (clk_prepare_enable(mclk)) {
++		pr_err("Couldn't enable nsi clock\n");
++		return -EBUSY;
++	}
++
++	for_each_available_child_of_node(np, child) {
++
++		for_each_ports(port) {
++			if (strcmp(child->name, get_name(port)))
++				continue;
++			else
++				break;
++		}
++
++#if 0
++		unsigned int val;
++		if (!of_property_read_u32(child, "mode", &val)) {
++			nsi_port_setmode(port, val);
++		}
++
++		if (!of_property_read_u32(child, "pri", &val)) {
++			nsi_port_setpri(port, val);
++		}
++
++		if (!of_property_read_u32(child, "select", &val))
++			nsi_port_setio(port, val);
++#endif
++
++	}
++
++	/* all the port is default opened */
++
++	/* set default bandwidth */
++
++	/* set default QOS */
++
++	/* set masters' request number sequency */
++
++	/* set masters' bandwidth limit0/1/2 */
++
++	return 0;
++}
++
++
++static int nsi_init(struct platform_device *pdev)
++{
++	if (nsi_init_status != -EAGAIN)
++		return nsi_init_status;
++
++	if (nsi_init_status == -EAGAIN)
++		nsi_init_status = nsi_probe(pdev);
++
++#if IS_ENABLED(CONFIG_ARCH_SUN50IW10)
++	sunxi_nsi_set_limit(&pdev->dev);
++#endif
++
++	return nsi_init_status;
++}
++
++/*
++static void nsi_exit(void)
++{
++	mutex_lock(&nsi_proing);
++	nsi_init_status = nsi_remove();
++	mutex_unlock(&nsi_proing);
++
++	nsi_init_status = -EAGAIN;
++}
++*/
++
++static ssize_t nsi_pmu_bandwidth_show(struct device *dev,
++			struct device_attribute *da, char *buf)
++{
++	unsigned int bread, bwrite, bandrw[MBUS_PMU_IAG_MAX];
++	unsigned int port, len = 0;
++	unsigned long flags = 0;
++	char bwbuf[16];
++
++	spin_lock_irqsave(&hw_nsi_pmu.bwlock, flags);
++
++	/* read the iag pmu bandwidth, which is total master bandwidth */
++	for (port = 0; port < MBUS_PMU_IAG_MAX; port++) {
++		bread = readl_relaxed(sunxi_nsi.base + MBUS_PMU_DT_RD(port));
++		bwrite = readl_relaxed(sunxi_nsi.base + MBUS_PMU_DT_WR(port));
++		bandrw[port] = bread + bwrite;
++	}
++	for (port = 0; port < MBUS_PMU_IAG_MAX; port++) {
++		len += sprintf(bwbuf, "%u  ", bandrw[port]/1024);
++		strcat(buf, bwbuf);
++	}
++
++	/* read the tag pmu bandwidth, which is total ddr bandwidth */
++	bread = readl_relaxed(sunxi_nsi.base + MBUS_PMU_DT_RD(MBUS_PMU_TAG));
++	bwrite = readl_relaxed(sunxi_nsi.base + MBUS_PMU_DT_WR(MBUS_PMU_TAG));
++	len += sprintf(bwbuf, "%u\n", (bread + bwrite)/1024);
++	strcat(buf, bwbuf);
++
++	spin_unlock_irqrestore(&hw_nsi_pmu.bwlock, flags);
++	return len;
++}
++
++static ssize_t nsi_pmu_latency_show(struct device *dev,
++			struct device_attribute *da, char *buf)
++{
++	unsigned long laread, lawrite, larw[MBUS_PMU_IAG_MAX];
++	unsigned long request;
++	unsigned int port, len = 0;
++	unsigned long flags = 0;
++	char labuf[16];
++
++	spin_lock_irqsave(&hw_nsi_pmu.bwlock, flags);
++
++	/* read the iag pmu latency and request */
++	for (port = 0; port < MBUS_PMU_IAG_MAX; port++) {
++		laread = readl_relaxed(sunxi_nsi.base + MBUS_PMU_LA_RD(port));
++		lawrite = readl_relaxed(sunxi_nsi.base + MBUS_PMU_LA_WR(port));
++		request = readl_relaxed(sunxi_nsi.base + MBUS_PMU_RQ_RD(port)) +
++						+ readl_relaxed(sunxi_nsi.base + MBUS_PMU_RQ_WR(port));
++
++		if (request == 0) {
++			larw[port] = 0;
++		} else {
++			larw[port] = (laread + lawrite) / request;
++			latency_sum[port] += (laread + lawrite);
++			request_sum[port] += request;
++		}
++	}
++	for (port = 0; port < MBUS_PMU_IAG_MAX; port++) {
++		len += sprintf(labuf, "%lu  ", larw[port]);
++		strcat(buf, labuf);
++	}
++
++	/* read the tag pmu latency and request, which is total ddr latency and request */
++	laread = readl_relaxed(sunxi_nsi.base + MBUS_PMU_LA_RD(MBUS_PMU_TAG));
++	lawrite = readl_relaxed(sunxi_nsi.base + MBUS_PMU_LA_WR(MBUS_PMU_TAG));
++	request = readl_relaxed(sunxi_nsi.base + MBUS_PMU_RQ_RD(MBUS_PMU_TAG)) +
++						+ readl_relaxed(sunxi_nsi.base + MBUS_PMU_RQ_WR(MBUS_PMU_TAG));
++	len += sprintf(labuf, "%lu\n", (laread + lawrite) / request);
++	strcat(buf, labuf);
++	latency_sum[port] += (laread + lawrite);
++	request_sum[port] += request;
++
++	spin_unlock_irqrestore(&hw_nsi_pmu.bwlock, flags);
++	return len;
++}
++
++static ssize_t nsi_pmu_latency_aver_show(struct device *dev,
++			struct device_attribute *da, char *buf)
++{
++	unsigned int port, len = 0;
++	unsigned long flags = 0;
++	char labuf[32];
++
++	spin_lock_irqsave(&hw_nsi_pmu.bwlock, flags);
++
++	for (port = 0; port < MBUS_PMU_IAG_MAX; port++) {
++		len += sprintf(labuf, "%lu  ", latency_sum[port] / request_sum[port]);
++		strcat(buf, labuf);
++	}
++	len += sprintf(labuf, "%lu\n", latency_sum[port] / request_sum[port]);
++	strcat(buf, labuf);
++
++	spin_unlock_irqrestore(&hw_nsi_pmu.bwlock, flags);
++	return len;
++}
++
++
++static ssize_t nsi_available_pmu_show(struct device *dev,
++			struct device_attribute *da, char *buf)
++{
++	ssize_t i, len = 0;
++
++	for (i = 0; i <= MBUS_PMU_IAG_MAX ; i++)
++		len += sprintf(buf + len, "%s  ", get_name(i));
++	len += sprintf(buf + len, "\n");
++
++	return len;
++}
++
++static unsigned int nsi_get_value(struct nsi_pmu_data *data,
++				   unsigned int index, char *buf)
++{
++	unsigned int i, size = 0;
++	unsigned long value;
++	unsigned long mrate, drate;
++	unsigned int bw_val;
++
++	switch (index) {
++	case MBUS_PORT_MODE:   //0x10    fixed limit regulator
++		for_each_ports(i) {
++			value = readl_relaxed(sunxi_nsi.base +
++					IAG_MODE(i));
++			size += sprintf(buf + size, "master[%2d]:%-8s qos_mode:%lu\n",
++					i, get_name(i), (value & 0x3));
++		}
++		break;
++	case MBUS_PORT_PRI:   //0x14
++		for_each_ports(i) {
++			value = readl_relaxed(sunxi_nsi.base +
++					IAG_PRI_CFG(i));
++			size += sprintf(buf + size, "master[%2d]:%-8s read_prio:%lu write_prio:%lu\n",
++					i, get_name(i), (value >> 2), (value & 0x3));
++		}
++		break;
++	case MBUS_PORT_QOS:
++		for_each_ports(i) {
++			value = readl_relaxed(sunxi_nsi.base +
++					IAG_QOS_CFG(i));
++			size += sprintf(buf + size, "master[%2d]:%-8s qos(0-lpr 1-hpr):%lu \n",
++					i, get_name(i), (value >> ((i % 16) * 2)) & 0x3);
++		}
++		break;
++	case MBUS_INPUT_OUTPUT:          //0x18
++		for_each_ports(i) {
++			value = readl_relaxed(sunxi_nsi.base +
++					IAG_INPUT_OUTPUT_CFG(i));
++			size += sprintf(buf + size, "master[%2d]:%-8s qos_sel(0-out 1-input):%lu\n",
++					i, get_name(i), (value & 1));
++		}
++		break;
++	case MBUS_PORT_ABS_BWL:
++		mrate = clk_get_rate(sunxi_nsi.mclk);
++		if (IS_ERR_OR_NULL(sunxi_nsi.dclk)) {
++			sunxi_nsi.dclk = devm_clk_get(sunxi_nsi.dev, "sdram");
++			if (IS_ERR_OR_NULL(sunxi_nsi.dclk)) {
++				sunxi_nsi.dclk = sunxi_nsi.pclk;
++				dev_err(sunxi_nsi.dev, "get sdram clock failed\n");
++			}
++		}
++		drate = clk_get_rate(sunxi_nsi.dclk) / 4;
++
++		for_each_ports(i) {
++			bw_val = readl_relaxed(sunxi_nsi.base + IAG_BAND_WIDTH(i));
++			if (i == 0)
++				value = bw_val * (drate / 1000000) / 256;
++			else
++				value = bw_val * (mrate / 1000000) / 256;
++			if ((value % 100) == 99)
++				value += 1;
++			size += sprintf(buf + size, "master[%2d]:%-8s BWLimit(MB/s):%lu \n",
++					i, get_name(i), value);
++		}
++		break;
++	case MBUS_PORT_ABS_BWLEN:
++		for_each_ports(i) {
++			value = readl_relaxed(sunxi_nsi.base +
++					IAG_MODE(i));
++			size += sprintf(buf + size, "master[%2d]:%-8s BWLimit_en:%lu \n",
++					i, get_name(i), value);
++		}
++		break;
++	default:
++		/* programmer goofed */
++		WARN_ON_ONCE(1);
++		value = 0;
++		break;
++	}
++
++	return size;
++}
++
++static ssize_t nsi_show_value(struct device *dev,
++			       struct device_attribute *da, char *buf)
++{
++	struct sensor_device_attribute *attr = to_sensor_dev_attr(da);
++	unsigned int len = 0;
++
++	if (attr->index >= MBUS_PMU_MAX) {
++		len = nsi_get_value(&hw_nsi_pmu, attr->index, buf);
++		len = (len < PAGE_SIZE) ? len : PAGE_SIZE;
++	}
++
++	return len;
++/*
++	return snprintf(buf, PAGE_SIZE, "%u\n",
++			nsi_update_device(&hw_nsi_pmu, attr->index));
++*/
++}
++
++static unsigned int nsi_set_value(struct nsi_pmu_data *data, unsigned int index,
++				   enum nsi_pmu port, unsigned int val)
++{
++	unsigned int value;
++
++	switch (index) {
++	case MBUS_PORT_MODE:
++		nsi_port_setmode(port, val);
++		break;
++	case MBUS_PORT_PRI:
++		nsi_port_setpri(port, val);
++		break;
++	case MBUS_PORT_QOS:
++		nsi_port_setqos(port, val);
++		break;
++	case MBUS_INPUT_OUTPUT:
++		nsi_port_setio(port, val);
++		break;
++	case MBUS_PORT_ABS_BWL:
++		nsi_port_set_abs_bwl(port, val);
++		break;
++	case MBUS_PORT_ABS_BWLEN:
++		nsi_port_set_abs_bwlen(port, val);
++		break;
++	default:
++		/* programmer goofed */
++		WARN_ON_ONCE(1);
++		value = 0;
++		break;
++	}
++
++	return 0;
++}
++
++static ssize_t nsi_store_value(struct device *dev,
++				struct device_attribute *attr,
++				const char *buf, size_t count)
++{
++	int nr = to_sensor_dev_attr(attr)->index;
++	unsigned long port, val;
++	unsigned char buffer[64];
++	unsigned char *pbuf, *pbufi;
++	int err;
++
++	if (strlen(buf) >= 64) {
++		dev_err(dev, "arguments out of range!\n");
++		return -EINVAL;
++	}
++
++	while (*buf == ' ') /* find the first unblank character */
++		buf++;
++	strncpy(buffer, buf, strlen(buf));
++
++	pbufi = buffer;
++	while (*pbufi != ' ') /* find the first argument */
++		pbufi++;
++	*pbufi = 0x0;
++	pbuf = (unsigned char *)buffer;
++	err = kstrtoul(pbuf, 10, &port);
++	if (err < 0)
++		return err;
++	if (port >= MBUS_PMU_MAX) {
++		dev_err(dev, "master is illegal\n");
++		return -EINVAL;
++	}
++
++	pbuf = ++pbufi;
++	while (*pbuf == ' ') /* remove extra space character */
++		pbuf++;
++	pbufi = pbuf;
++	while ((*pbufi != ' ') && (*pbufi != '\n'))
++		pbufi++;
++	*pbufi = 0x0;
++
++	err = kstrtoul(pbuf, 10, &val);
++	if (err < 0)
++		return err;
++
++	nsi_set_value(&hw_nsi_pmu, nr,
++		(enum nsi_pmu)port, (unsigned int)val);
++
++	return count;
++}
++
++
++/* get all masters' mode or set a master's mode */
++static SENSOR_DEVICE_ATTR(port_mode, 0644,
++			  nsi_show_value, nsi_store_value, MBUS_PORT_MODE);
++/* get all masters' prio or set a master's prio */
++static SENSOR_DEVICE_ATTR(port_prio, 0644,
++			  nsi_show_value, nsi_store_value, MBUS_PORT_PRI);
++/* get all masters' prio or set a master's qos(hpr/lpr) */
++static SENSOR_DEVICE_ATTR(port_qos, 0644,
++			  nsi_show_value, nsi_store_value, MBUS_PORT_QOS);
++/* get all masters' inout or set a master's inout */
++static SENSOR_DEVICE_ATTR(port_select, 0644,
++			  nsi_show_value, nsi_store_value, MBUS_INPUT_OUTPUT);
++static SENSOR_DEVICE_ATTR(port_abs_bwl, 0644,
++			  nsi_show_value, nsi_store_value, MBUS_PORT_ABS_BWL);
++static SENSOR_DEVICE_ATTR(port_abs_bwlen, 0644,
++			  nsi_show_value, nsi_store_value, MBUS_PORT_ABS_BWLEN);
++/* get all masters' sample timer or set a master's timer */
++static struct device_attribute dev_attr_pmu_timer =
++	__ATTR(pmu_timer, 0644, nsi_pmu_timer_show, nsi_pmu_timer_store);
++static struct device_attribute dev_attr_pmu_bandwidth =
++	__ATTR(pmu_bandwidth, 0444, nsi_pmu_bandwidth_show, NULL);
++static struct device_attribute dev_attr_available_pmu =
++	__ATTR(available_pmu, 0444, nsi_available_pmu_show, NULL);
++static struct device_attribute dev_attr_pmu_latency =
++	__ATTR(pmu_latency, 0444, nsi_pmu_latency_show, NULL);
++static struct device_attribute dev_attr_pmu_latency_aver =
++	__ATTR(pmu_latency_aver, 0444, nsi_pmu_latency_aver_show, NULL);
++
++/* pointers to created device attributes */
++static struct attribute *nsi_attributes[] = {
++	&dev_attr_pmu_timer.attr,
++	&dev_attr_pmu_bandwidth.attr,
++	&dev_attr_available_pmu .attr,
++	&dev_attr_pmu_latency.attr,
++	&dev_attr_pmu_latency_aver.attr,
++
++	&sensor_dev_attr_port_mode.dev_attr.attr,
++	&sensor_dev_attr_port_prio.dev_attr.attr,
++	&sensor_dev_attr_port_qos.dev_attr.attr,
++	&sensor_dev_attr_port_select.dev_attr.attr,
++	&sensor_dev_attr_port_abs_bwl.dev_attr.attr,
++	&sensor_dev_attr_port_abs_bwlen.dev_attr.attr,
++	NULL,
++};
++
++static struct attribute_group nsi_group = {
++	.attrs = nsi_attributes,
++};
++
++static const struct attribute_group *nsi_groups[] = {
++	&nsi_group,
++	NULL,
++};
++
++static int nsi_pmu_probe(struct platform_device *pdev)
++{
++	int ret;
++	struct device *dev = &pdev->dev;
++
++	nsi_init(pdev);
++	sunxi_nsi.dev = dev;
++
++	if (hw_nsi_pmu.dev_nsi)
++		return 0;
++
++	hw_nsi_pmu.dev_nsi = device_create_with_groups(nsi_pmu_class,
++					dev, MKDEV(NSI_MAJOR, 0), NULL,
++					nsi_groups, "hwmon%d", 0);
++
++	if (IS_ERR(hw_nsi_pmu.dev_nsi)) {
++		ret = PTR_ERR(hw_nsi_pmu.dev_nsi);
++		goto out_err;
++	}
++
++	spin_lock_init(&hw_nsi_pmu.bwlock);
++
++	return 0;
++
++out_err:
++	dev_err(&(pdev->dev), "probed failed\n");
++
++	return ret;
++}
++
++static int nsi_pmu_remove(struct platform_device *pdev)
++{
++	if (hw_nsi_pmu.dev_nsi) {
++		device_remove_groups(hw_nsi_pmu.dev_nsi, nsi_groups);
++		device_destroy(nsi_pmu_class, MKDEV(NSI_MAJOR, 0));
++		hw_nsi_pmu.dev_nsi = NULL;
++	}
++
++//	nsi_exit();
++
++	return 0;
++}
++
++#if IS_ENABLED(CONFIG_PM)
++static int sunxi_nsi_suspend(struct device *dev)
++{
++	dev_info(dev, "suspend okay\n");
++
++	return 0;
++}
++
++static int sunxi_nsi_resume(struct device *dev)
++{
++#if IS_ENABLED(CONFIG_ARCH_SUN50IW10)
++	sunxi_nsi_set_limit(dev);
++#endif
++
++	dev_info(dev, "resume okay\n");
++	return 0;
++}
++
++static const struct dev_pm_ops sunxi_nsi_pm_ops = {
++	.suspend = sunxi_nsi_suspend,
++	.resume = sunxi_nsi_resume,
++};
++
++#define SUNXI_MBUS_PM_OPS (&sunxi_nsi_pm_ops)
++#else
++#define SUNXI_MBUS_PM_OPS NULL
++#endif
++
++static struct platform_driver nsi_pmu_driver = {
++	.driver = {
++		.name   = DRIVER_NAME_PMU,
++		.owner  = THIS_MODULE,
++		.pm     = SUNXI_MBUS_PM_OPS,
++		.of_match_table = sunxi_nsi_matches,
++	},
++	.probe = nsi_pmu_probe,
++	.remove = nsi_pmu_remove,
++};
++
++enum NSI_IOCTL_CMD {
++	IOCTL_UNKNOWN = 0x100,
++	NSI_SET_LIMIT,
++	NSI_UNSET_LIMIT,
++};
++
++static long nsi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
++{
++	switch (cmd) {
++	case NSI_SET_LIMIT:
++		sunxi_nsi_set_limit(sunxi_nsi.dev);
++		break;
++	case NSI_UNSET_LIMIT:
++		sunxi_nsi_unset_limit(sunxi_nsi.dev);
++		break;
++	default:
++		pr_err("nsi: err ioctl cmd");
++		return -ENOTTY;
++	}
++
++	return 0;
++}
++
++#ifdef CONFIG_COMPAT
++static long nsi_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
++{
++	unsigned long translated_arg = (unsigned long)compat_ptr(arg);
++
++	return nsi_ioctl(file, cmd, translated_arg);
++
++}
++#endif
++
++static const struct file_operations nsi_fops = {
++	.owner	 = THIS_MODULE,
++	.unlocked_ioctl	= nsi_ioctl,
++#ifdef CONFIG_COMPAT
++	.compat_ioctl   = nsi_compat_ioctl,
++#endif
++};
++
++static int nsi_pmu_init(void)
++{
++	int ret;
++	struct device *dev;
++
++	ret = register_chrdev_region(MKDEV(NSI_MAJOR, 0), NSI_MINORS, "nsi");
++	if (ret)
++		goto out_err;
++
++	cdev_init(&sunxi_nsi.cdev, &nsi_fops);
++	sunxi_nsi.cdev.owner = THIS_MODULE;
++	ret = cdev_add(&sunxi_nsi.cdev, MKDEV(NSI_MAJOR, 1), 1);
++	if (ret) {
++		pr_err("add cdev fail\n");
++		goto out_err;
++	}
++
++	nsi_pmu_class = class_create(THIS_MODULE, "nsi-pmu");
++	if (IS_ERR(nsi_pmu_class)) {
++		ret = PTR_ERR(nsi_pmu_class);
++		goto out_err;
++	}
++
++	dev = device_create(nsi_pmu_class, NULL, MKDEV(NSI_MAJOR, 1), NULL,
++			"nsi");
++	if (IS_ERR(dev)) {
++		pr_err("device_create failed!\n");
++		goto out_err;
++	}
++
++	ret = platform_driver_register(&nsi_pmu_driver);
++	if (ret) {
++		pr_err("register sunxi nsi platform driver failed\n");
++		goto drv_err;
++	}
++
++	return ret;
++
++drv_err:
++	platform_driver_unregister(&nsi_pmu_driver);
++out_err:
++	unregister_chrdev_region(MKDEV(NSI_MAJOR, 0), NSI_MINORS);
++	return ret;
++}
++
++static void nsi_pmu_exit(void)
++{
++	cdev_del(&sunxi_nsi.cdev);
++	platform_driver_unregister(&nsi_pmu_driver);
++	class_destroy(nsi_pmu_class);
++	unregister_chrdev_region(MKDEV(NSI_MAJOR, 0), NSI_MINORS);
++}
++
++device_initcall(nsi_pmu_init);
++module_exit(nsi_pmu_exit);
++
++MODULE_LICENSE("GPL v2");
++MODULE_DESCRIPTION("SUNXI NSI support");
++MODULE_AUTHOR("xiafeng");
+-- 
+2.17.1
+

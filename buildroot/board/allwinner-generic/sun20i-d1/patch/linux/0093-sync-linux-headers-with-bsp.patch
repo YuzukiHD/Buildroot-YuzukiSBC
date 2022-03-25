@@ -1,0 +1,4769 @@
+From cc02b790af649aed1f7693949337eab38c7f130c Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 17:27:30 +0800
+Subject: [PATCH 93/93] sync linux headers with bsp
+
+---
+ Kconfig                                     |   2 -
+ MAINTAINERS                                 |   6 +
+ README.md                                   | 142 +++++++++
+ include/net/addrconf.h                      |  12 +
+ include/net/cfg80211.h                      | 244 +++++++++++++-
+ include/net/ip.h                            |  12 +
+ include/net/ndisc.h                         |   1 +
+ include/net/netfilter/nf_conntrack.h        |   7 +
+ include/net/netns/ipv4.h                    |   1 +
+ include/net/sock.h                          |  13 +
+ include/net/tls.h                           |   7 +
+ include/net/udp.h                           |   2 +-
+ include/net/virt_wifi.h                     |  25 ++
+ include/net/xfrm.h                          |  34 ++
+ include/rdma/ib_verbs.h                     |   6 +-
+ include/scsi/scsi_cmnd.h                    |   6 +
+ include/scsi/scsi_device.h                  |  10 +-
+ include/scsi/scsi_host.h                    |   9 +
+ include/soc/allwinner/sunxi_sip.h           |  69 ++++
+ include/trace/events/android_fs.h           |  66 ++++
+ include/trace/events/android_fs_template.h  |  64 ++++
+ include/trace/events/f2fs.h                 | 185 ++++++++++-
+ include/trace/events/gpu_mem.h              |  57 ++++
+ include/trace/events/kmem.h                 |  47 +++
+ include/trace/events/namei.h                |  42 +++
+ include/trace/events/readahead.h            |  62 ++++
+ include/trace/events/sched.h                |  24 ++
+ include/trace/events/ufs.h                  |  31 ++
+ include/trace/events/writeback.h            |  14 +-
+ include/trace/hooks/binder.h                |  33 ++
+ include/trace/hooks/debug.h                 |  30 ++
+ include/trace/hooks/dtask.h                 |  53 ++++
+ include/trace/hooks/fpsimd.h                |  26 ++
+ include/trace/hooks/futex.h                 |  26 ++
+ include/trace/hooks/minidump.h              |  24 ++
+ include/trace/hooks/net.h                   |  42 +++
+ include/trace/hooks/rwsem.h                 |  38 +++
+ include/trace/hooks/sched.h                 |  91 ++++++
+ include/trace/hooks/sysrqcrash.h            |  24 ++
+ include/trace/hooks/topology.h              |  29 ++
+ include/trace/hooks/vendor_hooks.h          |  76 +++++
+ include/trace/hooks/wqlockup.h              |  24 ++
+ include/uapi/drm/drm_fourcc.h               |  24 ++
+ include/uapi/drm/drm_mode.h                 |  13 +-
+ include/uapi/linux/android/binder.h         |  50 ++-
+ include/uapi/linux/blkzoned.h               |  17 +-
+ include/uapi/linux/bpf.h                    |   1 +
+ include/uapi/linux/dsp/dsp_debug.h          |  57 ++++
+ include/uapi/linux/elf.h                    |   1 +
+ include/uapi/linux/fscrypt.h                |  22 +-
+ include/uapi/linux/fuse.h                   |   1 +
+ include/uapi/linux/incrementalfs.h          | 334 ++++++++++++++++++++
+ include/uapi/linux/input-event-codes.h      |   2 +-
+ include/uapi/linux/ion.h                    | 150 +++++++++
+ include/uapi/linux/kcov.h                   |  28 ++
+ include/uapi/linux/kexec.h                  |   1 +
+ include/uapi/linux/loop.h                   |  31 +-
+ include/uapi/linux/magic.h                  |   2 +
+ include/uapi/linux/netfilter/xt_IDLETIMER.h |   8 +
+ include/uapi/linux/nl80211.h                | 218 ++++++++++++-
+ include/uapi/linux/prctl.h                  |   3 +
+ include/uapi/linux/random.h                 |   4 +-
+ include/uapi/linux/stat.h                   |   2 +-
+ include/uapi/linux/usb/f_accessory.h        | 146 +++++++++
+ include/uapi/linux/usb/raw_gadget.h         | 249 +++++++++++++++
+ include/uapi/linux/v4l2-controls.h          |   5 +
+ include/uapi/linux/videodev2.h              |   7 +-
+ include/uapi/linux/xattr.h                  |   7 +-
+ include/vdso/bits.h                         |   9 +
+ include/vdso/clocksource.h                  |  22 ++
+ include/vdso/const.h                        |  10 +
+ include/vdso/datapage.h                     |  33 +-
+ include/vdso/jiffies.h                      |  11 +
+ include/vdso/ktime.h                        |  16 +
+ include/vdso/limits.h                       |  19 ++
+ include/vdso/math64.h                       |  24 ++
+ include/vdso/processor.h                    |  14 +
+ include/vdso/time.h                         |   5 +
+ include/vdso/time32.h                       |  17 +
+ include/vdso/time64.h                       |  14 +
+ linaro/configs/sunxi-common.conf            |  14 +
+ linaro/configs/sunxi-sata-sun50iw12p1.conf  |  19 ++
+ linaro/configs/sunxi-sata.conf              |  34 ++
+ 83 files changed, 3317 insertions(+), 43 deletions(-)
+ create mode 100644 README.md
+ create mode 100644 include/net/virt_wifi.h
+ create mode 100644 include/soc/allwinner/sunxi_sip.h
+ create mode 100644 include/trace/events/android_fs.h
+ create mode 100644 include/trace/events/android_fs_template.h
+ create mode 100644 include/trace/events/gpu_mem.h
+ create mode 100644 include/trace/events/namei.h
+ create mode 100644 include/trace/events/readahead.h
+ create mode 100644 include/trace/hooks/binder.h
+ create mode 100644 include/trace/hooks/debug.h
+ create mode 100644 include/trace/hooks/dtask.h
+ create mode 100644 include/trace/hooks/fpsimd.h
+ create mode 100644 include/trace/hooks/futex.h
+ create mode 100644 include/trace/hooks/minidump.h
+ create mode 100644 include/trace/hooks/net.h
+ create mode 100644 include/trace/hooks/rwsem.h
+ create mode 100644 include/trace/hooks/sched.h
+ create mode 100644 include/trace/hooks/sysrqcrash.h
+ create mode 100644 include/trace/hooks/topology.h
+ create mode 100644 include/trace/hooks/vendor_hooks.h
+ create mode 100644 include/trace/hooks/wqlockup.h
+ create mode 100644 include/uapi/linux/dsp/dsp_debug.h
+ create mode 100644 include/uapi/linux/incrementalfs.h
+ create mode 100644 include/uapi/linux/ion.h
+ create mode 100644 include/uapi/linux/usb/f_accessory.h
+ create mode 100644 include/uapi/linux/usb/raw_gadget.h
+ create mode 100644 include/vdso/bits.h
+ create mode 100644 include/vdso/clocksource.h
+ create mode 100644 include/vdso/const.h
+ create mode 100644 include/vdso/jiffies.h
+ create mode 100644 include/vdso/ktime.h
+ create mode 100644 include/vdso/limits.h
+ create mode 100644 include/vdso/math64.h
+ create mode 100644 include/vdso/processor.h
+ create mode 100644 include/vdso/time.h
+ create mode 100644 include/vdso/time32.h
+ create mode 100644 include/vdso/time64.h
+ create mode 100644 linaro/configs/sunxi-common.conf
+ create mode 100644 linaro/configs/sunxi-sata-sun50iw12p1.conf
+ create mode 100644 linaro/configs/sunxi-sata.conf
+
+diff --git a/Kconfig b/Kconfig
+index e10b3ee08..745bc773f 100644
+--- a/Kconfig
++++ b/Kconfig
+@@ -5,8 +5,6 @@
+ #
+ mainmenu "Linux/$(ARCH) $(KERNELVERSION) Kernel Configuration"
+ 
+-comment "Compiler: $(CC_VERSION_TEXT)"
+-
+ source "scripts/Kconfig.include"
+ 
+ source "init/Kconfig"
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 1407008df..99a57f811 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -11508,6 +11508,12 @@ S:	Maintained
+ F:	Documentation/scsi/NinjaSCSI.txt
+ F:	drivers/scsi/nsp32*
+ 
++NINTENDO HID DRIVER
++M:	Daniel J. Ogorchock <djogorchock@gmail.com>
++L:	linux-input@vger.kernel.org
++S:	Maintained
++F:	drivers/hid/hid-nintendo*
++
+ NIOS2 ARCHITECTURE
+ M:	Ley Foon Tan <lftan@altera.com>
+ L:	nios2-dev@lists.rocketboards.org (moderated for non-subscribers)
+diff --git a/README.md b/README.md
+new file mode 100644
+index 000000000..7012373fe
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,142 @@
++# How do I submit patches to Android Common Kernels
++
++1. BEST: Make all of your changes to upstream Linux. If appropriate, backport to the stable releases.
++   These patches will be merged automatically in the corresponding common kernels. If the patch is already
++   in upstream Linux, post a backport of the patch that conforms to the patch requirements below.
++
++2. LESS GOOD: Develop your patches out-of-tree (from an upstream Linux point-of-view). Unless these are
++   fixing an Android-specific bug, these are very unlikely to be accepted unless they have been
++   coordinated with kernel-team@android.com. If you want to proceed, post a patch that conforms to the
++   patch requirements below.
++
++# Common Kernel patch requirements
++
++- All patches must conform to the Linux kernel coding standards and pass `script/checkpatch.pl`
++- Patches shall not break gki_defconfig or allmodconfig builds for arm, arm64, x86, x86_64 architectures
++(see  https://source.android.com/setup/build/building-kernels)
++- If the patch is not merged from an upstream branch, the subject must be tagged with the type of patch:
++`UPSTREAM:`, `BACKPORT:`, `FROMGIT:`, `FROMLIST:`, or `ANDROID:`.
++- All patches must have a `Change-Id:` tag (see https://gerrit-review.googlesource.com/Documentation/user-changeid.html)
++- If an Android bug has been assigned, there must be a `Bug:` tag.
++- All patches must have a `Signed-off-by:` tag by the author and the submitter
++
++Additional requirements are listed below based on patch type
++
++## Requirements for backports from mainline Linux: `UPSTREAM:`, `BACKPORT:`
++
++- If the patch is a cherry-pick from Linux mainline with no changes at all
++    - tag the patch subject with `UPSTREAM:`.
++    - add upstream commit information with a `(cherry-picked from ...)` line
++    - Example:
++        - if the upstream commit message is
++```
++        important patch from upstream
++
++        This is the detailed description of the important patch
++
++        Signed-off-by: Fred Jones <fred.jones@foo.org>
++```
++        - then Joe Smith would upload the patch for the common kernel as
++```
++        UPSTREAM: important patch from upstream
++
++        This is the detailed description of the important patch
++
++        Signed-off-by: Fred Jones <fred.jones@foo.org>
++
++        Bug: 135791357
++        Change-Id: I4caaaa566ea080fa148c5e768bb1a0b6f7201c01
++        (cherry-picked from c31e73121f4c1ec41143423ac6ce3ce6dafdcec1)
++        Signed-off-by: Joe Smith <joe.smith@foo.org>
++```
++
++- If the patch requires any changes from the upstream version, tag the patch with `BACKPORT:`
++instead of `UPSTREAM:`.
++    - use the same tags as `UPSTREAM:`
++    - add comments about the changes under the `(cherry-picked from ...)` line
++    - Example:
++```
++        BACKPORT: important patch from upstream
++
++        This is the detailed description of the important patch
++
++        Signed-off-by: Fred Jones <fred.jones@foo.org>
++
++        Bug: 135791357
++        Change-Id: I4caaaa566ea080fa148c5e768bb1a0b6f7201c01
++        (cherry-picked from c31e73121f4c1ec41143423ac6ce3ce6dafdcec1)
++        [ Resolved minor conflict in drivers/foo/bar.c ]
++        Signed-off-by: Joe Smith <joe.smith@foo.org>
++```
++
++## Requirements for other backports: `FROMGIT:`, `FROMLIST:`,
++
++- If the patch has been merged into an upstream maintainer tree, but has not yet
++been merged into Linux mainline
++    - tag the patch subject with `FROMGIT:`
++    - add info on where the patch came from as `(cherry picked from commit <sha1> <repo> <branch>)`. This
++must be a stable maintainer branch (not rebased, so don't use `linux-next` for example).
++    - if changes were required, use `BACKPORT: FROMGIT:`
++    - Example:
++        - if the commit message in the maintainer tree is
++```
++        important patch from upstream
++
++        This is the detailed description of the important patch
++
++        Signed-off-by: Fred Jones <fred.jones@foo.org>
++```
++        - then Joe Smith would upload the patch for the common kernel as
++```
++        FROMGIT: important patch from upstream
++
++        This is the detailed description of the important patch
++
++        Signed-off-by: Fred Jones <fred.jones@foo.org>
++
++        Bug: 135791357
++        (cherry picked from commit 878a2fd9de10b03d11d2f622250285c7e63deace
++         https://git.kernel.org/pub/scm/linux/kernel/git/foo/bar.git test-branch)
++        Change-Id: I4caaaa566ea080fa148c5e768bb1a0b6f7201c01
++        Signed-off-by: Joe Smith <joe.smith@foo.org>
++```
++
++
++- If the patch has been submitted to LKML, but not accepted into any maintainer tree
++    - tag the patch subject with `FROMLIST:`
++    - add a `Link:` tag with a link to the submittal on lore.kernel.org
++    - if changes were required, use `BACKPORT: FROMLIST:`
++    - Example:
++```
++        FROMLIST: important patch from upstream
++
++        This is the detailed description of the important patch
++
++        Signed-off-by: Fred Jones <fred.jones@foo.org>
++
++        Bug: 135791357
++        Link: https://lore.kernel.org/lkml/20190619171517.GA17557@someone.com/
++        Change-Id: I4caaaa566ea080fa148c5e768bb1a0b6f7201c01
++        Signed-off-by: Joe Smith <joe.smith@foo.org>
++```
++
++## Requirements for Android-specific patches: `ANDROID:`
++
++- If the patch is fixing a bug to Android-specific code
++    - tag the patch subject with `ANDROID:`
++    - add a `Fixes:` tag that cites the patch with the bug
++    - Example:
++```
++        ANDROID: fix android-specific bug in foobar.c
++
++        This is the detailed description of the important fix
++
++        Fixes: 1234abcd2468 ("foobar: add cool feature")
++        Change-Id: I4caaaa566ea080fa148c5e768bb1a0b6f7201c01
++        Signed-off-by: Joe Smith <joe.smith@foo.org>
++```
++
++- If the patch is a new feature
++    - tag the patch subject with `ANDROID:`
++    - add a `Bug:` tag with the Android bug (required for android-specific features)
++
+diff --git a/include/net/addrconf.h b/include/net/addrconf.h
+index ab8b3eb53..f6361e233 100644
+--- a/include/net/addrconf.h
++++ b/include/net/addrconf.h
+@@ -266,6 +266,18 @@ static inline bool ipv6_is_mld(struct sk_buff *skb, int nexthdr, int offset)
+ void addrconf_prefix_rcv(struct net_device *dev,
+ 			 u8 *opt, int len, bool sllao);
+ 
++/* Determines into what table to put autoconf PIO/RIO/default routes
++ * learned on this device.
++ *
++ * - If 0, use the same table for every device. This puts routes into
++ *   one of RT_TABLE_{PREFIX,INFO,DFLT} depending on the type of route
++ *   (but note that these three are currently all equal to
++ *   RT6_TABLE_MAIN).
++ * - If > 0, use the specified table.
++ * - If < 0, put routes into table dev->ifindex + (-rt_table).
++ */
++u32 addrconf_rt_table(const struct net_device *dev, u32 default_table);
++
+ /*
+  *	anycast prototypes (anycast.c)
+  */
+diff --git a/include/net/cfg80211.h b/include/net/cfg80211.h
+index 68782ba8b..050c205ac 100644
+--- a/include/net/cfg80211.h
++++ b/include/net/cfg80211.h
+@@ -126,6 +126,7 @@ enum ieee80211_channel_flags {
+  * with cfg80211.
+  *
+  * @center_freq: center frequency in MHz
++ * @freq_offset: offset from @center_freq, in KHz
+  * @hw_value: hardware-specific value for the channel
+  * @flags: channel flags from &enum ieee80211_channel_flags.
+  * @orig_flags: channel flags at registration time, used by regulatory
+@@ -147,6 +148,7 @@ enum ieee80211_channel_flags {
+ struct ieee80211_channel {
+ 	enum nl80211_band band;
+ 	u32 center_freq;
++	u16 freq_offset;
+ 	u16 hw_value;
+ 	u32 flags;
+ 	int max_antenna_gain;
+@@ -259,6 +261,19 @@ struct ieee80211_he_obss_pd {
+ 	u8 max_offset;
+ };
+ 
++/**
++ * struct cfg80211_he_bss_color - AP settings for BSS coloring
++ *
++ * @color: the current color.
++ * @disabled: is the feature disabled.
++ * @partial: define the AID equation.
++ */
++struct cfg80211_he_bss_color {
++	u8 color;
++	bool disabled;
++	bool partial;
++};
++
+ /**
+  * struct ieee80211_sta_ht_cap - STA's HT capabilities
+  *
+@@ -324,10 +339,13 @@ struct ieee80211_sta_he_cap {
+  *
+  * @types_mask: interface types mask
+  * @he_cap: holds the HE capabilities
++ * @he_6ghz_capa: HE 6 GHz capabilities, must be filled in for a
++ *	6 GHz band channel (and 0 may be valid value).
+  */
+ struct ieee80211_sband_iftype_data {
+ 	u16 types_mask;
+ 	struct ieee80211_sta_he_cap he_cap;
++	struct ieee80211_he_6ghz_capa he_6ghz_capa;
+ };
+ 
+ /**
+@@ -479,6 +497,26 @@ ieee80211_get_he_sta_cap(const struct ieee80211_supported_band *sband)
+ 	return ieee80211_get_he_iftype_cap(sband, NL80211_IFTYPE_STATION);
+ }
+ 
++/**
++ * ieee80211_get_he_6ghz_capa - return HE 6 GHz capabilities
++ * @sband: the sband to search for the STA on
++ * @iftype: the iftype to search for
++ *
++ * Return: the 6GHz capabilities
++ */
++static inline __le16
++ieee80211_get_he_6ghz_capa(const struct ieee80211_supported_band *sband,
++			   enum nl80211_iftype iftype)
++{
++	const struct ieee80211_sband_iftype_data *data =
++		ieee80211_get_sband_iftype_data(sband, iftype);
++
++	if (WARN_ON(!data || !data->he_cap.has_he))
++		return 0;
++
++	return data->he_6ghz_capa.capa;
++}
++
+ /**
+  * wiphy_read_of_freq_limits - read frequency limits from device tree
+  *
+@@ -565,6 +603,7 @@ struct vif_params {
+  *	with the get_key() callback, must be in little endian,
+  *	length given by @seq_len.
+  * @seq_len: length of @seq.
++ * @vlan_id: vlan_id for VLAN group key (if nonzero)
+  * @mode: key install mode (RX_TX, NO_TX or SET_TX)
+  */
+ struct key_params {
+@@ -572,6 +611,7 @@ struct key_params {
+ 	const u8 *seq;
+ 	int key_len;
+ 	int seq_len;
++	u16 vlan_id;
+ 	u32 cipher;
+ 	enum nl80211_key_mode mode;
+ };
+@@ -587,6 +627,7 @@ struct key_params {
+  *	If edmg is requested (i.e. the .channels member is non-zero),
+  *	chan will define the primary channel and all other
+  *	parameters are ignored.
++ * @freq1_offset: offset from @center_freq1, in KHz
+  */
+ struct cfg80211_chan_def {
+ 	struct ieee80211_channel *chan;
+@@ -594,6 +635,35 @@ struct cfg80211_chan_def {
+ 	u32 center_freq1;
+ 	u32 center_freq2;
+ 	struct ieee80211_edmg edmg;
++	u16 freq1_offset;
++};
++
++/**
++ * struct cfg80211_tid_cfg - TID specific configuration
++ * @config_override: Flag to notify driver to reset TID configuration
++ *	of the peer.
++ * @tids: bitmap of TIDs to modify
++ * @mask: bitmap of attributes indicating which parameter changed,
++ *	similar to &nl80211_tid_config_supp.
++ * @noack: noack configuration value for the TID
++ */
++struct cfg80211_tid_cfg {
++	bool config_override;
++	u8 tids;
++	u32 mask;
++	enum nl80211_tid_config noack;
++};
++
++/**
++ * struct cfg80211_tid_config - TID configuration
++ * @peer: Station's MAC address
++ * @n_tid_conf: Number of TID specific configurations to be applied
++ * @tid_conf: Configuration change info
++ */
++struct cfg80211_tid_config {
++	const u8 *peer;
++	u32 n_tid_conf;
++	struct cfg80211_tid_cfg tid_conf[];
+ };
+ 
+ /**
+@@ -648,6 +718,7 @@ cfg80211_chandef_identical(const struct cfg80211_chan_def *chandef1,
+ 	return (chandef1->chan == chandef2->chan &&
+ 		chandef1->width == chandef2->width &&
+ 		chandef1->center_freq1 == chandef2->center_freq1 &&
++		chandef1->freq1_offset == chandef2->freq1_offset &&
+ 		chandef1->center_freq2 == chandef2->center_freq2);
+ }
+ 
+@@ -988,6 +1059,7 @@ enum cfg80211_ap_settings_flags {
+  * @twt_responder: Enable Target Wait Time
+  * @flags: flags, as defined in enum cfg80211_ap_settings_flags
+  * @he_obss_pd: OBSS Packet Detection settings
++ * @he_bss_color: BSS Color settings
+  */
+ struct cfg80211_ap_settings {
+ 	struct cfg80211_chan_def chandef;
+@@ -1016,6 +1088,7 @@ struct cfg80211_ap_settings {
+ 	bool twt_responder;
+ 	u32 flags;
+ 	struct ieee80211_he_obss_pd he_obss_pd;
++	struct cfg80211_he_bss_color he_bss_color;
+ };
+ 
+ /**
+@@ -1124,6 +1197,7 @@ struct sta_txpwr {
+  *	(bitmask of BIT(%NL80211_STA_FLAG_...))
+  * @listen_interval: listen interval or -1 for no change
+  * @aid: AID or zero for no change
++ * @vlan_id: VLAN ID for station (if nonzero)
+  * @peer_aid: mesh peer AID or zero for no change
+  * @plink_action: plink action to take
+  * @plink_state: set the peer link state for a station
+@@ -1151,6 +1225,7 @@ struct sta_txpwr {
+  * @he_capa: HE capabilities of station
+  * @he_capa_len: the length of the HE capabilities
+  * @airtime_weight: airtime scheduler weight for this station
++ * @he_6ghz_capa: HE 6 GHz Band capabilities of station
+  */
+ struct station_parameters {
+ 	const u8 *supported_rates;
+@@ -1159,6 +1234,7 @@ struct station_parameters {
+ 	u32 sta_modify_mask;
+ 	int listen_interval;
+ 	u16 aid;
++	u16 vlan_id;
+ 	u16 peer_aid;
+ 	u8 supported_rates_len;
+ 	u8 plink_action;
+@@ -1182,6 +1258,7 @@ struct station_parameters {
+ 	u8 he_capa_len;
+ 	u16 airtime_weight;
+ 	struct sta_txpwr txpwr;
++	const struct ieee80211_he_6ghz_capa *he_6ghz_capa;
+ };
+ 
+ /**
+@@ -2620,6 +2697,17 @@ enum wiphy_params_flags {
+  * @cache_id: 2-octet cache identifier advertized by a FILS AP identifying the
+  *	scope of PMKSA. This is valid only if @ssid_len is non-zero (may be
+  *	%NULL).
++ * @pmk_lifetime: Maximum lifetime for PMKSA in seconds
++ *	(dot11RSNAConfigPMKLifetime) or 0 if not specified.
++ *	The configured PMKSA must not be used for PMKSA caching after
++ *	expiration and any keys derived from this PMK become invalid on
++ *	expiration, i.e., the current association must be dropped if the PMK
++ *	used for it expires.
++ * @pmk_reauth_threshold: Threshold time for reauthentication (percentage of
++ *	PMK lifetime, dot11RSNAConfigPMKReauthThreshold) or 0 if not specified.
++ *	Drivers are expected to trigger a full authentication instead of using
++ *	this PMKSA for caching when reassociating to a new BSS after this
++ *	threshold to generate a new PMK before the current one expires.
+  */
+ struct cfg80211_pmksa {
+ 	const u8 *bssid;
+@@ -2629,6 +2717,8 @@ struct cfg80211_pmksa {
+ 	const u8 *ssid;
+ 	size_t ssid_len;
+ 	const u8 *cache_id;
++	u32 pmk_lifetime;
++	u8 pmk_reauth_threshold;
+ };
+ 
+ /**
+@@ -3328,6 +3418,8 @@ struct cfg80211_update_owe_info {
+  * @set_default_key: set the default key on an interface
+  *
+  * @set_default_mgmt_key: set the default management frame key on an interface
++
++ * @set_default_beacon_key: set the default Beacon frame key on an interface
+  *
+  * @set_rekey_data: give the data necessary for GTK rekeying to the driver
+  *
+@@ -3628,6 +3720,10 @@ struct cfg80211_update_owe_info {
+  *
+  * @probe_mesh_link: Probe direct Mesh peer's link quality by sending data frame
+  *	and overrule HWMP path selection algorithm.
++ * @set_tid_config: TID specific configuration, this can be peer or BSS specific
++ *	This callback may sleep.
++ * @reset_tid_config: Reset TID specific configuration for the peer, for the
++ *	given TIDs. This callback may sleep.
+  */
+ struct cfg80211_ops {
+ 	int	(*suspend)(struct wiphy *wiphy, struct cfg80211_wowlan *wow);
+@@ -3661,6 +3757,9 @@ struct cfg80211_ops {
+ 	int	(*set_default_mgmt_key)(struct wiphy *wiphy,
+ 					struct net_device *netdev,
+ 					u8 key_index);
++	int	(*set_default_beacon_key)(struct wiphy *wiphy,
++					  struct net_device *netdev,
++					  u8 key_index);
+ 
+ 	int	(*start_ap)(struct wiphy *wiphy, struct net_device *dev,
+ 			    struct cfg80211_ap_settings *settings);
+@@ -3948,6 +4047,10 @@ struct cfg80211_ops {
+ 				   struct cfg80211_update_owe_info *owe_info);
+ 	int	(*probe_mesh_link)(struct wiphy *wiphy, struct net_device *dev,
+ 				   const u8 *buf, size_t len);
++	int     (*set_tid_config)(struct wiphy *wiphy, struct net_device *dev,
++				  struct cfg80211_tid_config *tid_conf);
++	int	(*reset_tid_config)(struct wiphy *wiphy, struct net_device *dev,
++				    const u8 *peer, u8 tids);
+ };
+ 
+ /*
+@@ -4364,6 +4467,21 @@ struct cfg80211_pmsr_capabilities {
+ 	} ftm;
+ };
+ 
++/**
++ * struct wiphy_iftype_akm_suites - This structure encapsulates supported akm
++ * suites for interface types defined in @iftypes_mask. Each type in the
++ * @iftypes_mask must be unique across all instances of iftype_akm_suites.
++ *
++ * @iftypes_mask: bitmask of interfaces types
++ * @akm_suites: points to an array of supported akm suites
++ * @n_akm_suites: number of supported AKM suites
++ */
++struct wiphy_iftype_akm_suites {
++	u16 iftypes_mask;
++	const u32 *akm_suites;
++	int n_akm_suites;
++};
++
+ /**
+  * struct wiphy - wireless hardware description
+  * @reg_notifier: the driver's regulatory notification callback,
+@@ -4376,8 +4494,16 @@ struct cfg80211_pmsr_capabilities {
+  * @signal_type: signal type reported in &struct cfg80211_bss.
+  * @cipher_suites: supported cipher suites
+  * @n_cipher_suites: number of supported cipher suites
+- * @akm_suites: supported AKM suites
++ * @akm_suites: supported AKM suites. These are the default AKMs supported if
++ *	the supported AKMs not advertized for a specific interface type in
++ *	iftype_akm_suites.
+  * @n_akm_suites: number of supported AKM suites
++ * @iftype_akm_suites: array of supported akm suites info per interface type.
++ *	Note that the bits in @iftypes_mask inside this structure cannot
++ *	overlap (i.e. only one occurrence of each type is allowed across all
++ *	instances of iftype_akm_suites).
++ * @num_iftype_akm_suites: number of interface types for which supported akm
++ *	suites are specified separately.
+  * @retry_short: Retry limit for short frames (dot11ShortRetryLimit)
+  * @retry_long: Retry limit for long frames (dot11LongRetryLimit)
+  * @frag_threshold: Fragmentation threshold (dot11FragmentationThreshold);
+@@ -4537,6 +4663,13 @@ struct cfg80211_pmsr_capabilities {
+  *	@support_mbssid must be set for this to have any effect.
+  *
+  * @pmsr_capa: peer measurement capabilities
++ *
++ * @tid_config_support: describes the per-TID config support that the
++ *	device has
++ * @tid_config_support.vif: bitmap of attributes (configurations)
++ *	supported by the driver for each vif
++ * @tid_config_support.peer: bitmap of attributes (configurations)
++ *	supported by the driver for each peer
+  */
+ struct wiphy {
+ 	/* assign these fields before you register the wiphy */
+@@ -4584,6 +4717,9 @@ struct wiphy {
+ 	int n_akm_suites;
+ 	const u32 *akm_suites;
+ 
++	const struct wiphy_iftype_akm_suites *iftype_akm_suites;
++	unsigned int num_iftype_akm_suites;
++
+ 	u8 retry_short;
+ 	u8 retry_long;
+ 	u32 frag_threshold;
+@@ -4681,6 +4817,10 @@ struct wiphy {
+ 
+ 	const struct cfg80211_pmsr_capabilities *pmsr_capa;
+ 
++	struct {
++		u64 peer, vif;
++	} tid_config_support;
++
+ 	char priv[0] __aligned(NETDEV_ALIGN);
+ };
+ 
+@@ -5007,30 +5147,107 @@ static inline void *wdev_priv(struct wireless_dev *wdev)
+  * cfg80211 offers a number of utility functions that can be useful.
+  */
+ 
++/**
++ * ieee80211_channel_equal - compare two struct ieee80211_channel
++ *
++ * @a: 1st struct ieee80211_channel
++ * @b: 2nd struct ieee80211_channel
++ * Return: true if center frequency of @a == @b
++ */
++static inline bool
++ieee80211_channel_equal(struct ieee80211_channel *a,
++			struct ieee80211_channel *b)
++{
++	return (a->center_freq == b->center_freq &&
++		a->freq_offset == b->freq_offset);
++}
++
++/**
++ * ieee80211_channel_to_khz - convert ieee80211_channel to frequency in KHz
++ * @chan: struct ieee80211_channel to convert
++ * Return: The corresponding frequency (in KHz)
++ */
++static inline u32
++ieee80211_channel_to_khz(const struct ieee80211_channel *chan)
++{
++	return MHZ_TO_KHZ(chan->center_freq) + chan->freq_offset;
++}
++
++/**
++ * ieee80211_channel_to_freq_khz - convert channel number to frequency
++ * @chan: channel number
++ * @band: band, necessary due to channel number overlap
++ * Return: The corresponding frequency (in KHz), or 0 if the conversion failed.
++ */
++u32 ieee80211_channel_to_freq_khz(int chan, enum nl80211_band band);
++
+ /**
+  * ieee80211_channel_to_frequency - convert channel number to frequency
+  * @chan: channel number
+  * @band: band, necessary due to channel number overlap
+  * Return: The corresponding frequency (in MHz), or 0 if the conversion failed.
+  */
+-int ieee80211_channel_to_frequency(int chan, enum nl80211_band band);
++static inline int
++ieee80211_channel_to_frequency(int chan, enum nl80211_band band)
++{
++	return KHZ_TO_MHZ(ieee80211_channel_to_freq_khz(chan, band));
++}
++
++/**
++ * ieee80211_freq_khz_to_channel - convert frequency to channel number
++ * @freq: center frequency in KHz
++ * Return: The corresponding channel, or 0 if the conversion failed.
++ */
++int ieee80211_freq_khz_to_channel(u32 freq);
+ 
+ /**
+  * ieee80211_frequency_to_channel - convert frequency to channel number
+- * @freq: center frequency
++ * @freq: center frequency in MHz
+  * Return: The corresponding channel, or 0 if the conversion failed.
+  */
+-int ieee80211_frequency_to_channel(int freq);
++static inline int
++ieee80211_frequency_to_channel(int freq)
++{
++	return ieee80211_freq_khz_to_channel(MHZ_TO_KHZ(freq));
++}
++
++/**
++ * ieee80211_get_channel_khz - get channel struct from wiphy for specified
++ * frequency
++ * @wiphy: the struct wiphy to get the channel for
++ * @freq: the center frequency (in KHz) of the channel
++ * Return: The channel struct from @wiphy at @freq.
++ */
++struct ieee80211_channel *
++ieee80211_get_channel_khz(struct wiphy *wiphy, u32 freq);
+ 
+ /**
+  * ieee80211_get_channel - get channel struct from wiphy for specified frequency
+  *
+  * @wiphy: the struct wiphy to get the channel for
+- * @freq: the center frequency of the channel
+- *
++ * @freq: the center frequency (in MHz) of the channel
+  * Return: The channel struct from @wiphy at @freq.
+  */
+-struct ieee80211_channel *ieee80211_get_channel(struct wiphy *wiphy, int freq);
++static inline struct ieee80211_channel *
++ieee80211_get_channel(struct wiphy *wiphy, int freq)
++{
++	return ieee80211_get_channel_khz(wiphy, MHZ_TO_KHZ(freq));
++}
++
++/**
++ * cfg80211_channel_is_psc - Check if the channel is a 6 GHz PSC
++ * @chan: control channel to check
++ *
++ * The Preferred Scanning Channels (PSC) are defined in
++ * Draft IEEE P802.11ax/D5.0, 26.17.2.3.3
++ */
++static inline bool cfg80211_channel_is_psc(struct ieee80211_channel *chan)
++{
++	if (chan->band != NL80211_BAND_6GHZ)
++		return false;
++
++	return ieee80211_frequency_to_channel(chan->center_freq) % 16 == 5;
++}
+ 
+ /**
+  * ieee80211_get_response_rate - get basic rate for a given rate
+@@ -7054,6 +7271,19 @@ bool ieee80211_operating_class_to_band(u8 operating_class,
+ bool ieee80211_chandef_to_operating_class(struct cfg80211_chan_def *chandef,
+ 					  u8 *op_class);
+ 
++/**
++ * ieee80211_chandef_to_khz - convert chandef to frequency in KHz
++ *
++ * @chandef: the chandef to convert
++ *
++ * Returns the center frequency of chandef (1st segment) in KHz.
++ */
++static inline u32
++ieee80211_chandef_to_khz(const struct cfg80211_chan_def *chandef)
++{
++	return MHZ_TO_KHZ(chandef->center_freq1) + chandef->freq1_offset;
++}
++
+ /*
+  * cfg80211_tdls_oper_request - request userspace to perform TDLS operation
+  * @dev: the device on which the operation is requested
+diff --git a/include/net/ip.h b/include/net/ip.h
+index 4b15cc1c2..c0db1e75c 100644
+--- a/include/net/ip.h
++++ b/include/net/ip.h
+@@ -346,6 +346,13 @@ static inline int inet_is_local_reserved_port(struct net *net, int port)
+ 	return test_bit(port, net->ipv4.sysctl_local_reserved_ports);
+ }
+ 
++static inline bool inet_is_local_unbindable_port(struct net *net, unsigned short port)
++{
++	if (!net->ipv4.sysctl_local_unbindable_ports)
++		return false;
++	return test_bit(port, net->ipv4.sysctl_local_unbindable_ports);
++}
++
+ static inline bool sysctl_dev_name_is_allowed(const char *name)
+ {
+ 	return strcmp(name, "default") != 0  && strcmp(name, "all") != 0;
+@@ -362,6 +369,11 @@ static inline int inet_is_local_reserved_port(struct net *net, int port)
+ 	return 0;
+ }
+ 
++static inline bool inet_is_local_unbindable_port(struct net *net, unsigned short port)
++{
++	return false;
++}
++
+ static inline int inet_prot_sock(struct net *net)
+ {
+ 	return PROT_SOCK;
+diff --git a/include/net/ndisc.h b/include/net/ndisc.h
+index b5ebeb3b0..6cb3e6c11 100644
+--- a/include/net/ndisc.h
++++ b/include/net/ndisc.h
+@@ -41,6 +41,7 @@ enum {
+ 	ND_OPT_DNSSL = 31,		/* RFC6106 */
+ 	ND_OPT_6CO = 34,		/* RFC6775 */
+ 	ND_OPT_CAPTIVE_PORTAL = 37,	/* RFC7710 */
++	ND_OPT_PREF64 = 38,		/* RFC8781 */
+ 	__ND_OPT_MAX
+ };
+ 
+diff --git a/include/net/netfilter/nf_conntrack.h b/include/net/netfilter/nf_conntrack.h
+index 90690e37a..502a817bf 100644
+--- a/include/net/netfilter/nf_conntrack.h
++++ b/include/net/netfilter/nf_conntrack.h
+@@ -15,6 +15,8 @@
+ 
+ #include <linux/bitops.h>
+ #include <linux/compiler.h>
++#include <linux/android_kabi.h>
++#include <linux/android_vendor.h>
+ 
+ #include <linux/netfilter/nf_conntrack_common.h>
+ #include <linux/netfilter/nf_conntrack_tcp.h>
+@@ -105,6 +107,11 @@ struct nf_conn {
+ 
+ 	/* Storage reserved for other modules, must be the last member */
+ 	union nf_conntrack_proto proto;
++
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++
++	ANDROID_VENDOR_DATA(1);
+ };
+ 
+ static inline struct nf_conn *
+diff --git a/include/net/netns/ipv4.h b/include/net/netns/ipv4.h
+index c0c0791b1..6a2356519 100644
+--- a/include/net/netns/ipv4.h
++++ b/include/net/netns/ipv4.h
+@@ -197,6 +197,7 @@ struct netns_ipv4 {
+ 
+ #ifdef CONFIG_SYSCTL
+ 	unsigned long *sysctl_local_reserved_ports;
++	unsigned long *sysctl_local_unbindable_ports;
+ 	int sysctl_ip_prot_sock;
+ #endif
+ 
+diff --git a/include/net/sock.h b/include/net/sock.h
+index 6d9c1131f..eb3c7e89b 100644
+--- a/include/net/sock.h
++++ b/include/net/sock.h
+@@ -68,6 +68,8 @@
+ #include <linux/net_tstamp.h>
+ #include <net/smc.h>
+ #include <net/l3mdev.h>
++#include <linux/android_kabi.h>
++#include <linux/android_vendor.h>
+ 
+ /*
+  * This structure really needs to be cleaned up.
+@@ -511,6 +513,17 @@ struct sock {
+ 	struct bpf_sk_storage __rcu	*sk_bpf_storage;
+ #endif
+ 	struct rcu_head		sk_rcu;
++
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
++	ANDROID_KABI_RESERVE(5);
++	ANDROID_KABI_RESERVE(6);
++	ANDROID_KABI_RESERVE(7);
++	ANDROID_KABI_RESERVE(8);
++
++	ANDROID_VENDOR_DATA(1);
+ };
+ 
+ enum sk_pacing {
+diff --git a/include/net/tls.h b/include/net/tls.h
+index 0a065bdff..c5b77e1b7 100644
+--- a/include/net/tls.h
++++ b/include/net/tls.h
+@@ -43,6 +43,7 @@
+ #include <linux/mutex.h>
+ #include <linux/netdevice.h>
+ #include <linux/rcupdate.h>
++#include <linux/android_kabi.h>
+ 
+ #include <net/tcp.h>
+ #include <net/strparser.h>
+@@ -308,6 +309,12 @@ struct tlsdev_ops {
+ 	int (*tls_dev_resync)(struct net_device *netdev,
+ 			      struct sock *sk, u32 seq, u8 *rcd_sn,
+ 			      enum tls_offload_ctx_dir direction);
++
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
++
+ };
+ 
+ enum tls_offload_sync_type {
+diff --git a/include/net/udp.h b/include/net/udp.h
+index fabf507bc..e55d5f765 100644
+--- a/include/net/udp.h
++++ b/include/net/udp.h
+@@ -167,7 +167,7 @@ typedef struct sock *(*udp_lookup_t)(struct sk_buff *skb, __be16 sport,
+ 				     __be16 dport);
+ 
+ struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
+-				struct udphdr *uh, udp_lookup_t lookup);
++				struct udphdr *uh, struct sock *sk);
+ int udp_gro_complete(struct sk_buff *skb, int nhoff, udp_lookup_t lookup);
+ 
+ struct sk_buff *__udp_gso_segment(struct sk_buff *gso_skb,
+diff --git a/include/net/virt_wifi.h b/include/net/virt_wifi.h
+new file mode 100644
+index 000000000..343e73968
+--- /dev/null
++++ b/include/net/virt_wifi.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/* include/net/virt_wifi.h
++ *
++ * Define the extension interface for the network data simulation
++ *
++ * Copyright (C) 2019 Google, Inc.
++ *
++ * Author: lesl@google.com
++ */
++#ifndef __VIRT_WIFI_H
++#define __VIRT_WIFI_H
++
++struct virt_wifi_network_simulation {
++	void (*notify_device_open)(struct net_device *dev);
++	void (*notify_device_stop)(struct net_device *dev);
++	void (*notify_scan_trigger)(struct wiphy *wiphy,
++				    struct cfg80211_scan_request *request);
++	int (*generate_virt_scan_result)(struct wiphy *wiphy);
++};
++
++int virt_wifi_register_network_simulation(
++	    struct virt_wifi_network_simulation *ops);
++int virt_wifi_unregister_network_simulation(void);
++#endif
++
+diff --git a/include/net/xfrm.h b/include/net/xfrm.h
+index 12aa6e15e..083cc349e 100644
+--- a/include/net/xfrm.h
++++ b/include/net/xfrm.h
+@@ -1999,4 +1999,38 @@ static inline int xfrm_tunnel_check(struct sk_buff *skb, struct xfrm_state *x,
+ 
+ 	return 0;
+ }
++
++extern const int xfrm_msg_min[XFRM_NR_MSGTYPES];
++extern const struct nla_policy xfrma_policy[XFRMA_MAX+1];
++
++struct xfrm_translator {
++	/* Allocate frag_list and put compat translation there */
++	int (*alloc_compat)(struct sk_buff *skb, const struct nlmsghdr *src);
++
++	/* Allocate nlmsg with 64-bit translaton of received 32-bit message */
++	struct nlmsghdr *(*rcv_msg_compat)(const struct nlmsghdr *nlh,
++			int maxtype, const struct nla_policy *policy,
++			struct netlink_ext_ack *extack);
++
++	/* Translate 32-bit user_policy from sockptr */
++	int (*xlate_user_policy_sockptr)(u8 **pdata32, int optlen);
++
++	struct module *owner;
++};
++
++#if IS_ENABLED(CONFIG_XFRM_USER_COMPAT)
++extern int xfrm_register_translator(struct xfrm_translator *xtr);
++extern int xfrm_unregister_translator(struct xfrm_translator *xtr);
++extern struct xfrm_translator *xfrm_get_translator(void);
++extern void xfrm_put_translator(struct xfrm_translator *xtr);
++#else
++static inline struct xfrm_translator *xfrm_get_translator(void)
++{
++	return NULL;
++}
++static inline void xfrm_put_translator(struct xfrm_translator *xtr)
++{
++}
++#endif
++
+ #endif	/* _NET_XFRM_H */
+diff --git a/include/rdma/ib_verbs.h b/include/rdma/ib_verbs.h
+index 30d50528d..83a66c931 100644
+--- a/include/rdma/ib_verbs.h
++++ b/include/rdma/ib_verbs.h
+@@ -95,7 +95,8 @@ void ibdev_notice(const struct ib_device *ibdev, const char *format, ...);
+ __printf(2, 3) __cold
+ void ibdev_info(const struct ib_device *ibdev, const char *format, ...);
+ 
+-#if defined(CONFIG_DYNAMIC_DEBUG)
++#if defined(CONFIG_DYNAMIC_DEBUG) || \
++	(defined(CONFIG_DYNAMIC_DEBUG_CORE) && defined(DYNAMIC_DEBUG_MODULE))
+ #define ibdev_dbg(__dev, format, args...)                       \
+ 	dynamic_ibdev_dbg(__dev, format, ##args)
+ #else
+@@ -128,7 +129,8 @@ do {                                                                    \
+ #define ibdev_info_ratelimited(ibdev, fmt, ...) \
+ 	ibdev_level_ratelimited(ibdev_info, ibdev, fmt, ##__VA_ARGS__)
+ 
+-#if defined(CONFIG_DYNAMIC_DEBUG)
++#if defined(CONFIG_DYNAMIC_DEBUG) || \
++	(defined(CONFIG_DYNAMIC_DEBUG_CORE) && defined(DYNAMIC_DEBUG_MODULE))
+ /* descriptor check is first to prevent flooding with "callbacks suppressed" */
+ #define ibdev_dbg_ratelimited(ibdev, fmt, ...)                          \
+ do {                                                                    \
+diff --git a/include/scsi/scsi_cmnd.h b/include/scsi/scsi_cmnd.h
+index 91bd749a0..e998148f0 100644
+--- a/include/scsi/scsi_cmnd.h
++++ b/include/scsi/scsi_cmnd.h
+@@ -11,6 +11,7 @@
+ #include <linux/scatterlist.h>
+ #include <scsi/scsi_device.h>
+ #include <scsi/scsi_request.h>
++#include <linux/android_kabi.h>
+ 
+ struct Scsi_Host;
+ struct scsi_driver;
+@@ -141,6 +142,11 @@ struct scsi_cmnd {
+ 	unsigned long state;	/* Command completion state */
+ 
+ 	unsigned char tag;	/* SCSI-II queued command tag */
++
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
+ };
+ 
+ /*
+diff --git a/include/scsi/scsi_device.h b/include/scsi/scsi_device.h
+index 202f4d6a4..576840c6e 100644
+--- a/include/scsi/scsi_device.h
++++ b/include/scsi/scsi_device.h
+@@ -8,6 +8,7 @@
+ #include <linux/blkdev.h>
+ #include <scsi/scsi.h>
+ #include <linux/atomic.h>
++#include <linux/android_kabi.h>
+ 
+ struct device;
+ struct request_queue;
+@@ -170,6 +171,7 @@ struct scsi_device {
+ 				     * because we did a bus reset. */
+ 	unsigned use_10_for_rw:1; /* first try 10-byte read / write */
+ 	unsigned use_10_for_ms:1; /* first try 10-byte mode sense/select */
++	unsigned set_dbd_for_ms:1; /* Set "DBD" field in mode sense */
+ 	unsigned no_report_opcodes:1;	/* no REPORT SUPPORTED OPERATION CODES */
+ 	unsigned no_write_same:1;	/* no WRITE SAME command */
+ 	unsigned use_16_for_rw:1; /* Use read/write(16) over read/write(10) */
+@@ -199,7 +201,8 @@ struct scsi_device {
+ 	unsigned broken_fua:1;		/* Don't set FUA bit */
+ 	unsigned lun_in_cdb:1;		/* Store LUN bits in CDB[1] */
+ 	unsigned unmap_limit_for_ws:1;	/* Use the UNMAP limit for WRITE SAME */
+-
++	unsigned rpm_autosuspend:1;	/* Enable runtime autosuspend at device
++					 * creation time */
+ 	atomic_t disk_events_disable_depth; /* disable depth for disk events */
+ 
+ 	DECLARE_BITMAP(supported_events, SDEV_EVT_MAXBITS); /* supported events */
+@@ -228,6 +231,11 @@ struct scsi_device {
+ 	enum scsi_device_state sdev_state;
+ 	struct task_struct	*quiesced_by;
+ 	unsigned long		sdev_data[0];
++
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
+ } __attribute__((aligned(sizeof(unsigned long))));
+ 
+ #define	to_scsi_device(d)	\
+diff --git a/include/scsi/scsi_host.h b/include/scsi/scsi_host.h
+index 31e0d6ca1..10f1b50d6 100644
+--- a/include/scsi/scsi_host.h
++++ b/include/scsi/scsi_host.h
+@@ -10,6 +10,7 @@
+ #include <linux/seq_file.h>
+ #include <linux/blk-mq.h>
+ #include <scsi/scsi.h>
++#include <linux/android_kabi.h>
+ 
+ struct block_device;
+ struct completion;
+@@ -486,6 +487,14 @@ struct scsi_host_template {
+ 	 */
+ 	unsigned int cmd_size;
+ 	struct scsi_host_cmd_pool *cmd_pool;
++
++	/* Delay for runtime autosuspend */
++	int rpm_autosuspend_delay;
++
++	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_RESERVE(2);
++	ANDROID_KABI_RESERVE(3);
++	ANDROID_KABI_RESERVE(4);
+ };
+ 
+ /*
+diff --git a/include/soc/allwinner/sunxi_sip.h b/include/soc/allwinner/sunxi_sip.h
+new file mode 100644
+index 000000000..1886da9e7
+--- /dev/null
++++ b/include/soc/allwinner/sunxi_sip.h
+@@ -0,0 +1,69 @@
++/*
++ * Copyright (c) 2020, Allwinner Technology, Inc.
++ * Author: Fan Qinghua <fanqinghua@allwinnertech.com>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ */
++#ifndef __SUNXI_SIP_H
++#define __SUNXI_SIP_H
++
++#include <linux/arm-smccc.h>
++
++#define SET_ROOT_WAKEUP_SOURCE(root_irq)  (root_irq)
++#define SET_SEC_WAKEUP_SOURCE(root_irq, secondary_irq)  \
++	((1 << 30) | ((secondary_irq) << 10) | (root_irq))
++#define SET_THIRD_WAKEUP_SOURCE(root_irq, secondary_irq, third_irq)  \
++	((2 << 30) | ((third_irq) << 20) ((secondary_irq) << 10) | (root_irq))
++#define SET_WAKEUP_TIME_MS(ms)  ((3 << 30) | (ms))
++
++#ifdef CONFIG_ARM
++#ifdef CONFIG_ARCH_SUN50I
++#define ARM_SVC_BASE (0x80000000)
++#else
++#define ARM_SVC_BASE \
++	ARM_SMCCC_CALL_VAL(ARM_SMCCC_FAST_CALL, ARM_SMCCC_SMC_32, \
++			   ARM_SMCCC_OWNER_OEM, 0)
++#endif
++#endif
++
++#ifdef CONFIG_ARM64
++#define ARM_SVC_BASE		(0xc0000000)
++#endif
++
++#define SUNXI_BASE			(0x10)
++#define CLEAR_WAKEUP_SRC_REQ		(SUNXI_BASE + 0x15)
++#define SET_WAKEUP_SRC_REQ		(SUNXI_BASE + 0x16)
++#define SET_DEBUG_DRAM_CRC_PARAS_REQ	(SUNXI_BASE + 0x54)
++#define SUNXI_CRASHDUMP                 (SUNXI_BASE + 0x85)
++
++#define CLEAR_WAKEUP_SRC		(ARM_SVC_BASE + CLEAR_WAKEUP_SRC_REQ)
++#define SET_WAKEUP_SRC			(ARM_SVC_BASE + SET_WAKEUP_SRC_REQ)
++#define SET_DEBUG_DRAM_CRC_PARAS	(ARM_SVC_BASE + SET_DEBUG_DRAM_CRC_PARAS_REQ)
++#define ARM_SVC_SUNXI_CRASHDUMP_START	(ARM_SVC_BASE + SUNXI_CRASHDUMP)
++
++#if defined(CONFIG_ARM)
++static inline int invoke_scp_fn_smc(u32 function_id, u32 arg1, u32 arg2, u32 arg3)
++{
++	struct arm_smccc_res res;
++
++	arm_smccc_smc(function_id, arg1, arg2, arg3, 0, 0, 0, 0, &res);
++	return res.a0;
++}
++#elif defined(CONFIG_ARM64)
++static inline int invoke_scp_fn_smc(u64 function_id, u64 arg1, u64 arg2, u64 arg3)
++{
++	struct arm_smccc_res res;
++
++	arm_smccc_smc(function_id, arg1, arg2, arg3, 0, 0, 0, 0, &res);
++	return res.a0;
++}
++#endif
++
++#endif
+diff --git a/include/trace/events/android_fs.h b/include/trace/events/android_fs.h
+new file mode 100644
+index 000000000..7edb6bcfe
+--- /dev/null
++++ b/include/trace/events/android_fs.h
+@@ -0,0 +1,66 @@
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM android_fs
++
++#if !defined(_TRACE_ANDROID_FS_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_ANDROID_FS_H
++
++#include <linux/fs.h>
++#include <linux/tracepoint.h>
++#include <trace/events/android_fs_template.h>
++
++DEFINE_EVENT(android_fs_data_start_template, android_fs_dataread_start,
++	TP_PROTO(struct inode *inode, loff_t offset, int bytes,
++		 pid_t pid, char *pathname, char *command),
++	TP_ARGS(inode, offset, bytes, pid, pathname, command));
++
++DEFINE_EVENT(android_fs_data_end_template, android_fs_dataread_end,
++	TP_PROTO(struct inode *inode, loff_t offset, int bytes),
++	TP_ARGS(inode, offset, bytes));
++
++DEFINE_EVENT(android_fs_data_start_template, android_fs_datawrite_start,
++	TP_PROTO(struct inode *inode, loff_t offset, int bytes,
++		 pid_t pid, char *pathname, char *command),
++	TP_ARGS(inode, offset, bytes, pid, pathname, command));
++
++DEFINE_EVENT(android_fs_data_end_template, android_fs_datawrite_end,
++	TP_PROTO(struct inode *inode, loff_t offset, int bytes),
++	     TP_ARGS(inode, offset, bytes));
++
++#endif /* _TRACE_ANDROID_FS_H */
++
++/* This part must be outside protection */
++#include <trace/define_trace.h>
++
++#ifndef ANDROID_FSTRACE_GET_PATHNAME
++#define ANDROID_FSTRACE_GET_PATHNAME
++
++/* Sizes an on-stack array, so careful if sizing this up ! */
++#define MAX_TRACE_PATHBUF_LEN	256
++
++static inline char *
++android_fstrace_get_pathname(char *buf, int buflen, struct inode *inode)
++{
++	char *path;
++	struct dentry *d;
++
++	/*
++	 * d_obtain_alias() will either iput() if it locates an existing
++	 * dentry or transfer the reference to the new dentry created.
++	 * So get an extra reference here.
++	 */
++	ihold(inode);
++	d = d_obtain_alias(inode);
++	if (likely(!IS_ERR(d))) {
++		path = dentry_path_raw(d, buf, buflen);
++		if (unlikely(IS_ERR(path))) {
++			strcpy(buf, "ERROR");
++			path = buf;
++		}
++		dput(d);
++	} else {
++		strcpy(buf, "ERROR");
++		path = buf;
++	}
++	return path;
++}
++#endif
+diff --git a/include/trace/events/android_fs_template.h b/include/trace/events/android_fs_template.h
+new file mode 100644
+index 000000000..b23d17b56
+--- /dev/null
++++ b/include/trace/events/android_fs_template.h
+@@ -0,0 +1,64 @@
++#if !defined(_TRACE_ANDROID_FS_TEMPLATE_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_ANDROID_FS_TEMPLATE_H
++
++#include <linux/tracepoint.h>
++
++DECLARE_EVENT_CLASS(android_fs_data_start_template,
++	TP_PROTO(struct inode *inode, loff_t offset, int bytes,
++		 pid_t pid, char *pathname, char *command),
++	TP_ARGS(inode, offset, bytes, pid, pathname, command),
++	TP_STRUCT__entry(
++		__string(pathbuf, pathname);
++		__field(loff_t,	offset);
++		__field(int,	bytes);
++		__field(loff_t,	i_size);
++		__string(cmdline, command);
++		__field(pid_t,	pid);
++		__field(ino_t,	ino);
++	),
++	TP_fast_assign(
++		{
++			/*
++			 * Replace the spaces in filenames and cmdlines
++			 * because this screws up the tooling that parses
++			 * the traces.
++			 */
++			__assign_str(pathbuf, pathname);
++			(void)strreplace(__get_str(pathbuf), ' ', '_');
++			__entry->offset		= offset;
++			__entry->bytes		= bytes;
++			__entry->i_size		= i_size_read(inode);
++			__assign_str(cmdline, command);
++			(void)strreplace(__get_str(cmdline), ' ', '_');
++			__entry->pid		= pid;
++			__entry->ino		= inode->i_ino;
++		}
++	),
++	TP_printk("entry_name %s, offset %llu, bytes %d, cmdline %s,"
++		  " pid %d, i_size %llu, ino %lu",
++		  __get_str(pathbuf), __entry->offset, __entry->bytes,
++		  __get_str(cmdline), __entry->pid, __entry->i_size,
++		  (unsigned long) __entry->ino)
++);
++
++DECLARE_EVENT_CLASS(android_fs_data_end_template,
++	TP_PROTO(struct inode *inode, loff_t offset, int bytes),
++	TP_ARGS(inode, offset, bytes),
++	TP_STRUCT__entry(
++		__field(ino_t,	ino);
++		__field(loff_t,	offset);
++		__field(int,	bytes);
++	),
++	TP_fast_assign(
++		{
++			__entry->ino		= inode->i_ino;
++			__entry->offset		= offset;
++			__entry->bytes		= bytes;
++		}
++	),
++	TP_printk("ino %lu, offset %llu, bytes %d",
++		  (unsigned long) __entry->ino,
++		  __entry->offset, __entry->bytes)
++);
++
++#endif /* _TRACE_ANDROID_FS_TEMPLATE_H */
+diff --git a/include/trace/events/f2fs.h b/include/trace/events/f2fs.h
+index 1796ff99c..d0727b596 100644
+--- a/include/trace/events/f2fs.h
++++ b/include/trace/events/f2fs.h
+@@ -49,6 +49,8 @@ TRACE_DEFINE_ENUM(CP_SYNC);
+ TRACE_DEFINE_ENUM(CP_RECOVERY);
+ TRACE_DEFINE_ENUM(CP_DISCARD);
+ TRACE_DEFINE_ENUM(CP_TRIMMED);
++TRACE_DEFINE_ENUM(CP_PAUSE);
++TRACE_DEFINE_ENUM(CP_RESIZE);
+ 
+ #define show_block_type(type)						\
+ 	__print_symbolic(type,						\
+@@ -124,13 +126,15 @@ TRACE_DEFINE_ENUM(CP_TRIMMED);
+ 		{ CP_SYNC,	"Sync" },				\
+ 		{ CP_RECOVERY,	"Recovery" },				\
+ 		{ CP_DISCARD,	"Discard" },				\
+-		{ CP_UMOUNT,	"Umount" },				\
+-		{ CP_TRIMMED,	"Trimmed" })
++		{ CP_PAUSE,	"Pause" },				\
++		{ CP_TRIMMED,	"Trimmed" },				\
++		{ CP_RESIZE,	"Resize" })
+ 
+ #define show_fsync_cpreason(type)					\
+ 	__print_symbolic(type,						\
+ 		{ CP_NO_NEEDED,		"no needed" },			\
+ 		{ CP_NON_REGULAR,	"non regular" },		\
++		{ CP_COMPRESSED,	"compressed" },			\
+ 		{ CP_HARDLINK,		"hardlink" },			\
+ 		{ CP_SB_NEED_CP,	"sb needs cp" },		\
+ 		{ CP_WRONG_PINO,	"wrong pino" },			\
+@@ -148,6 +152,13 @@ TRACE_DEFINE_ENUM(CP_TRIMMED);
+ 		{ F2FS_GOING_DOWN_METAFLUSH,	"meta flush" },		\
+ 		{ F2FS_GOING_DOWN_NEED_FSCK,	"need fsck" })
+ 
++#define show_compress_algorithm(type)					\
++	__print_symbolic(type,						\
++		{ COMPRESS_LZO,		"LZO" },			\
++		{ COMPRESS_LZ4,		"LZ4" },			\
++		{ COMPRESS_ZSTD,	"ZSTD" },			\
++		{ COMPRESS_LZORLE,	"LZO-RLE" })
++
+ struct f2fs_sb_info;
+ struct f2fs_io_info;
+ struct extent_info;
+@@ -1710,6 +1721,176 @@ TRACE_EVENT(f2fs_shutdown,
+ 		__entry->ret)
+ );
+ 
++DECLARE_EVENT_CLASS(f2fs_zip_start,
++
++	TP_PROTO(struct inode *inode, pgoff_t cluster_idx,
++			unsigned int cluster_size, unsigned char algtype),
++
++	TP_ARGS(inode, cluster_idx, cluster_size, algtype),
++
++	TP_STRUCT__entry(
++		__field(dev_t,	dev)
++		__field(ino_t,	ino)
++		__field(pgoff_t, idx)
++		__field(unsigned int, size)
++		__field(unsigned int, algtype)
++	),
++
++	TP_fast_assign(
++		__entry->dev = inode->i_sb->s_dev;
++		__entry->ino = inode->i_ino;
++		__entry->idx = cluster_idx;
++		__entry->size = cluster_size;
++		__entry->algtype = algtype;
++	),
++
++	TP_printk("dev = (%d,%d), ino = %lu, cluster_idx:%lu, "
++		"cluster_size = %u, algorithm = %s",
++		show_dev_ino(__entry),
++		__entry->idx,
++		__entry->size,
++		show_compress_algorithm(__entry->algtype))
++);
++
++DECLARE_EVENT_CLASS(f2fs_zip_end,
++
++	TP_PROTO(struct inode *inode, pgoff_t cluster_idx,
++			unsigned int compressed_size, int ret),
++
++	TP_ARGS(inode, cluster_idx, compressed_size, ret),
++
++	TP_STRUCT__entry(
++		__field(dev_t,	dev)
++		__field(ino_t,	ino)
++		__field(pgoff_t, idx)
++		__field(unsigned int, size)
++		__field(unsigned int, ret)
++	),
++
++	TP_fast_assign(
++		__entry->dev = inode->i_sb->s_dev;
++		__entry->ino = inode->i_ino;
++		__entry->idx = cluster_idx;
++		__entry->size = compressed_size;
++		__entry->ret = ret;
++	),
++
++	TP_printk("dev = (%d,%d), ino = %lu, cluster_idx:%lu, "
++		"compressed_size = %u, ret = %d",
++		show_dev_ino(__entry),
++		__entry->idx,
++		__entry->size,
++		__entry->ret)
++);
++
++DEFINE_EVENT(f2fs_zip_start, f2fs_compress_pages_start,
++
++	TP_PROTO(struct inode *inode, pgoff_t cluster_idx,
++		unsigned int cluster_size, unsigned char algtype),
++
++	TP_ARGS(inode, cluster_idx, cluster_size, algtype)
++);
++
++DEFINE_EVENT(f2fs_zip_start, f2fs_decompress_pages_start,
++
++	TP_PROTO(struct inode *inode, pgoff_t cluster_idx,
++		unsigned int cluster_size, unsigned char algtype),
++
++	TP_ARGS(inode, cluster_idx, cluster_size, algtype)
++);
++
++DEFINE_EVENT(f2fs_zip_end, f2fs_compress_pages_end,
++
++	TP_PROTO(struct inode *inode, pgoff_t cluster_idx,
++			unsigned int compressed_size, int ret),
++
++	TP_ARGS(inode, cluster_idx, compressed_size, ret)
++);
++
++DEFINE_EVENT(f2fs_zip_end, f2fs_decompress_pages_end,
++
++	TP_PROTO(struct inode *inode, pgoff_t cluster_idx,
++			unsigned int compressed_size, int ret),
++
++	TP_ARGS(inode, cluster_idx, compressed_size, ret)
++);
++
++TRACE_EVENT(f2fs_iostat,
++
++	TP_PROTO(struct f2fs_sb_info *sbi, unsigned long long *iostat),
++
++	TP_ARGS(sbi, iostat),
++
++	TP_STRUCT__entry(
++		__field(dev_t,	dev)
++		__field(unsigned long long,	app_dio)
++		__field(unsigned long long,	app_bio)
++		__field(unsigned long long,	app_wio)
++		__field(unsigned long long,	app_mio)
++		__field(unsigned long long,	fs_dio)
++		__field(unsigned long long,	fs_nio)
++		__field(unsigned long long,	fs_mio)
++		__field(unsigned long long,	fs_gc_dio)
++		__field(unsigned long long,	fs_gc_nio)
++		__field(unsigned long long,	fs_cp_dio)
++		__field(unsigned long long,	fs_cp_nio)
++		__field(unsigned long long,	fs_cp_mio)
++		__field(unsigned long long,	app_drio)
++		__field(unsigned long long,	app_brio)
++		__field(unsigned long long,	app_rio)
++		__field(unsigned long long,	app_mrio)
++		__field(unsigned long long,	fs_drio)
++		__field(unsigned long long,	fs_gdrio)
++		__field(unsigned long long,	fs_cdrio)
++		__field(unsigned long long,	fs_nrio)
++		__field(unsigned long long,	fs_mrio)
++		__field(unsigned long long,	fs_discard)
++	),
++
++	TP_fast_assign(
++		__entry->dev		= sbi->sb->s_dev;
++		__entry->app_dio	= iostat[APP_DIRECT_IO];
++		__entry->app_bio	= iostat[APP_BUFFERED_IO];
++		__entry->app_wio	= iostat[APP_WRITE_IO];
++		__entry->app_mio	= iostat[APP_MAPPED_IO];
++		__entry->fs_dio		= iostat[FS_DATA_IO];
++		__entry->fs_nio		= iostat[FS_NODE_IO];
++		__entry->fs_mio		= iostat[FS_META_IO];
++		__entry->fs_gc_dio	= iostat[FS_GC_DATA_IO];
++		__entry->fs_gc_nio	= iostat[FS_GC_NODE_IO];
++		__entry->fs_cp_dio	= iostat[FS_CP_DATA_IO];
++		__entry->fs_cp_nio	= iostat[FS_CP_NODE_IO];
++		__entry->fs_cp_mio	= iostat[FS_CP_META_IO];
++		__entry->app_drio	= iostat[APP_DIRECT_READ_IO];
++		__entry->app_brio	= iostat[APP_BUFFERED_READ_IO];
++		__entry->app_rio	= iostat[APP_READ_IO];
++		__entry->app_mrio	= iostat[APP_MAPPED_READ_IO];
++		__entry->fs_drio	= iostat[FS_DATA_READ_IO];
++		__entry->fs_gdrio	= iostat[FS_GDATA_READ_IO];
++		__entry->fs_cdrio	= iostat[FS_CDATA_READ_IO];
++		__entry->fs_nrio	= iostat[FS_NODE_READ_IO];
++		__entry->fs_mrio	= iostat[FS_META_READ_IO];
++		__entry->fs_discard	= iostat[FS_DISCARD];
++	),
++
++	TP_printk("dev = (%d,%d), "
++		"app [write=%llu (direct=%llu, buffered=%llu), mapped=%llu], "
++		"fs [data=%llu, node=%llu, meta=%llu, discard=%llu], "
++		"gc [data=%llu, node=%llu], "
++		"cp [data=%llu, node=%llu, meta=%llu], "
++		"app [read=%llu (direct=%llu, buffered=%llu), mapped=%llu], "
++		"fs [data=%llu, (gc_data=%llu, compr_data=%llu), "
++		"node=%llu, meta=%llu]",
++		show_dev(__entry->dev), __entry->app_wio, __entry->app_dio,
++		__entry->app_bio, __entry->app_mio, __entry->fs_dio,
++		__entry->fs_nio, __entry->fs_mio, __entry->fs_discard,
++		__entry->fs_gc_dio, __entry->fs_gc_nio, __entry->fs_cp_dio,
++		__entry->fs_cp_nio, __entry->fs_cp_mio,
++		__entry->app_rio, __entry->app_drio, __entry->app_brio,
++		__entry->app_mrio, __entry->fs_drio, __entry->fs_gdrio,
++		__entry->fs_cdrio, __entry->fs_nrio, __entry->fs_mrio)
++);
++
+ #endif /* _TRACE_F2FS_H */
+ 
+  /* This part must be outside protection */
+diff --git a/include/trace/events/gpu_mem.h b/include/trace/events/gpu_mem.h
+new file mode 100644
+index 000000000..1897822a9
+--- /dev/null
++++ b/include/trace/events/gpu_mem.h
+@@ -0,0 +1,57 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * GPU memory trace points
++ *
++ * Copyright (C) 2020 Google, Inc.
++ */
++
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM gpu_mem
++
++#if !defined(_TRACE_GPU_MEM_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_GPU_MEM_H
++
++#include <linux/tracepoint.h>
++
++/*
++ * The gpu_memory_total event indicates that there's an update to either the
++ * global or process total gpu memory counters.
++ *
++ * This event should be emitted whenever the kernel device driver allocates,
++ * frees, imports, unimports memory in the GPU addressable space.
++ *
++ * @gpu_id: This is the gpu id.
++ *
++ * @pid: Put 0 for global total, while positive pid for process total.
++ *
++ * @size: Virtual size of the allocation in bytes.
++ *
++ */
++TRACE_EVENT(gpu_mem_total,
++
++	TP_PROTO(uint32_t gpu_id, uint32_t pid, uint64_t size),
++
++	TP_ARGS(gpu_id, pid, size),
++
++	TP_STRUCT__entry(
++		__field(uint32_t, gpu_id)
++		__field(uint32_t, pid)
++		__field(uint64_t, size)
++	),
++
++	TP_fast_assign(
++		__entry->gpu_id = gpu_id;
++		__entry->pid = pid;
++		__entry->size = size;
++	),
++
++	TP_printk("gpu_id=%u pid=%u size=%llu",
++		__entry->gpu_id,
++		__entry->pid,
++		__entry->size)
++);
++
++#endif /* _TRACE_GPU_MEM_H */
++
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/events/kmem.h b/include/trace/events/kmem.h
+index 69e8bb896..ad7e642bd 100644
+--- a/include/trace/events/kmem.h
++++ b/include/trace/events/kmem.h
+@@ -316,6 +316,53 @@ TRACE_EVENT(mm_page_alloc_extfrag,
+ 		__entry->change_ownership)
+ );
+ 
++/*
++ * Required for uniquely and securely identifying mm in rss_stat tracepoint.
++ */
++#ifndef __PTR_TO_HASHVAL
++static unsigned int __maybe_unused mm_ptr_to_hash(const void *ptr)
++{
++	int ret;
++	unsigned long hashval;
++
++	ret = ptr_to_hashval(ptr, &hashval);
++	if (ret)
++		return 0;
++
++	/* The hashed value is only 32-bit */
++	return (unsigned int)hashval;
++}
++#define __PTR_TO_HASHVAL
++#endif
++
++TRACE_EVENT(rss_stat,
++
++	TP_PROTO(struct mm_struct *mm,
++		int member,
++		long count),
++
++	TP_ARGS(mm, member, count),
++
++	TP_STRUCT__entry(
++		__field(unsigned int, mm_id)
++		__field(unsigned int, curr)
++		__field(int, member)
++		__field(long, size)
++	),
++
++	TP_fast_assign(
++		__entry->mm_id = mm_ptr_to_hash(mm);
++		__entry->curr = !!(current->mm == mm);
++		__entry->member = member;
++		__entry->size = (count << PAGE_SHIFT);
++	),
++
++	TP_printk("mm_id=%u curr=%d member=%d size=%ldB",
++		__entry->mm_id,
++		__entry->curr,
++		__entry->member,
++		__entry->size)
++	);
+ #endif /* _TRACE_KMEM_H */
+ 
+ /* This part must be outside protection */
+diff --git a/include/trace/events/namei.h b/include/trace/events/namei.h
+new file mode 100644
+index 000000000..e8c3e216a
+--- /dev/null
++++ b/include/trace/events/namei.h
+@@ -0,0 +1,42 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM namei
++
++#if !defined(_TRACE_INODEPATH_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_INODEPATH_H
++
++#include <linux/types.h>
++#include <linux/tracepoint.h>
++#include <linux/mm.h>
++#include <linux/memcontrol.h>
++#include <linux/device.h>
++#include <linux/kdev_t.h>
++
++TRACE_EVENT(inodepath,
++		TP_PROTO(struct inode *inode, char *path),
++
++		TP_ARGS(inode, path),
++
++		TP_STRUCT__entry(
++			/* dev_t and ino_t are arch dependent bit width
++			 * so just use 64-bit
++			 */
++			__field(unsigned long, ino)
++			__field(unsigned long, dev)
++			__string(path, path)
++		),
++
++		TP_fast_assign(
++			__entry->ino = inode->i_ino;
++			__entry->dev = inode->i_sb->s_dev;
++			__assign_str(path, path);
++		),
++
++		TP_printk("dev %d:%d ino=%lu path=%s",
++			MAJOR(__entry->dev), MINOR(__entry->dev),
++			__entry->ino, __get_str(path))
++);
++#endif /* _TRACE_INODEPATH_H */
++
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/events/readahead.h b/include/trace/events/readahead.h
+new file mode 100644
+index 000000000..4e7d42096
+--- /dev/null
++++ b/include/trace/events/readahead.h
+@@ -0,0 +1,62 @@
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM readahead
++
++#if !defined(_TRACE_READAHEAD_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_READAHEAD_H
++
++#include <linux/tracepoint.h>
++
++TRACE_EVENT(do_open_exec,
++
++	    TP_PROTO(struct inode *inode),
++
++	    TP_ARGS(inode),
++
++	    TP_STRUCT__entry(__field(dev_t, dev) __field(ino_t, ino)),
++
++	    TP_fast_assign(__entry->dev = inode->i_sb->s_dev;
++			   __entry->ino = inode->i_ino;),
++
++	    TP_printk("%d %d %lu", MAJOR(__entry->dev), MINOR(__entry->dev),
++		      (unsigned long)__entry->ino));
++
++TRACE_EVENT(do_fs_read,
++
++	    TP_PROTO(struct inode *inode, unsigned long pos, size_t count),
++
++	    TP_ARGS(inode, pos, count),
++
++	    TP_STRUCT__entry(__field(dev_t, dev) __field(ino_t, ino)
++				 __field(unsigned long, pos)
++				     __field(size_t, count)),
++
++	    TP_fast_assign(__entry->dev = inode->i_sb->s_dev;
++			   __entry->ino = inode->i_ino; __entry->pos = pos;
++			   __entry->count = count;),
++
++	    TP_printk("%d %d %lu %lu %zu", MAJOR(__entry->dev),
++		      MINOR(__entry->dev), __entry->ino, __entry->pos,
++		      __entry->count));
++
++TRACE_EVENT(do_file_map,
++
++	    TP_PROTO(struct inode *inode, unsigned long pageshift,
++		     unsigned long pagesize),
++
++	    TP_ARGS(inode, pageshift, pagesize),
++
++	    TP_STRUCT__entry(__field(dev_t, dev) __field(ino_t, ino)
++				 __field(unsigned long, pageshift)
++				     __field(unsigned long, pagesize)),
++
++	    TP_fast_assign(__entry->dev = inode->i_sb->s_dev;
++			   __entry->ino = inode->i_ino;
++			   __entry->pageshift = pageshift;
++			   __entry->pagesize = pagesize;),
++
++	    TP_printk("%d %d %lu %lu %lu", MAJOR(__entry->dev),
++		      MINOR(__entry->dev), (unsigned long)__entry->ino,
++		      __entry->pageshift, __entry->pagesize));
++
++#endif
++#include <trace/define_trace.h>
+diff --git a/include/trace/events/sched.h b/include/trace/events/sched.h
+index 420e80e56..202676bbb 100644
+--- a/include/trace/events/sched.h
++++ b/include/trace/events/sched.h
+@@ -402,6 +402,30 @@ DEFINE_EVENT_SCHEDSTAT(sched_stat_template, sched_stat_blocked,
+ 	     TP_PROTO(struct task_struct *tsk, u64 delay),
+ 	     TP_ARGS(tsk, delay));
+ 
++/*
++ * Tracepoint for recording the cause of uninterruptible sleep.
++ */
++TRACE_EVENT(sched_blocked_reason,
++
++	TP_PROTO(struct task_struct *tsk),
++
++	TP_ARGS(tsk),
++
++	TP_STRUCT__entry(
++		__field( pid_t,	pid	)
++		__field( void*, caller	)
++		__field( bool, io_wait	)
++	),
++
++	TP_fast_assign(
++		__entry->pid	= tsk->pid;
++		__entry->caller = (void *)get_wchan(tsk);
++		__entry->io_wait = tsk->in_iowait;
++	),
++
++	TP_printk("pid=%d iowait=%d caller=%pS", __entry->pid, __entry->io_wait, __entry->caller)
++);
++
+ /*
+  * Tracepoint for accounting runtime (time the task is executing
+  * on a CPU).
+diff --git a/include/trace/events/ufs.h b/include/trace/events/ufs.h
+index 5f3007392..84841b3a7 100644
+--- a/include/trace/events/ufs.h
++++ b/include/trace/events/ufs.h
+@@ -249,6 +249,37 @@ TRACE_EVENT(ufshcd_command,
+ 	)
+ );
+ 
++TRACE_EVENT(ufshcd_uic_command,
++	TP_PROTO(const char *dev_name, const char *str, u32 cmd,
++		 u32 arg1, u32 arg2, u32 arg3),
++
++	TP_ARGS(dev_name, str, cmd, arg1, arg2, arg3),
++
++	TP_STRUCT__entry(
++		__string(dev_name, dev_name)
++		__string(str, str)
++		__field(u32, cmd)
++		__field(u32, arg1)
++		__field(u32, arg2)
++		__field(u32, arg3)
++	),
++
++	TP_fast_assign(
++		__assign_str(dev_name, dev_name);
++		__assign_str(str, str);
++		__entry->cmd = cmd;
++		__entry->arg1 = arg1;
++		__entry->arg2 = arg2;
++		__entry->arg3 = arg3;
++	),
++
++	TP_printk(
++		"%s: %s: cmd: 0x%x, arg1: 0x%x, arg2: 0x%x, arg3: 0x%x",
++		__get_str(str), __get_str(dev_name), __entry->cmd,
++		__entry->arg1, __entry->arg2, __entry->arg3
++	)
++);
++
+ TRACE_EVENT(ufshcd_upiu,
+ 	TP_PROTO(const char *dev_name, const char *str, void *hdr, void *tsf),
+ 
+diff --git a/include/trace/events/writeback.h b/include/trace/events/writeback.h
+index 66282552d..6f427f7f8 100644
+--- a/include/trace/events/writeback.h
++++ b/include/trace/events/writeback.h
+@@ -20,7 +20,6 @@
+ 		{I_CLEAR,		"I_CLEAR"},		\
+ 		{I_SYNC,		"I_SYNC"},		\
+ 		{I_DIRTY_TIME,		"I_DIRTY_TIME"},	\
+-		{I_DIRTY_TIME_EXPIRED,	"I_DIRTY_TIME_EXPIRED"}, \
+ 		{I_REFERENCED,		"I_REFERENCED"}		\
+ 	)
+ 
+@@ -499,8 +498,9 @@ DEFINE_WBC_EVENT(wbc_writepage);
+ TRACE_EVENT(writeback_queue_io,
+ 	TP_PROTO(struct bdi_writeback *wb,
+ 		 struct wb_writeback_work *work,
++		 unsigned long dirtied_before,
+ 		 int moved),
+-	TP_ARGS(wb, work, moved),
++	TP_ARGS(wb, work, dirtied_before, moved),
+ 	TP_STRUCT__entry(
+ 		__array(char,		name, 32)
+ 		__field(unsigned long,	older)
+@@ -510,19 +510,17 @@ TRACE_EVENT(writeback_queue_io,
+ 		__field(unsigned int,	cgroup_ino)
+ 	),
+ 	TP_fast_assign(
+-		unsigned long *older_than_this = work->older_than_this;
+ 		strscpy_pad(__entry->name, bdi_dev_name(wb->bdi), 32);
+-		__entry->older	= older_than_this ?  *older_than_this : 0;
+-		__entry->age	= older_than_this ?
+-				  (jiffies - *older_than_this) * 1000 / HZ : -1;
++		__entry->older	= dirtied_before;
++		__entry->age	= (jiffies - dirtied_before) * 1000 / HZ;
+ 		__entry->moved	= moved;
+ 		__entry->reason	= work->reason;
+ 		__entry->cgroup_ino	= __trace_wb_assign_cgroup(wb);
+ 	),
+ 	TP_printk("bdi %s: older=%lu age=%ld enqueue=%d reason=%s cgroup_ino=%u",
+ 		__entry->name,
+-		__entry->older,	/* older_than_this in jiffies */
+-		__entry->age,	/* older_than_this in relative milliseconds */
++		__entry->older,	/* dirtied_before in jiffies */
++		__entry->age,	/* dirtied_before in relative milliseconds */
+ 		__entry->moved,
+ 		__print_symbolic(__entry->reason, WB_WORK_REASON),
+ 		__entry->cgroup_ino
+diff --git a/include/trace/hooks/binder.h b/include/trace/hooks/binder.h
+new file mode 100644
+index 000000000..48ef1ebb6
+--- /dev/null
++++ b/include/trace/hooks/binder.h
+@@ -0,0 +1,33 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM binder
++#undef TRACE_INCLUDE_PATH
++#define TRACE_INCLUDE_PATH trace/hooks
++#if !defined(_TRACE_HOOK_BINDER_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_BINDER_H
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++/*
++ * Following tracepoints are not exported in tracefs and provide a
++ * mechanism for vendor modules to hook and extend functionality
++ */
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++struct binder_transaction;
++struct task_struct;
++DECLARE_HOOK(android_vh_binder_transaction_init,
++	TP_PROTO(struct binder_transaction *t),
++	TP_ARGS(t));
++DECLARE_HOOK(android_vh_binder_set_priority,
++	TP_PROTO(struct binder_transaction *t, struct task_struct *task),
++	TP_ARGS(t, task));
++DECLARE_HOOK(android_vh_binder_restore_priority,
++	TP_PROTO(struct binder_transaction *t, struct task_struct *task),
++	TP_ARGS(t, task));
++#else
++#define trace_android_vh_binder_transaction_init(t)
++#define trace_android_vh_binder_set_priority(t, task)
++#define trace_android_vh_binder_restore_priority(t, task)
++#endif
++#endif /* _TRACE_HOOK_BINDER_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/debug.h b/include/trace/hooks/debug.h
+new file mode 100644
+index 000000000..9ddb4e45f
+--- /dev/null
++++ b/include/trace/hooks/debug.h
+@@ -0,0 +1,30 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM debug
++
++#define TRACE_INCLUDE_PATH trace/hooks
++
++#if !defined(_TRACE_HOOK_DEBUG_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_DEBUG_H
++
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++struct pt_regs;
++DECLARE_HOOK(android_vh_ipi_stop,
++	TP_PROTO(struct pt_regs *regs),
++	TP_ARGS(regs))
++
++DECLARE_HOOK(android_vh_printk_store,
++	TP_PROTO(int facility, int level),
++	TP_ARGS(facility, level))
++#else
++#define trace_android_vh_ipi_stop(regs)
++#define trace_android_vh_ipi_stop_rcuidle(regs)
++#define trace_android_vh_printk_store(facility, level)
++#endif
++
++#endif /* _TRACE_HOOK_DEBUG_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/dtask.h b/include/trace/hooks/dtask.h
+new file mode 100644
+index 000000000..f4fafbfed
+--- /dev/null
++++ b/include/trace/hooks/dtask.h
+@@ -0,0 +1,53 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM dtask
++#define TRACE_INCLUDE_PATH trace/hooks
++
++#if !defined(_TRACE_HOOK_DTASK_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_DTASK_H
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++/*
++ * Following tracepoints are not exported in tracefs and provide a
++ * mechanism for vendor modules to hook and extend functionality
++ */
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++struct mutex;
++DECLARE_HOOK(android_vh_mutex_wait_start,
++	TP_PROTO(struct mutex *lock),
++	TP_ARGS(lock));
++DECLARE_HOOK(android_vh_mutex_wait_finish,
++	TP_PROTO(struct mutex *lock),
++	TP_ARGS(lock));
++
++struct rw_semaphore;
++DECLARE_HOOK(android_vh_rwsem_read_wait_start,
++	TP_PROTO(struct rw_semaphore *sem),
++	TP_ARGS(sem));
++DECLARE_HOOK(android_vh_rwsem_read_wait_finish,
++	TP_PROTO(struct rw_semaphore *sem),
++	TP_ARGS(sem));
++DECLARE_HOOK(android_vh_rwsem_write_wait_start,
++	TP_PROTO(struct rw_semaphore *sem),
++	TP_ARGS(sem));
++DECLARE_HOOK(android_vh_rwsem_write_wait_finish,
++	TP_PROTO(struct rw_semaphore *sem),
++	TP_ARGS(sem));
++
++struct task_struct;
++DECLARE_HOOK(android_vh_sched_show_task,
++	TP_PROTO(struct task_struct *task),
++	TP_ARGS(task));
++#else
++#define trace_android_vh_mutex_wait_start(lock)
++#define trace_android_vh_mutex_wait_finish(lock)
++#define trace_android_vh_rwsem_read_wait_start(sem)
++#define trace_android_vh_rwsem_read_wait_finish(sem)
++#define trace_android_vh_rwsem_write_wait_start(sem)
++#define trace_android_vh_rwsem_write_wait_finish(sem)
++#define trace_android_vh_sched_show_task(task)
++#endif
++
++#endif /* _TRACE_HOOK_DTASK_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/fpsimd.h b/include/trace/hooks/fpsimd.h
+new file mode 100644
+index 000000000..73ad2c000
+--- /dev/null
++++ b/include/trace/hooks/fpsimd.h
+@@ -0,0 +1,26 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM fpsimd
++
++#define TRACE_INCLUDE_PATH trace/hooks
++
++#if !defined(_TRACE_HOOK_FPSIMD_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_FPSIMD_H
++
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++struct task_struct;
++
++DECLARE_HOOK(android_vh_is_fpsimd_save,
++	TP_PROTO(struct task_struct *prev, struct task_struct *next),
++	TP_ARGS(prev, next))
++#else
++
++#define trace_android_vh_is_fpsimd_save(prev, next)
++#endif
++
++#endif /* _TRACE_HOOK_FPSIMD_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/futex.h b/include/trace/hooks/futex.h
+new file mode 100644
+index 000000000..cbf6abb66
+--- /dev/null
++++ b/include/trace/hooks/futex.h
+@@ -0,0 +1,26 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM futex
++#undef TRACE_INCLUDE_PATH
++#define TRACE_INCLUDE_PATH trace/hooks
++#if !defined(_TRACE_HOOK_FUTEX_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_FUTEX_H
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++#include <linux/plist.h>
++/*
++ * Following tracepoints are not exported in tracefs and provide a
++ * mechanism for vendor modules to hook and extend functionality
++ */
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++DECLARE_HOOK(android_vh_alter_futex_plist_add,
++	TP_PROTO(struct plist_node *node,
++		 struct plist_head *head,
++		 bool *already_on_hb),
++	TP_ARGS(node, head, already_on_hb));
++#else
++#define trace_android_vh_alter_futex_plist_add(node, head, already_on_hb)
++#endif
++#endif /* _TRACE_HOOK_FUTEX_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/minidump.h b/include/trace/hooks/minidump.h
+new file mode 100644
+index 000000000..11283e433
+--- /dev/null
++++ b/include/trace/hooks/minidump.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM minidump
++
++#define TRACE_INCLUDE_PATH trace/hooks
++
++#if !defined(_TRACE_HOOK_MINIDUMP_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_MINIDUMP_H
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++struct pt_regs;
++DECLARE_HOOK(android_vh_show_regs,
++	TP_PROTO(struct pt_regs *regs),
++	TP_ARGS(regs));
++#else
++#define trace_android_vh_show_regs(regs)
++#endif
++
++#endif /* _TRACE_HOOK_MINIDUMP_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
++
+diff --git a/include/trace/hooks/net.h b/include/trace/hooks/net.h
+new file mode 100644
+index 000000000..9b69ad26e
+--- /dev/null
++++ b/include/trace/hooks/net.h
+@@ -0,0 +1,42 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM net
++#define TRACE_INCLUDE_PATH trace/hooks
++
++#if !defined(_TRACE_HOOK_NET_VH_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_NET_VH_H
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++struct packet_type;
++struct list_head;
++struct sk_buff;
++struct sock;
++struct nf_conn;
++
++DECLARE_HOOK(android_vh_ptype_head,
++	TP_PROTO(const struct packet_type *pt, struct list_head *vendor_pt),
++	TP_ARGS(pt, vendor_pt));
++DECLARE_HOOK(android_vh_kfree_skb,
++	TP_PROTO(struct sk_buff *skb), TP_ARGS(skb));
++DECLARE_RESTRICTED_HOOK(android_rvh_sk_alloc,
++	TP_PROTO(struct sock *sock), TP_ARGS(sock), 1);
++DECLARE_RESTRICTED_HOOK(android_rvh_sk_free,
++	TP_PROTO(struct sock *sock), TP_ARGS(sock), 1);
++DECLARE_RESTRICTED_HOOK(android_rvh_nf_conn_alloc,
++	TP_PROTO(struct nf_conn *nf_conn), TP_ARGS(nf_conn), 1);
++DECLARE_RESTRICTED_HOOK(android_rvh_nf_conn_free,
++	TP_PROTO(struct nf_conn *nf_conn), TP_ARGS(nf_conn), 1);
++#else
++#define trace_android_vh_ptype_head(pt, vendor_pt)
++#define trace_android_vh_kfree_skb(skb)
++#define trace_android_rvh_sk_alloc(sock)
++#define trace_android_rvh_sk_free(sock)
++#define trace_android_rvh_nf_conn_alloc(nf_conn)
++#define trace_android_rvh_nf_conn_free(nf_conn)
++#endif
++#endif /* _TRACE_HOOK_NET_VH_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/rwsem.h b/include/trace/hooks/rwsem.h
+new file mode 100644
+index 000000000..7c7a1f786
+--- /dev/null
++++ b/include/trace/hooks/rwsem.h
+@@ -0,0 +1,38 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM rwsem
++#define TRACE_INCLUDE_PATH trace/hooks
++#if !defined(_TRACE_HOOK_RWSEM_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_RWSEM_H
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++/*
++ * Following tracepoints are not exported in tracefs and provide a
++ * mechanism for vendor modules to hook and extend functionality
++ */
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++struct rw_semaphore;
++struct rwsem_waiter;
++DECLARE_HOOK(android_vh_rwsem_init,
++	TP_PROTO(struct rw_semaphore *sem),
++	TP_ARGS(sem));
++DECLARE_HOOK(android_vh_rwsem_wake,
++	TP_PROTO(struct rw_semaphore *sem),
++	TP_ARGS(sem));
++DECLARE_HOOK(android_vh_rwsem_write_finished,
++	TP_PROTO(struct rw_semaphore *sem),
++	TP_ARGS(sem));
++DECLARE_HOOK(android_vh_alter_rwsem_list_add,
++	TP_PROTO(struct rwsem_waiter *waiter,
++		 struct rw_semaphore *sem,
++		 bool *already_on_list),
++	TP_ARGS(waiter, sem, already_on_list));
++#else
++#define trace_android_vh_rwsem_init(sem)
++#define trace_android_vh_rwsem_wake(sem)
++#define trace_android_vh_rwsem_write_finished(sem)
++#define trace_android_vh_alter_rwsem_list_add(waiter, sem, already_on_list)
++#endif
++#endif /* _TRACE_HOOK_RWSEM_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/sched.h b/include/trace/hooks/sched.h
+new file mode 100644
+index 000000000..4e2be4d70
+--- /dev/null
++++ b/include/trace/hooks/sched.h
+@@ -0,0 +1,91 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM sched
++#define TRACE_INCLUDE_PATH trace/hooks
++#if !defined(_TRACE_HOOK_SCHED_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_SCHED_H
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++/*
++ * Following tracepoints are not exported in tracefs and provide a
++ * mechanism for vendor modules to hook and extend functionality
++ */
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++struct task_struct;
++DECLARE_RESTRICTED_HOOK(android_rvh_select_task_rq_fair,
++	TP_PROTO(struct task_struct *p, int prev_cpu, int sd_flag, int wake_flags, int *new_cpu),
++	TP_ARGS(p, prev_cpu, sd_flag, wake_flags, new_cpu), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_select_task_rq_rt,
++	TP_PROTO(struct task_struct *p, int prev_cpu, int sd_flag, int wake_flags, int *new_cpu),
++	TP_ARGS(p, prev_cpu, sd_flag, wake_flags, new_cpu), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_select_fallback_rq,
++	TP_PROTO(int cpu, struct task_struct *p, int *new_cpu),
++	TP_ARGS(cpu, p, new_cpu), 1);
++
++struct rq;
++DECLARE_HOOK(android_vh_scheduler_tick,
++	TP_PROTO(struct rq *rq),
++	TP_ARGS(rq));
++
++DECLARE_RESTRICTED_HOOK(android_rvh_enqueue_task,
++	TP_PROTO(struct rq *rq, struct task_struct *p),
++	TP_ARGS(rq, p), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_dequeue_task,
++	TP_PROTO(struct rq *rq, struct task_struct *p),
++	TP_ARGS(rq, p), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_can_migrate_task,
++	TP_PROTO(struct task_struct *p, int dst_cpu, int *can_migrate),
++	TP_ARGS(p, dst_cpu, can_migrate), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_find_lowest_rq,
++	TP_PROTO(struct task_struct *p, struct cpumask *local_cpu_mask,
++			int *lowest_cpu),
++	TP_ARGS(p, local_cpu_mask, lowest_cpu), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_prepare_prio_fork,
++	TP_PROTO(struct task_struct *p),
++	TP_ARGS(p), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_finish_prio_fork,
++	TP_PROTO(struct task_struct *p),
++	TP_ARGS(p), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_rtmutex_prepare_setprio,
++	TP_PROTO(struct task_struct *p, struct task_struct *pi_task),
++	TP_ARGS(p, pi_task), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_set_user_nice,
++	TP_PROTO(struct task_struct *p, long *nice),
++	TP_ARGS(p, nice), 1);
++
++DECLARE_RESTRICTED_HOOK(android_rvh_setscheduler,
++	TP_PROTO(struct task_struct *p),
++	TP_ARGS(p), 1);
++
++struct sched_group;
++DECLARE_RESTRICTED_HOOK(android_rvh_find_busiest_group,
++	TP_PROTO(struct sched_group *busiest, struct rq *dst_rq, int *out_balance),
++		TP_ARGS(busiest, dst_rq, out_balance), 1);
++#else
++#define trace_android_rvh_select_task_rq_fair(p, prev_cpu, sd_flag, wake_flags, new_cpu)
++#define trace_android_rvh_select_task_rq_rt(p, prev_cpu, sd_flag, wake_flags, new_cpu)
++#define trace_android_rvh_select_fallback_rq(cpu, p, dest_cpu)
++#define trace_android_vh_scheduler_tick(rq)
++#define trace_android_rvh_enqueue_task(rq, p)
++#define trace_android_rvh_dequeue_task(rq, p)
++#define trace_android_rvh_can_migrate_task(p, dst_cpu, can_migrate)
++#define trace_android_rvh_find_lowest_rq(p, local_cpu_mask, lowest_cpu)
++#define trace_android_rvh_prepare_prio_fork(p)
++#define trace_android_rvh_finish_prio_fork(p)
++#define trace_android_rvh_rtmutex_prepare_setprio(p, pi_task)
++#define trace_android_rvh_set_user_nice(p, nice)
++#define trace_android_rvh_setscheduler(p)
++#define trace_android_rvh_find_busiest_group(busiest, dst_rq, out_balance)
++#endif
++#endif /* _TRACE_HOOK_SCHED_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/sysrqcrash.h b/include/trace/hooks/sysrqcrash.h
+new file mode 100644
+index 000000000..e5d9102ba
+--- /dev/null
++++ b/include/trace/hooks/sysrqcrash.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM sysrqcrash
++#define TRACE_INCLUDE_PATH trace/hooks
++
++#if !defined(_TRACE_HOOK_SYSRQCRASH_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_SYSRQCRASH_H
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++/*
++ * Following tracepoints are not exported in tracefs and provide a
++ * mechanism for vendor modules to hook and extend functionality
++ */
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++DECLARE_HOOK(android_vh_sysrq_crash,
++	TP_PROTO(void *data),
++	TP_ARGS(data));
++#else
++#define trace_android_vh_sysrq_crash(data)
++#endif
++
++#endif /* _TRACE_HOOK_SYSRQCRASH_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/topology.h b/include/trace/hooks/topology.h
+new file mode 100644
+index 000000000..32b44c7e5
+--- /dev/null
++++ b/include/trace/hooks/topology.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM topology
++
++#define TRACE_INCLUDE_PATH trace/hooks
++
++#if !defined(_TRACE_HOOK_TOPOLOGY_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_TOPOLOGY_H
++
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++#include <linux/cpumask.h>
++
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++
++DECLARE_HOOK(android_vh_arch_set_freq_scale,
++	TP_PROTO(struct cpumask *cpus, unsigned long freq, unsigned long max,
++		unsigned long *scale),
++	TP_ARGS(cpus, freq, max, scale));
++
++#else
++
++#define trace_android_vh_arch_set_freq_scale(cpus, freq, max, scale)
++
++#endif
++
++#endif /* _TRACE_HOOK_TOPOLOGY_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/trace/hooks/vendor_hooks.h b/include/trace/hooks/vendor_hooks.h
+new file mode 100644
+index 000000000..8a3fdb922
+--- /dev/null
++++ b/include/trace/hooks/vendor_hooks.h
+@@ -0,0 +1,76 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++
++/*
++ * Note: we intentionally omit include file ifdef protection
++ *  This is due to the way trace events work. If a file includes two
++ *  trace event headers under one "CREATE_TRACE_POINTS" the first include
++ *  will override the DECLARE_RESTRICTED_HOOK and break the second include.
++ */
++
++#include <linux/tracepoint.h>
++
++#define DECLARE_HOOK DECLARE_TRACE
++
++#ifdef TRACE_HEADER_MULTI_READ
++
++#undef DECLARE_RESTRICTED_HOOK
++#define DECLARE_RESTRICTED_HOOK(name, proto, args, cond) \
++	DEFINE_TRACE(name)
++
++
++/* prevent additional recursion */
++#undef TRACE_HEADER_MULTI_READ
++#else /* TRACE_HEADER_MULTI_READ */
++
++#define DO_HOOK(tp, proto, args, cond)					\
++	do {								\
++		struct tracepoint_func *it_func_ptr;			\
++		void *it_func;						\
++		void *__data;						\
++									\
++		if (!(cond))						\
++			return;						\
++									\
++		it_func_ptr = (tp)->funcs;				\
++		if (it_func_ptr) {					\
++			it_func = (it_func_ptr)->func;			\
++			__data = (it_func_ptr)->data;			\
++			((void(*)(proto))(it_func))(args);		\
++			WARN_ON(((++it_func_ptr)->func));		\
++		}							\
++	} while (0)
++
++#define __DECLARE_HOOK(name, proto, args, cond, data_proto, data_args)	\
++	extern struct tracepoint __tracepoint_##name;			\
++	static inline void trace_##name(proto)				\
++	{								\
++		if (static_key_false(&__tracepoint_##name.key))		\
++			DO_HOOK(&__tracepoint_##name,			\
++				TP_PROTO(data_proto),			\
++				TP_ARGS(data_args),			\
++				TP_CONDITION(cond));			\
++	}								\
++	static inline bool						\
++	trace_##name##_enabled(void)					\
++	{								\
++		return static_key_false(&__tracepoint_##name.key);	\
++	}								\
++	static inline int						\
++	register_trace_##name(void (*probe)(data_proto), void *data) 	\
++	{								\
++		/* only allow a single attachment */			\
++		if (trace_##name##_enabled())				\
++			return -EBUSY;					\
++		return tracepoint_probe_register(&__tracepoint_##name,	\
++						(void *)probe, data);	\
++	}								\
++	/* vendor hooks cannot be unregistered */			\
++
++#undef DECLARE_RESTRICTED_HOOK
++#define DECLARE_RESTRICTED_HOOK(name, proto, args, cond)		\
++	__DECLARE_HOOK(name, PARAMS(proto), PARAMS(args),		\
++			cond,						\
++			PARAMS(void *__data, proto),			\
++			PARAMS(__data, args))
++
++#endif /* TRACE_HEADER_MULTI_READ */
+diff --git a/include/trace/hooks/wqlockup.h b/include/trace/hooks/wqlockup.h
+new file mode 100644
+index 000000000..de70eacaa
+--- /dev/null
++++ b/include/trace/hooks/wqlockup.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM wqlockup
++#define TRACE_INCLUDE_PATH trace/hooks
++
++#if !defined(_TRACE_HOOK_WQLOCKUP_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_HOOK_WQLOCKUP_H
++#include <linux/tracepoint.h>
++#include <trace/hooks/vendor_hooks.h>
++/*
++ * Following tracepoints are not exported in tracefs and provide a
++ * mechanism for vendor modules to hook and extend functionality
++ */
++#if defined(CONFIG_TRACEPOINTS) && defined(CONFIG_ANDROID_VENDOR_HOOKS)
++DECLARE_HOOK(android_vh_wq_lockup_pool,
++	TP_PROTO(int cpu, unsigned long pool_ts),
++	TP_ARGS(cpu, pool_ts));
++#else
++#define trace_android_vh_wq_lockup_pool(cpu, pool_ts)
++#endif
++
++#endif /* _TRACE_HOOK_WQLOCKUP_H */
++/* This part must be outside protection */
++#include <trace/define_trace.h>
+diff --git a/include/uapi/drm/drm_fourcc.h b/include/uapi/drm/drm_fourcc.h
+index 3feeaa3f9..32b4d1e74 100644
+--- a/include/uapi/drm/drm_fourcc.h
++++ b/include/uapi/drm/drm_fourcc.h
+@@ -447,6 +447,30 @@ extern "C" {
+  */
+ #define DRM_FORMAT_MOD_QCOM_COMPRESSED	fourcc_mod_code(QCOM, 1)
+ 
++/*
++ * QTI DX Format
++ *
++ * Refers to a DX variant of the base format.
++ * Implementation may be platform and base-format specific.
++ */
++#define DRM_FORMAT_MOD_QCOM_DX	fourcc_mod_code(QCOM, 0x2)
++
++/*
++ * QTI Tight Format
++ *
++ * Refers to a tightly packed variant of the base format.
++ * Implementation may be platform and base-format specific.
++ */
++#define DRM_FORMAT_MOD_QCOM_TIGHT	fourcc_mod_code(QCOM, 0x4)
++
++/*
++ * QTI Tile Format
++ *
++ * Refers to a tile variant of the base format.
++ * Implementation may be platform and base-format specific.
++ */
++#define DRM_FORMAT_MOD_QCOM_TILE	fourcc_mod_code(QCOM, 0x8)
++
+ /* Vivante framebuffer modifiers */
+ 
+ /*
+diff --git a/include/uapi/drm/drm_mode.h b/include/uapi/drm/drm_mode.h
+index 735c8cfda..7043c579f 100644
+--- a/include/uapi/drm/drm_mode.h
++++ b/include/uapi/drm/drm_mode.h
+@@ -41,7 +41,6 @@ extern "C" {
+  * Userspace can refer to these structure definitions and UAPI formats
+  * to communicate to driver
+  */
+-
+ #define DRM_CONNECTOR_NAME_LEN	32
+ #define DRM_DISPLAY_MODE_LEN	32
+ #define DRM_PROP_NAME_LEN	32
+@@ -124,6 +123,13 @@ extern "C" {
+ #define  DRM_MODE_FLAG_PIC_AR_256_135 \
+ 			(DRM_MODE_PICTURE_ASPECT_256_135<<19)
+ 
++#define  DRM_MODE_FLAG_SUPPORTS_RGB		(1<<27)
++
++#define  DRM_MODE_FLAG_SUPPORTS_YUV		(1<<28)
++#define  DRM_MODE_FLAG_VID_MODE_PANEL	(1<<29)
++#define  DRM_MODE_FLAG_CMD_MODE_PANEL	(1<<30)
++#define  DRM_MODE_FLAG_SEAMLESS			(1<<31)
++
+ #define  DRM_MODE_FLAG_ALL	(DRM_MODE_FLAG_PHSYNC |		\
+ 				 DRM_MODE_FLAG_NHSYNC |		\
+ 				 DRM_MODE_FLAG_PVSYNC |		\
+@@ -136,6 +142,10 @@ extern "C" {
+ 				 DRM_MODE_FLAG_HSKEW |		\
+ 				 DRM_MODE_FLAG_DBLCLK |		\
+ 				 DRM_MODE_FLAG_CLKDIV2 |	\
++				 DRM_MODE_FLAG_SUPPORTS_RGB |	\
++				 DRM_MODE_FLAG_SUPPORTS_YUV |	\
++				 DRM_MODE_FLAG_VID_MODE_PANEL |	\
++				 DRM_MODE_FLAG_CMD_MODE_PANEL |	\
+ 				 DRM_MODE_FLAG_3D_MASK)
+ 
+ /* DPMS flags */
+@@ -485,6 +495,7 @@ struct drm_mode_fb_cmd {
+ 
+ #define DRM_MODE_FB_INTERLACED	(1<<0) /* for interlaced framebuffers */
+ #define DRM_MODE_FB_MODIFIERS	(1<<1) /* enables ->modifer[] */
++#define DRM_MODE_FB_SECURE	(1<<2) /* for secure framebuffers */
+ 
+ struct drm_mode_fb_cmd2 {
+ 	__u32 fb_id;
+diff --git a/include/uapi/linux/android/binder.h b/include/uapi/linux/android/binder.h
+index 2832134e5..11babae03 100644
+--- a/include/uapi/linux/android/binder.h
++++ b/include/uapi/linux/android/binder.h
+@@ -38,10 +38,58 @@ enum {
+ 	BINDER_TYPE_PTR		= B_PACK_CHARS('p', 't', '*', B_TYPE_LARGE),
+ };
+ 
+-enum {
++/**
++ * enum flat_binder_object_shifts: shift values for flat_binder_object_flags
++ * @FLAT_BINDER_FLAG_SCHED_POLICY_SHIFT: shift for getting scheduler policy.
++ *
++ */
++enum flat_binder_object_shifts {
++	FLAT_BINDER_FLAG_SCHED_POLICY_SHIFT = 9,
++};
++
++/**
++ * enum flat_binder_object_flags - flags for use in flat_binder_object.flags
++ */
++enum flat_binder_object_flags {
++	/**
++	 * @FLAT_BINDER_FLAG_PRIORITY_MASK: bit-mask for min scheduler priority
++	 *
++	 * These bits can be used to set the minimum scheduler priority
++	 * at which transactions into this node should run. Valid values
++	 * in these bits depend on the scheduler policy encoded in
++	 * @FLAT_BINDER_FLAG_SCHED_POLICY_MASK.
++	 *
++	 * For SCHED_NORMAL/SCHED_BATCH, the valid range is between [-20..19]
++	 * For SCHED_FIFO/SCHED_RR, the value can run between [1..99]
++	 */
+ 	FLAT_BINDER_FLAG_PRIORITY_MASK = 0xff,
++	/**
++	 * @FLAT_BINDER_FLAG_ACCEPTS_FDS: whether the node accepts fds.
++	 */
+ 	FLAT_BINDER_FLAG_ACCEPTS_FDS = 0x100,
+ 
++	/**
++	 * @FLAT_BINDER_FLAG_SCHED_POLICY_MASK: bit-mask for scheduling policy
++	 *
++	 * These two bits can be used to set the min scheduling policy at which
++	 * transactions on this node should run. These match the UAPI
++	 * scheduler policy values, eg:
++	 * 00b: SCHED_NORMAL
++	 * 01b: SCHED_FIFO
++	 * 10b: SCHED_RR
++	 * 11b: SCHED_BATCH
++	 */
++	FLAT_BINDER_FLAG_SCHED_POLICY_MASK =
++		3U << FLAT_BINDER_FLAG_SCHED_POLICY_SHIFT,
++
++	/**
++	 * @FLAT_BINDER_FLAG_INHERIT_RT: whether the node inherits RT policy
++	 *
++	 * Only when set, calls into this node will inherit a real-time
++	 * scheduling policy from the caller (for synchronous transactions).
++	 */
++	FLAT_BINDER_FLAG_INHERIT_RT = 0x800,
++
+ 	/**
+ 	 * @FLAT_BINDER_FLAG_TXN_SECURITY_CTX: request security contexts
+ 	 *
+diff --git a/include/uapi/linux/blkzoned.h b/include/uapi/linux/blkzoned.h
+index 498eec813..0cdef6713 100644
+--- a/include/uapi/linux/blkzoned.h
++++ b/include/uapi/linux/blkzoned.h
+@@ -120,9 +120,11 @@ struct blk_zone_report {
+ };
+ 
+ /**
+- * struct blk_zone_range - BLKRESETZONE ioctl request
+- * @sector: starting sector of the first zone to issue reset write pointer
+- * @nr_sectors: Total number of sectors of 1 or more zones to reset
++ * struct blk_zone_range - BLKRESETZONE/BLKOPENZONE/
++ *                         BLKCLOSEZONE/BLKFINISHZONE ioctl
++ *                         requests
++ * @sector: Starting sector of the first zone to operate on.
++ * @nr_sectors: Total number of sectors of all zones to operate on.
+  */
+ struct blk_zone_range {
+ 	__u64		sector;
+@@ -139,10 +141,19 @@ struct blk_zone_range {
+  *                sector range. The sector range must be zone aligned.
+  * @BLKGETZONESZ: Get the device zone size in number of 512 B sectors.
+  * @BLKGETNRZONES: Get the total number of zones of the device.
++ * @BLKOPENZONE: Open the zones in the specified sector range.
++ *               The 512 B sector range must be zone aligned.
++ * @BLKCLOSEZONE: Close the zones in the specified sector range.
++ *                The 512 B sector range must be zone aligned.
++ * @BLKFINISHZONE: Mark the zones as full in the specified sector range.
++ *                 The 512 B sector range must be zone aligned.
+  */
+ #define BLKREPORTZONE	_IOWR(0x12, 130, struct blk_zone_report)
+ #define BLKRESETZONE	_IOW(0x12, 131, struct blk_zone_range)
+ #define BLKGETZONESZ	_IOR(0x12, 132, __u32)
+ #define BLKGETNRZONES	_IOR(0x12, 133, __u32)
++#define BLKOPENZONE	_IOW(0x12, 134, struct blk_zone_range)
++#define BLKCLOSEZONE	_IOW(0x12, 135, struct blk_zone_range)
++#define BLKFINISHZONE	_IOW(0x12, 136, struct blk_zone_range)
+ 
+ #endif /* _UAPI_BLKZONED_H */
+diff --git a/include/uapi/linux/bpf.h b/include/uapi/linux/bpf.h
+index 77c6be96d..ca8cc0b3a 100644
+--- a/include/uapi/linux/bpf.h
++++ b/include/uapi/linux/bpf.h
+@@ -3005,6 +3005,7 @@ struct __sk_buff {
+ 	__u32 wire_len;
+ 	__u32 gso_segs;
+ 	__bpf_md_ptr(struct bpf_sock *, sk);
++	__u32 gso_size;
+ };
+ 
+ struct bpf_tunnel_key {
+diff --git a/include/uapi/linux/dsp/dsp_debug.h b/include/uapi/linux/dsp/dsp_debug.h
+new file mode 100644
+index 000000000..ffced21ef
+--- /dev/null
++++ b/include/uapi/linux/dsp/dsp_debug.h
+@@ -0,0 +1,57 @@
++/*
++* (C) Copyright 2019-2025
++* Allwinner Technology Co., Ltd. <www.allwinnertech.com>
++* wujiayi <wujiayi@allwinnertech.com>
++*
++* some simple description for this code
++*
++* This program is free software; you can redistribute it and/or
++* modify it under the terms of the GNU General Public License as
++* published by the Free Software Foundation; either version 2 of
++* the License, or (at your option) any later version.
++*
++*/
++#ifndef __LINUX_DSP_DEBUG_H
++#define __LINUX_DSP_DEBUG_H
++
++#ifdef __KERNEL__
++#include <linux/types.h>
++#else
++#include <stdint.h>
++#endif
++
++struct debug_msg_t {
++	uint32_t sys_cnt;
++	uint32_t log_head_addr;
++	uint32_t log_end_addr;
++	uint32_t log_head_size;
++};
++
++struct dsp_sharespace_t {
++	/* dsp write space msg */
++	uint32_t dsp_write_addr;
++	uint32_t dsp_write_size;
++
++	/* arm write space msg */
++	uint32_t arm_write_addr;
++	uint32_t arm_write_size;
++
++	/* dsp log space msg */
++	uint32_t dsp_log_addr;
++	uint32_t dsp_log_size;
++
++	uint32_t mmap_phy_addr;
++	uint32_t mmap_phy_size;
++
++	/* arm read addr about dsp log*/
++	uint32_t arm_read_dsp_log_addr;
++	/* save msg value */
++	struct debug_msg_t value;
++};
++
++enum dsp_debug_cmd {
++	CMD_REFRESH_LOG_HEAD_ADDR = 0x00,
++	CMD_READ_DEBUG_MSG = 0x01,
++	CMD_WRITE_DEBUG_MSG = 0x03,
++};
++#endif /* __LINUX_DSP_DEBUG_H */
+diff --git a/include/uapi/linux/elf.h b/include/uapi/linux/elf.h
+index 34c02e429..e428f9e87 100644
+--- a/include/uapi/linux/elf.h
++++ b/include/uapi/linux/elf.h
+@@ -428,6 +428,7 @@ typedef struct elf64_shdr {
+ #define NT_MIPS_DSP	0x800		/* MIPS DSP ASE registers */
+ #define NT_MIPS_FP_MODE	0x801		/* MIPS floating-point mode */
+ #define NT_MIPS_MSA	0x802		/* MIPS SIMD registers */
++#define NT_RISCV_VECTOR	0x900		/* RISC-V vector registers */
+ 
+ /* Note header in a PT_NOTE section */
+ typedef struct elf32_note {
+diff --git a/include/uapi/linux/fscrypt.h b/include/uapi/linux/fscrypt.h
+index 39ccfe931..b11faeeed 100644
+--- a/include/uapi/linux/fscrypt.h
++++ b/include/uapi/linux/fscrypt.h
+@@ -8,6 +8,7 @@
+ #ifndef _UAPI_LINUX_FSCRYPT_H
+ #define _UAPI_LINUX_FSCRYPT_H
+ 
++#include <linux/ioctl.h>
+ #include <linux/types.h>
+ 
+ /* Encryption policy flags */
+@@ -17,7 +18,9 @@
+ #define FSCRYPT_POLICY_FLAGS_PAD_32		0x03
+ #define FSCRYPT_POLICY_FLAGS_PAD_MASK		0x03
+ #define FSCRYPT_POLICY_FLAG_DIRECT_KEY		0x04
+-#define FSCRYPT_POLICY_FLAGS_VALID		0x07
++#define FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64	0x08
++#define FSCRYPT_POLICY_FLAG_IV_INO_LBLK_32	0x10
++#define FSCRYPT_POLICY_FLAGS_VALID		0x1F
+ 
+ /* Encryption algorithms */
+ #define FSCRYPT_MODE_AES_256_XTS		1
+@@ -108,11 +111,25 @@ struct fscrypt_key_specifier {
+ 	} u;
+ };
+ 
++/*
++ * Payload of Linux keyring key of type "fscrypt-provisioning", referenced by
++ * fscrypt_add_key_arg::key_id as an alternative to fscrypt_add_key_arg::raw.
++ */
++struct fscrypt_provisioning_key_payload {
++	__u32 type;
++	__u32 __reserved;
++	__u8 raw[];
++};
++
+ /* Struct passed to FS_IOC_ADD_ENCRYPTION_KEY */
+ struct fscrypt_add_key_arg {
+ 	struct fscrypt_key_specifier key_spec;
+ 	__u32 raw_size;
+-	__u32 __reserved[9];
++	__u32 key_id;
++	__u32 __reserved[7];
++	/* N.B.: "temporary" flag, not reserved upstream */
++#define __FSCRYPT_ADD_KEY_FLAG_HW_WRAPPED		0x00000001
++	__u32 __flags;
+ 	__u8 raw[];
+ };
+ 
+@@ -150,6 +167,7 @@ struct fscrypt_get_key_status_arg {
+ #define FS_IOC_REMOVE_ENCRYPTION_KEY		_IOWR('f', 24, struct fscrypt_remove_key_arg)
+ #define FS_IOC_REMOVE_ENCRYPTION_KEY_ALL_USERS	_IOWR('f', 25, struct fscrypt_remove_key_arg)
+ #define FS_IOC_GET_ENCRYPTION_KEY_STATUS	_IOWR('f', 26, struct fscrypt_get_key_status_arg)
++#define FS_IOC_GET_ENCRYPTION_NONCE		_IOR('f', 27, __u8[16])
+ 
+ /**********************************************************************/
+ 
+diff --git a/include/uapi/linux/fuse.h b/include/uapi/linux/fuse.h
+index 373cada89..0a88b2179 100644
+--- a/include/uapi/linux/fuse.h
++++ b/include/uapi/linux/fuse.h
+@@ -465,6 +465,7 @@ enum fuse_opcode {
+ 	FUSE_COPY_FILE_RANGE	= 47,
+ 	FUSE_SETUPMAPPING	= 48,
+ 	FUSE_REMOVEMAPPING	= 49,
++	FUSE_CANONICAL_PATH	= 2016,
+ 
+ 	/* CUSE specific operations */
+ 	CUSE_INIT		= 4096,
+diff --git a/include/uapi/linux/incrementalfs.h b/include/uapi/linux/incrementalfs.h
+new file mode 100644
+index 000000000..71efcf3d1
+--- /dev/null
++++ b/include/uapi/linux/incrementalfs.h
+@@ -0,0 +1,334 @@
++/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++/*
++ * Userspace interface for Incremental FS.
++ *
++ * Incremental FS is special-purpose Linux virtual file system that allows
++ * execution of a program while its binary and resource files are still being
++ * lazily downloaded over the network, USB etc.
++ *
++ * Copyright 2019 Google LLC
++ */
++#ifndef _UAPI_LINUX_INCREMENTALFS_H
++#define _UAPI_LINUX_INCREMENTALFS_H
++
++#include <linux/limits.h>
++#include <linux/ioctl.h>
++#include <linux/types.h>
++#include <linux/xattr.h>
++
++/* ===== constants ===== */
++#define INCFS_NAME "incremental-fs"
++#define INCFS_MAGIC_NUMBER (unsigned long)(0x5346434e49ul)
++#define INCFS_DATA_FILE_BLOCK_SIZE 4096
++#define INCFS_HEADER_VER 1
++
++/* TODO: This value is assumed in incfs_copy_signature_info_from_user to be the
++ * actual signature length. Set back to 64 when fixed.
++ */
++#define INCFS_MAX_HASH_SIZE 32
++#define INCFS_MAX_FILE_ATTR_SIZE 512
++
++#define INCFS_PENDING_READS_FILENAME ".pending_reads"
++#define INCFS_LOG_FILENAME ".log"
++#define INCFS_XATTR_ID_NAME (XATTR_USER_PREFIX "incfs.id")
++#define INCFS_XATTR_SIZE_NAME (XATTR_USER_PREFIX "incfs.size")
++#define INCFS_XATTR_METADATA_NAME (XATTR_USER_PREFIX "incfs.metadata")
++
++#define INCFS_MAX_SIGNATURE_SIZE 8096
++#define INCFS_SIGNATURE_VERSION 2
++#define INCFS_SIGNATURE_SECTIONS 2
++
++#define INCFS_IOCTL_BASE_CODE 'g'
++
++/* ===== ioctl requests on the command dir ===== */
++
++/* Create a new file */
++#define INCFS_IOC_CREATE_FILE \
++	_IOWR(INCFS_IOCTL_BASE_CODE, 30, struct incfs_new_file_args)
++
++/* Read file signature */
++#define INCFS_IOC_READ_FILE_SIGNATURE                                          \
++	_IOR(INCFS_IOCTL_BASE_CODE, 31, struct incfs_get_file_sig_args)
++
++/*
++ * Fill in one or more data block. This may only be called on a handle
++ * passed as a parameter to INCFS_IOC_PERMIT_FILLING
++ *
++ * Returns number of blocks filled in, or error if none were
++ */
++#define INCFS_IOC_FILL_BLOCKS                                                  \
++	_IOR(INCFS_IOCTL_BASE_CODE, 32, struct incfs_fill_blocks)
++
++/*
++ * Permit INCFS_IOC_FILL_BLOCKS on the given file descriptor
++ * May only be called on .pending_reads file
++ *
++ * Returns 0 on success or error
++ */
++#define INCFS_IOC_PERMIT_FILL                                                  \
++	_IOW(INCFS_IOCTL_BASE_CODE, 33, struct incfs_permit_fill)
++
++/*
++ * Fills buffer with ranges of populated blocks
++ *
++ * Returns 0 if all ranges written
++ *	   error otherwise
++ *
++ *	   Either way, range_buffer_size_out is set to the number
++ *	   of bytes written. Should be set to 0 by caller. The ranges
++ *	   filled are valid, but if an error was returned there might
++ *	   be more ranges to come.
++ *
++ *	   Ranges are ranges of filled blocks:
++ *
++ *	   1 2 7 9
++ *
++ *	   means blocks 1, 2, 7, 8, 9 are filled, 0, 3, 4, 5, 6 and 10 on
++ *	   are not
++ *
++ *	   If hashing is enabled for the file, the hash blocks are simply
++ *	   treated as though they immediately followed the data blocks.
++ */
++#define INCFS_IOC_GET_FILLED_BLOCKS                                            \
++	_IOR(INCFS_IOCTL_BASE_CODE, 34, struct incfs_get_filled_blocks_args)
++
++enum incfs_compression_alg {
++	COMPRESSION_NONE = 0,
++	COMPRESSION_LZ4 = 1
++};
++
++enum incfs_block_flags {
++	INCFS_BLOCK_FLAGS_NONE = 0,
++	INCFS_BLOCK_FLAGS_HASH = 1,
++};
++
++typedef struct {
++	__u8 bytes[16];
++} incfs_uuid_t __attribute__((aligned (8)));
++
++/*
++ * Description of a pending read. A pending read - a read call by
++ * a userspace program for which the filesystem currently doesn't have data.
++ */
++struct incfs_pending_read_info {
++	/* Id of a file that is being read from. */
++	incfs_uuid_t file_id;
++
++	/* A number of microseconds since system boot to the read. */
++	__aligned_u64 timestamp_us;
++
++	/* Index of a file block that is being read. */
++	__u32 block_index;
++
++	/* A serial number of this pending read. */
++	__u32 serial_number;
++};
++
++/*
++ * Description of a data or hash block to add to a data file.
++ */
++struct incfs_fill_block {
++	/* Index of a data block. */
++	__u32 block_index;
++
++	/* Length of data */
++	__u32 data_len;
++
++	/*
++	 * A pointer to an actual data for the block.
++	 *
++	 * Equivalent to: __u8 *data;
++	 */
++	__aligned_u64 data;
++
++	/*
++	 * Compression algorithm used to compress the data block.
++	 * Values from enum incfs_compression_alg.
++	 */
++	__u8 compression;
++
++	/* Values from enum incfs_block_flags */
++	__u8 flags;
++
++	__u16 reserved1;
++
++	__u32 reserved2;
++
++	__aligned_u64 reserved3;
++};
++
++/*
++ * Description of a number of blocks to add to a data file
++ *
++ * Argument for INCFS_IOC_FILL_BLOCKS
++ */
++struct incfs_fill_blocks {
++	/* Number of blocks */
++	__u64 count;
++
++	/* A pointer to an array of incfs_fill_block structs */
++	__aligned_u64 fill_blocks;
++};
++
++/*
++ * Permit INCFS_IOC_FILL_BLOCKS on the given file descriptor
++ * May only be called on .pending_reads file
++ *
++ * Argument for INCFS_IOC_PERMIT_FILL
++ */
++struct incfs_permit_fill {
++	/* File to permit fills on */
++	__u32 file_descriptor;
++};
++
++enum incfs_hash_tree_algorithm {
++	INCFS_HASH_TREE_NONE = 0,
++	INCFS_HASH_TREE_SHA256 = 1
++};
++
++/*
++ * Create a new file or directory.
++ */
++struct incfs_new_file_args {
++	/* Id of a file to create. */
++	incfs_uuid_t file_id;
++
++	/*
++	 * Total size of the new file. Ignored if S_ISDIR(mode).
++	 */
++	__aligned_u64 size;
++
++	/*
++	 * File mode. Permissions and dir flag.
++	 */
++	__u16 mode;
++
++	__u16 reserved1;
++
++	__u32 reserved2;
++
++	/*
++	 * A pointer to a null-terminated relative path to the file's parent
++	 * dir.
++	 * Max length: PATH_MAX
++	 *
++	 * Equivalent to: char *directory_path;
++	 */
++	__aligned_u64 directory_path;
++
++	/*
++	 * A pointer to a null-terminated file's name.
++	 * Max length: PATH_MAX
++	 *
++	 * Equivalent to: char *file_name;
++	 */
++	__aligned_u64 file_name;
++
++	/*
++	 * A pointer to a file attribute to be set on creation.
++	 *
++	 * Equivalent to: u8 *file_attr;
++	 */
++	__aligned_u64 file_attr;
++
++	/*
++	 * Length of the data buffer specfied by file_attr.
++	 * Max value: INCFS_MAX_FILE_ATTR_SIZE
++	 */
++	__u32 file_attr_len;
++
++	__u32 reserved4;
++
++	/*
++	 * Points to an APK V4 Signature data blob
++	 * Signature must have two sections
++	 * Format is:
++	 *	u32 version
++	 *	u32 size_of_hash_info_section
++	 *	u8 hash_info_section[]
++	 *	u32 size_of_signing_info_section
++	 *	u8 signing_info_section[]
++	 *
++	 * Note that incfs does not care about what is in signing_info_section
++	 *
++	 * hash_info_section has following format:
++	 *	u32 hash_algorithm; // Must be SHA256 == 1
++	 *	u8 log2_blocksize;  // Must be 12 for 4096 byte blocks
++	 *	u32 salt_size;
++	 *	u8 salt[];
++	 *	u32 hash_size;
++	 *	u8 root_hash[];
++	 */
++	__aligned_u64 signature_info;
++
++	/* Size of signature_info */
++	__aligned_u64 signature_size;
++
++	__aligned_u64 reserved6;
++};
++
++/*
++ * Request a digital signature blob for a given file.
++ * Argument for INCFS_IOC_READ_FILE_SIGNATURE ioctl
++ */
++struct incfs_get_file_sig_args {
++	/*
++	 * A pointer to the data buffer to save an signature blob to.
++	 *
++	 * Equivalent to: u8 *file_signature;
++	 */
++	__aligned_u64 file_signature;
++
++	/* Size of the buffer at file_signature. */
++	__u32 file_signature_buf_size;
++
++	/*
++	 * Number of bytes save file_signature buffer.
++	 * It is set after ioctl done.
++	 */
++	__u32 file_signature_len_out;
++};
++
++struct incfs_filled_range {
++	__u32 begin;
++	__u32 end;
++};
++
++/*
++ * Request ranges of filled blocks
++ * Argument for INCFS_IOC_GET_FILLED_BLOCKS
++ */
++struct incfs_get_filled_blocks_args {
++	/*
++	 * A buffer to populate with ranges of filled blocks
++	 *
++	 * Equivalent to struct incfs_filled_ranges *range_buffer
++	 */
++	__aligned_u64 range_buffer;
++
++	/* Size of range_buffer */
++	__u32 range_buffer_size;
++
++	/* Start index to read from */
++	__u32 start_index;
++
++	/*
++	 * End index to read to. 0 means read to end. This is a range,
++	 * so incfs will read from start_index to end_index - 1
++	 */
++	__u32 end_index;
++
++	/* Actual number of blocks in file */
++	__u32 total_blocks_out;
++
++	/* The  number of data blocks in file */
++	__u32 data_blocks_out;
++
++	/* Number of bytes written to range buffer */
++	__u32 range_buffer_size_out;
++
++	/* Sector scanned up to, if the call was interrupted */
++	__u32 index_out;
++};
++
++#endif /* _UAPI_LINUX_INCREMENTALFS_H */
+diff --git a/include/uapi/linux/input-event-codes.h b/include/uapi/linux/input-event-codes.h
+index 472cd5bc5..b8902770a 100644
+--- a/include/uapi/linux/input-event-codes.h
++++ b/include/uapi/linux/input-event-codes.h
+@@ -809,7 +809,7 @@
+ #define SW_MUTE_DEVICE		0x0e  /* set = device disabled */
+ #define SW_PEN_INSERTED		0x0f  /* set = pen inserted */
+ #define SW_MACHINE_COVER	0x10  /* set = cover closed */
+-#define SW_MAX			0x10
++#define SW_MAX			0x3f
+ #define SW_CNT			(SW_MAX+1)
+ 
+ /*
+diff --git a/include/uapi/linux/ion.h b/include/uapi/linux/ion.h
+new file mode 100644
+index 000000000..371e44662
+--- /dev/null
++++ b/include/uapi/linux/ion.h
+@@ -0,0 +1,150 @@
++/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++/*
++ * drivers/staging/android/uapi/ion.h
++ *
++ * Copyright (C) 2011 Google, Inc.
++ */
++
++#ifndef _UAPI_LINUX_ION_H
++#define _UAPI_LINUX_ION_H
++
++#include <linux/ioctl.h>
++#include <linux/types.h>
++
++/**
++ * ion_heap_types - list of all possible types of heaps that Android can use
++ *
++ * @ION_HEAP_TYPE_SYSTEM:        Reserved heap id for ion heap that allocates
++ *				 memory using alloc_page(). Also, supports
++ *				 deferred free and allocation pools.
++* @ION_HEAP_TYPE_DMA:		 Reserved heap id for ion heap that manages
++ * 				 single CMA (contiguous memory allocator)
++ * 				 region. Uses standard DMA APIs for
++ *				 managing memory within the CMA region.
++ */
++enum ion_heap_type {
++	ION_HEAP_TYPE_SYSTEM = 0,
++	ION_HEAP_TYPE_DMA = 2,
++	/* reserved range for future standard heap types */
++	ION_HEAP_TYPE_CUSTOM = 16,
++	ION_HEAP_TYPE_MAX = 31,
++};
++
++/**
++ * ion_heap_id - list of standard heap ids that Android can use
++ *
++ * @ION_HEAP_SYSTEM		Id for the ION_HEAP_TYPE_SYSTEM
++ * @ION_HEAP_DMA_START 		Start of reserved id range for heaps of type
++ *				ION_HEAP_TYPE_DMA
++ * @ION_HEAP_DMA_END		End of reserved id range for heaps of type
++ *				ION_HEAP_TYPE_DMA
++ * @ION_HEAP_CUSTOM_START	Start of reserved id range for heaps of custom
++ *				type
++ * @ION_HEAP_CUSTOM_END		End of reserved id range for heaps of custom
++ *				type
++ */
++enum ion_heap_id {
++	ION_HEAP_SYSTEM = (1 << ION_HEAP_TYPE_SYSTEM),
++	ION_HEAP_DMA_START = (ION_HEAP_SYSTEM << 1),
++	ION_HEAP_DMA_END = (ION_HEAP_DMA_START << 7),
++	ION_HEAP_CUSTOM_START = (ION_HEAP_DMA_END << 1),
++	ION_HEAP_CUSTOM_END = (ION_HEAP_CUSTOM_START << 22),
++};
++
++#define ION_NUM_MAX_HEAPS	(32)
++
++/**
++ * allocation flags - the lower 16 bits are used by core ion, the upper 16
++ * bits are reserved for use by the heaps themselves.
++ */
++
++/*
++ * mappings of this buffer should be cached, ion will do cache maintenance
++ * when the buffer is mapped for dma
++ */
++#define ION_FLAG_CACHED		1
++
++/**
++ * DOC: Ion Userspace API
++ *
++ * create a client by opening /dev/ion
++ * most operations handled via following ioctls
++ *
++ */
++
++/**
++ * struct ion_allocation_data - metadata passed from userspace for allocations
++ * @len:		size of the allocation
++ * @heap_id_mask:	mask of heap ids to allocate from
++ * @flags:		flags passed to heap
++ * @handle:		pointer that will be populated with a cookie to use to
++ *			refer to this allocation
++ *
++ * Provided by userspace as an argument to the ioctl
++ */
++struct ion_allocation_data {
++	__u64 len;
++	__u32 heap_id_mask;
++	__u32 flags;
++	__u32 fd;
++	__u32 unused;
++};
++
++#define MAX_HEAP_NAME			32
++
++/**
++ * struct ion_heap_data - data about a heap
++ * @name - first 32 characters of the heap name
++ * @type - heap type
++ * @heap_id - heap id for the heap
++ */
++struct ion_heap_data {
++	char name[MAX_HEAP_NAME];
++	__u32 type;
++	__u32 heap_id;
++	__u32 reserved0;
++	__u32 reserved1;
++	__u32 reserved2;
++};
++
++/**
++ * struct ion_heap_query - collection of data about all heaps
++ * @cnt - total number of heaps to be copied
++ * @heaps - buffer to copy heap data
++ */
++struct ion_heap_query {
++	__u32 cnt; /* Total number of heaps to be copied */
++	__u32 reserved0; /* align to 64bits */
++	__u64 heaps; /* buffer to be populated */
++	__u32 reserved1;
++	__u32 reserved2;
++};
++
++#define ION_IOC_MAGIC		'I'
++
++/**
++ * DOC: ION_IOC_ALLOC - allocate memory
++ *
++ * Takes an ion_allocation_data struct and returns it with the handle field
++ * populated with the opaque handle for the allocation.
++ */
++#define ION_IOC_ALLOC		_IOWR(ION_IOC_MAGIC, 0, \
++				      struct ion_allocation_data)
++
++/**
++ * DOC: ION_IOC_HEAP_QUERY - information about available heaps
++ *
++ * Takes an ion_heap_query structure and populates information about
++ * available Ion heaps.
++ */
++#define ION_IOC_HEAP_QUERY     _IOWR(ION_IOC_MAGIC, 8, \
++					struct ion_heap_query)
++
++/**
++ * DOC: ION_IOC_HEAP_ABI_VERSION - return ABI version
++ *
++ * Returns ABI version for this driver
++ */
++#define ION_IOC_ABI_VERSION    _IOR(ION_IOC_MAGIC, 9, \
++					__u32)
++#endif /* _UAPI_LINUX_ION_H */
+diff --git a/include/uapi/linux/kcov.h b/include/uapi/linux/kcov.h
+index 952986771..1d0350e44 100644
+--- a/include/uapi/linux/kcov.h
++++ b/include/uapi/linux/kcov.h
+@@ -4,9 +4,24 @@
+ 
+ #include <linux/types.h>
+ 
++/*
++ * Argument for KCOV_REMOTE_ENABLE ioctl, see Documentation/dev-tools/kcov.rst
++ * and the comment before kcov_remote_start() for usage details.
++ */
++struct kcov_remote_arg {
++	__u32		trace_mode;	/* KCOV_TRACE_PC or KCOV_TRACE_CMP */
++	__u32		area_size;	/* Length of coverage buffer in words */
++	__u32		num_handles;	/* Size of handles array */
++	__aligned_u64	common_handle;
++	__aligned_u64	handles[0];
++};
++
++#define KCOV_REMOTE_MAX_HANDLES		0x100
++
+ #define KCOV_INIT_TRACE			_IOR('c', 1, unsigned long)
+ #define KCOV_ENABLE			_IO('c', 100)
+ #define KCOV_DISABLE			_IO('c', 101)
++#define KCOV_REMOTE_ENABLE		_IOW('c', 102, struct kcov_remote_arg)
+ 
+ enum {
+ 	/*
+@@ -32,4 +47,17 @@ enum {
+ #define KCOV_CMP_SIZE(n)        ((n) << 1)
+ #define KCOV_CMP_MASK           KCOV_CMP_SIZE(3)
+ 
++#define KCOV_SUBSYSTEM_COMMON	(0x00ull << 56)
++#define KCOV_SUBSYSTEM_USB	(0x01ull << 56)
++
++#define KCOV_SUBSYSTEM_MASK	(0xffull << 56)
++#define KCOV_INSTANCE_MASK	(0xffffffffull)
++
++static inline __u64 kcov_remote_handle(__u64 subsys, __u64 inst)
++{
++	if (subsys & ~KCOV_SUBSYSTEM_MASK || inst & ~KCOV_INSTANCE_MASK)
++		return 0;
++	return subsys | inst;
++}
++
+ #endif /* _LINUX_KCOV_IOCTLS_H */
+diff --git a/include/uapi/linux/kexec.h b/include/uapi/linux/kexec.h
+index 05669c87a..778dc191c 100644
+--- a/include/uapi/linux/kexec.h
++++ b/include/uapi/linux/kexec.h
+@@ -42,6 +42,7 @@
+ #define KEXEC_ARCH_MIPS_LE (10 << 16)
+ #define KEXEC_ARCH_MIPS    ( 8 << 16)
+ #define KEXEC_ARCH_AARCH64 (183 << 16)
++#define KEXEC_ARCH_RISCV   (243 << 16)
+ 
+ /* The artificial cap on the number of segments passed to kexec_load. */
+ #define KEXEC_SEGMENT_MAX 16
+diff --git a/include/uapi/linux/loop.h b/include/uapi/linux/loop.h
+index 080a8df13..24a1c45bd 100644
+--- a/include/uapi/linux/loop.h
++++ b/include/uapi/linux/loop.h
+@@ -25,6 +25,16 @@ enum {
+ 	LO_FLAGS_DIRECT_IO	= 16,
+ };
+ 
++/* LO_FLAGS that can be set using LOOP_SET_STATUS(64) */
++#define LOOP_SET_STATUS_SETTABLE_FLAGS (LO_FLAGS_AUTOCLEAR | LO_FLAGS_PARTSCAN)
++
++/* LO_FLAGS that can be cleared using LOOP_SET_STATUS(64) */
++#define LOOP_SET_STATUS_CLEARABLE_FLAGS (LO_FLAGS_AUTOCLEAR)
++
++/* LO_FLAGS that can be set using LOOP_CONFIGURE */
++#define LOOP_CONFIGURE_SETTABLE_FLAGS (LO_FLAGS_READ_ONLY | LO_FLAGS_AUTOCLEAR \
++				       | LO_FLAGS_PARTSCAN | LO_FLAGS_DIRECT_IO)
++
+ #include <asm/posix_types.h>	/* for __kernel_old_dev_t */
+ #include <linux/types.h>	/* for __u64 */
+ 
+@@ -37,7 +47,7 @@ struct loop_info {
+ 	int		   lo_offset;
+ 	int		   lo_encrypt_type;
+ 	int		   lo_encrypt_key_size; 	/* ioctl w/o */
+-	int		   lo_flags;			/* ioctl r/o */
++	int		   lo_flags;
+ 	char		   lo_name[LO_NAME_SIZE];
+ 	unsigned char	   lo_encrypt_key[LO_KEY_SIZE]; /* ioctl w/o */
+ 	unsigned long	   lo_init[2];
+@@ -53,13 +63,29 @@ struct loop_info64 {
+ 	__u32		   lo_number;			/* ioctl r/o */
+ 	__u32		   lo_encrypt_type;
+ 	__u32		   lo_encrypt_key_size;		/* ioctl w/o */
+-	__u32		   lo_flags;			/* ioctl r/o */
++	__u32		   lo_flags;
+ 	__u8		   lo_file_name[LO_NAME_SIZE];
+ 	__u8		   lo_crypt_name[LO_NAME_SIZE];
+ 	__u8		   lo_encrypt_key[LO_KEY_SIZE]; /* ioctl w/o */
+ 	__u64		   lo_init[2];
+ };
+ 
++/**
++ * struct loop_config - Complete configuration for a loop device.
++ * @fd: fd of the file to be used as a backing file for the loop device.
++ * @block_size: block size to use; ignored if 0.
++ * @info: struct loop_info64 to configure the loop device with.
++ *
++ * This structure is used with the LOOP_CONFIGURE ioctl, and can be used to
++ * atomically setup and configure all loop device parameters at once.
++ */
++struct loop_config {
++	__u32			fd;
++	__u32                   block_size;
++	struct loop_info64	info;
++	__u64			__reserved[8];
++};
++
+ /*
+  * Loop filter types
+  */
+@@ -90,6 +116,7 @@ struct loop_info64 {
+ #define LOOP_SET_CAPACITY	0x4C07
+ #define LOOP_SET_DIRECT_IO	0x4C08
+ #define LOOP_SET_BLOCK_SIZE	0x4C09
++#define LOOP_CONFIGURE		0x4C0A
+ 
+ /* /dev/loop-control interface */
+ #define LOOP_CTL_ADD		0x4C80
+diff --git a/include/uapi/linux/magic.h b/include/uapi/linux/magic.h
+index 84ae605c0..85f539a8b 100644
+--- a/include/uapi/linux/magic.h
++++ b/include/uapi/linux/magic.h
+@@ -58,6 +58,8 @@
+ #define REISER2FS_SUPER_MAGIC_STRING	"ReIsEr2Fs"
+ #define REISER2FS_JR_SUPER_MAGIC_STRING	"ReIsEr3Fs"
+ 
++#define SDCARDFS_SUPER_MAGIC	0x5dca2df5
++
+ #define SMB_SUPER_MAGIC		0x517B
+ #define CGROUP_SUPER_MAGIC	0x27e0eb
+ #define CGROUP2_SUPER_MAGIC	0x63677270
+diff --git a/include/uapi/linux/netfilter/xt_IDLETIMER.h b/include/uapi/linux/netfilter/xt_IDLETIMER.h
+index 3c586a19b..c82a1c1d5 100644
+--- a/include/uapi/linux/netfilter/xt_IDLETIMER.h
++++ b/include/uapi/linux/netfilter/xt_IDLETIMER.h
+@@ -5,6 +5,7 @@
+  * Header file for Xtables timer target module.
+  *
+  * Copyright (C) 2004, 2010 Nokia Corporation
++ *
+  * Written by Timo Teras <ext-timo.teras@nokia.com>
+  *
+  * Converted to x_tables and forward-ported to 2.6.34
+@@ -33,12 +34,19 @@
+ #include <linux/types.h>
+ 
+ #define MAX_IDLETIMER_LABEL_SIZE 28
++#define NLMSG_MAX_SIZE 64
++
++#define NL_EVENT_TYPE_INACTIVE 0
++#define NL_EVENT_TYPE_ACTIVE 1
+ 
+ struct idletimer_tg_info {
+ 	__u32 timeout;
+ 
+ 	char label[MAX_IDLETIMER_LABEL_SIZE];
+ 
++	/* Use netlink messages for notification in addition to sysfs */
++	__u8 send_nl_msg;
++
+ 	/* for kernel module internal use only */
+ 	struct idletimer_tg *timer __attribute__((aligned(8)));
+ };
+diff --git a/include/uapi/linux/nl80211.h b/include/uapi/linux/nl80211.h
+index beee59c83..05e7a411c 100644
+--- a/include/uapi/linux/nl80211.h
++++ b/include/uapi/linux/nl80211.h
+@@ -248,6 +248,45 @@
+  * %NL80211_ATTR_SAE_PASSWORD.
+  */
+ 
++/**
++ * DOC: VLAN offload support for setting group keys and binding STAs to VLANs
++ *
++ * By setting @NL80211_EXT_FEATURE_VLAN_OFFLOAD flag drivers can indicate they
++ * support offloading VLAN functionality in a manner where the driver exposes a
++ * single netdev that uses VLAN tagged frames and separate VLAN-specific netdevs
++ * can then be added using RTM_NEWLINK/IFLA_VLAN_ID similarly to the Ethernet
++ * case. Frames received from stations that are not assigned to any VLAN are
++ * delivered on the main netdev and frames to such stations can be sent through
++ * that main netdev.
++ *
++ * %NL80211_CMD_NEW_KEY (for group keys), %NL80211_CMD_NEW_STATION, and
++ * %NL80211_CMD_SET_STATION will optionally specify vlan_id using
++ * %NL80211_ATTR_VLAN_ID.
++ */
++
++/**
++ * DOC: TID configuration
++ *
++ * TID config support can be checked in the %NL80211_ATTR_TID_CONFIG
++ * attribute given in wiphy capabilities.
++ *
++ * The necessary configuration parameters are mentioned in
++ * &enum nl80211_tid_config_attr and it will be passed to the
++ * %NL80211_CMD_SET_TID_CONFIG command in %NL80211_ATTR_TID_CONFIG.
++ *
++ * If the configuration needs to be applied for specific peer then the MAC
++ * address of the peer needs to be passed in %NL80211_ATTR_MAC, otherwise the
++ * configuration will be applied for all the connected peers in the vif except
++ * any peers that have peer specific configuration for the TID by default; if
++ * the %NL80211_TID_CONFIG_ATTR_OVERRIDE flag is set, peer specific values
++ * will be overwritten.
++ *
++ * All this configuration is valid only for STA's current connection
++ * i.e. the configuration will be reset to default when the STA connects back
++ * after disconnection/roaming, and this configuration will be cleared when
++ * the interface goes down.
++ */
++
+ /**
+  * enum nl80211_commands - supported nl80211 commands
+  *
+@@ -1101,6 +1140,9 @@
+  *	peer MAC address and %NL80211_ATTR_FRAME is used to specify the frame
+  *	content. The frame is ethernet data.
+  *
++ * @NL80211_CMD_SET_TID_CONFIG: Data frame TID specific configuration
++ *	is passed using %NL80211_ATTR_TID_CONFIG attribute.
++ *
+  * @NL80211_CMD_MAX: highest used command number
+  * @__NL80211_CMD_AFTER_LAST: internal use
+  */
+@@ -1325,6 +1367,8 @@ enum nl80211_commands {
+ 
+ 	NL80211_CMD_PROBE_MESH_LINK,
+ 
++	NL80211_CMD_SET_TID_CONFIG,
++
+ 	/* add new commands above here */
+ 
+ 	/* used to define NL80211_CMD_MAX below */
+@@ -1580,7 +1624,8 @@ enum nl80211_commands {
+  *	flag is included, then control port frames are sent over NL80211 instead
+  *	using %CMD_CONTROL_PORT_FRAME.  If control port routing over NL80211 is
+  *	to be used then userspace must also use the %NL80211_ATTR_SOCKET_OWNER
+- *	flag.
++ *	flag. When used with %NL80211_ATTR_CONTROL_PORT_NO_PREAUTH, pre-auth
++ *	frames are not forwared over the control port.
+  *
+  * @NL80211_ATTR_TESTDATA: Testmode data blob, passed through to the driver.
+  *	We recommend using nested, driver-specific attributes within this.
+@@ -2373,6 +2418,53 @@ enum nl80211_commands {
+  *	the allowed channel bandwidth configurations. (u8 attribute)
+  *	Defined by IEEE P802.11ay/D4.0 section 9.4.2.251, Table 13.
+  *
++ * @NL80211_ATTR_VLAN_ID: VLAN ID (1..4094) for the station and VLAN group key
++ *	(u16).
++ *
++ * @NL80211_ATTR_HE_BSS_COLOR: nested attribute for BSS Color Settings.
++ *
++ * @NL80211_ATTR_IFTYPE_AKM_SUITES: nested array attribute, with each entry
++ *	using attributes from &enum nl80211_iftype_akm_attributes. This
++ *	attribute is sent in a response to %NL80211_CMD_GET_WIPHY indicating
++ *	supported AKM suites capability per interface. AKMs advertised in
++ *	%NL80211_ATTR_AKM_SUITES are default capabilities if AKM suites not
++ *	advertised for a specific interface type.
++ *
++ * @NL80211_ATTR_TID_CONFIG: TID specific configuration in a
++ *	nested attribute with &enum nl80211_tid_config_attr sub-attributes;
++ *	on output (in wiphy attributes) it contains only the feature sub-
++ *	attributes.
++ *
++ * @NL80211_ATTR_CONTROL_PORT_NO_PREAUTH: disable preauth frame rx on control
++ *	port in order to forward/receive them as ordinary data frames.
++ *
++ * @NL80211_ATTR_PMK_LIFETIME: Maximum lifetime for PMKSA in seconds (u32,
++ *	dot11RSNAConfigPMKReauthThreshold; 0 is not a valid value).
++ *	An optional parameter configured through %NL80211_CMD_SET_PMKSA.
++ *	Drivers that trigger roaming need to know the lifetime of the
++ *	configured PMKSA for triggering the full vs. PMKSA caching based
++ *	authentication. This timeout helps authentication methods like SAE,
++ *	where PMK gets updated only by going through a full (new SAE)
++ *	authentication instead of getting updated during an association for EAP
++ *	authentication. No new full authentication within the PMK expiry shall
++ *	result in a disassociation at the end of the lifetime.
++ *
++ * @NL80211_ATTR_PMK_REAUTH_THRESHOLD: Reauthentication threshold time, in
++ *	terms of percentage of %NL80211_ATTR_PMK_LIFETIME
++ *	(u8, dot11RSNAConfigPMKReauthThreshold, 1..100). This is an optional
++ *	parameter configured through %NL80211_CMD_SET_PMKSA. Requests the
++ *	driver to trigger a full authentication roam (without PMKSA caching)
++ *	after the reauthentication threshold time, but before the PMK lifetime
++ *	has expired.
++ *
++ *	Authentication methods like SAE need to be able to generate a new PMKSA
++ *	entry without having to force a disconnection after the PMK timeout. If
++ *	no roaming occurs between the reauth threshold and PMK expiration,
++ *	disassociation is still forced.
++ *
++ * @NL80211_ATTR_HE_6GHZ_CAPABILITY: HE 6 GHz Band Capability element (from
++ *	association request when used with NL80211_CMD_NEW_STATION).
++ *
+  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
+  * @NL80211_ATTR_MAX: highest attribute number currently defined
+  * @__NL80211_ATTR_AFTER_LAST: internal use
+@@ -2835,6 +2927,21 @@ enum nl80211_attrs {
+ 	NL80211_ATTR_WIPHY_EDMG_CHANNELS,
+ 	NL80211_ATTR_WIPHY_EDMG_BW_CONFIG,
+ 
++	NL80211_ATTR_VLAN_ID,
++
++	NL80211_ATTR_HE_BSS_COLOR,
++
++	NL80211_ATTR_IFTYPE_AKM_SUITES,
++
++	NL80211_ATTR_TID_CONFIG,
++
++	NL80211_ATTR_CONTROL_PORT_NO_PREAUTH,
++
++	NL80211_ATTR_PMK_LIFETIME,
++	NL80211_ATTR_PMK_REAUTH_THRESHOLD,
++
++	NL80211_ATTR_HE_6GHZ_CAPABILITY,
++
+ 	/* add attributes here, update the policy in nl80211.c */
+ 
+ 	__NL80211_ATTR_AFTER_LAST,
+@@ -3413,6 +3520,8 @@ enum nl80211_mpath_info {
+  *     defined in HE capabilities IE
+  * @NL80211_BAND_IFTYPE_ATTR_MAX: highest band HE capability attribute currently
+  *     defined
++ * @NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA: HE 6GHz band capabilities (__le16),
++ *	given for all 6 GHz band channels
+  * @__NL80211_BAND_IFTYPE_ATTR_AFTER_LAST: internal use
+  */
+ enum nl80211_band_iftype_attr {
+@@ -3423,6 +3532,7 @@ enum nl80211_band_iftype_attr {
+ 	NL80211_BAND_IFTYPE_ATTR_HE_CAP_PHY,
+ 	NL80211_BAND_IFTYPE_ATTR_HE_CAP_MCS_SET,
+ 	NL80211_BAND_IFTYPE_ATTR_HE_CAP_PPE,
++	NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA,
+ 
+ 	/* keep last */
+ 	__NL80211_BAND_IFTYPE_ATTR_AFTER_LAST,
+@@ -4503,6 +4613,7 @@ enum nl80211_key_default_types {
+  *	See &enum nl80211_key_default_types.
+  * @NL80211_KEY_MODE: the mode from enum nl80211_key_mode.
+  *	Defaults to @NL80211_KEY_RX_TX.
++ * @NL80211_KEY_DEFAULT_BEACON: flag indicating default Beacon frame key
+  *
+  * @__NL80211_KEY_AFTER_LAST: internal
+  * @NL80211_KEY_MAX: highest key attribute
+@@ -4518,6 +4629,7 @@ enum nl80211_key_attributes {
+ 	NL80211_KEY_TYPE,
+ 	NL80211_KEY_DEFAULT_TYPES,
+ 	NL80211_KEY_MODE,
++	NL80211_KEY_DEFAULT_BEACON,
+ 
+ 	/* keep last */
+ 	__NL80211_KEY_AFTER_LAST,
+@@ -4673,6 +4785,49 @@ enum nl80211_tx_power_setting {
+ 	NL80211_TX_POWER_FIXED,
+ };
+ 
++/**
++ * enum nl80211_tid_config - TID config state
++ * @NL80211_TID_CONFIG_ENABLE: Enable config for the TID
++ * @NL80211_TID_CONFIG_DISABLE: Disable config for the TID
++ */
++enum nl80211_tid_config {
++	NL80211_TID_CONFIG_ENABLE,
++	NL80211_TID_CONFIG_DISABLE,
++};
++
++/* enum nl80211_tid_config_attr - TID specific configuration.
++ * @NL80211_TID_CONFIG_ATTR_PAD: pad attribute for 64-bit values
++ * @NL80211_TID_CONFIG_ATTR_VIF_SUPP: a bitmap (u64) of attributes supported
++ *	for per-vif configuration; doesn't list the ones that are generic
++ *	(%NL80211_TID_CONFIG_ATTR_TIDS, %NL80211_TID_CONFIG_ATTR_OVERRIDE).
++ * @NL80211_TID_CONFIG_ATTR_PEER_SUPP: same as the previous per-vif one, but
++ *	per peer instead.
++ * @NL80211_TID_CONFIG_ATTR_OVERRIDE: flag attribue, if no peer
++ *	is selected, if set indicates that the new configuration overrides
++ *	all previous peer configurations, otherwise previous peer specific
++ *	configurations should be left untouched. If peer is selected then
++ *	it will reset particular TID configuration of that peer and it will
++ *	not accept other TID config attributes along with peer.
++ * @NL80211_TID_CONFIG_ATTR_TIDS: a bitmask value of TIDs (bit 0 to 7)
++ *	Its type is u16.
++ * @NL80211_TID_CONFIG_ATTR_NOACK: Configure ack policy for the TID.
++ *	specified in %NL80211_TID_CONFIG_ATTR_TID. see %enum nl80211_tid_config.
++ *	Its type is u8.
++ */
++enum nl80211_tid_config_attr {
++	__NL80211_TID_CONFIG_ATTR_INVALID,
++	NL80211_TID_CONFIG_ATTR_PAD,
++	NL80211_TID_CONFIG_ATTR_VIF_SUPP,
++	NL80211_TID_CONFIG_ATTR_PEER_SUPP,
++	NL80211_TID_CONFIG_ATTR_OVERRIDE,
++	NL80211_TID_CONFIG_ATTR_TIDS,
++	NL80211_TID_CONFIG_ATTR_NOACK,
++
++	/* keep last */
++	__NL80211_TID_CONFIG_ATTR_AFTER_LAST,
++	NL80211_TID_CONFIG_ATTR_MAX = __NL80211_TID_CONFIG_ATTR_AFTER_LAST - 1
++};
++
+ /**
+  * enum nl80211_packet_pattern_attr - packet pattern attribute
+  * @__NL80211_PKTPAT_INVALID: invalid number for nested attribute
+@@ -5484,6 +5639,17 @@ enum nl80211_feature_flags {
+  * @NL80211_EXT_FEATURE_SAE_OFFLOAD: Device wants to do SAE authentication in
+  *	station mode (SAE password is passed as part of the connect command).
+  *
++ * @NL80211_EXT_FEATURE_VLAN_OFFLOAD: The driver supports a single netdev
++ *	with VLAN tagged frames and separate VLAN-specific netdevs added using
++ *	vconfig similarly to the Ethernet case.
++ *
++ * @NL80211_EXT_FEATURE_BEACON_PROTECTION: The driver supports Beacon protection
++ *	and can receive key configuration for BIGTK using key indexes 6 and 7.
++ *
++ * @NL80211_EXT_FEATURE_CONTROL_PORT_NO_PREAUTH: The driver can disable the
++ *	forwarding of preauth frames over the control port. They are then
++ *	handled as ordinary data frames.
++ *
+  * @NUM_NL80211_EXT_FEATURES: number of extended features.
+  * @MAX_NL80211_EXT_FEATURES: highest extended feature index.
+  */
+@@ -5529,6 +5695,10 @@ enum nl80211_ext_feature_index {
+ 	NL80211_EXT_FEATURE_EXT_KEY_ID,
+ 	NL80211_EXT_FEATURE_STA_TX_PWR,
+ 	NL80211_EXT_FEATURE_SAE_OFFLOAD,
++	NL80211_EXT_FEATURE_VLAN_OFFLOAD,
++	NL80211_EXT_FEATURE_AQL,
++	NL80211_EXT_FEATURE_BEACON_PROTECTION,
++	NL80211_EXT_FEATURE_CONTROL_PORT_NO_PREAUTH,
+ 
+ 	/* add new features before the definition below */
+ 	NUM_NL80211_EXT_FEATURES,
+@@ -6548,5 +6718,51 @@ enum nl80211_obss_pd_attributes {
+ 	NL80211_HE_OBSS_PD_ATTR_MAX = __NL80211_HE_OBSS_PD_ATTR_LAST - 1,
+ };
+ 
++/**
++ * enum nl80211_bss_color_attributes - BSS Color attributes
++ * @__NL80211_HE_BSS_COLOR_ATTR_INVALID: Invalid
++ *
++ * @NL80211_HE_BSS_COLOR_ATTR_COLOR: the current BSS Color.
++ * @NL80211_HE_BSS_COLOR_ATTR_DISABLED: is BSS coloring disabled.
++ * @NL80211_HE_BSS_COLOR_ATTR_PARTIAL: the AID equation to be used..
++ *
++ * @__NL80211_HE_BSS_COLOR_ATTR_LAST: Internal
++ * @NL80211_HE_BSS_COLOR_ATTR_MAX: highest BSS Color attribute.
++ */
++enum nl80211_bss_color_attributes {
++	__NL80211_HE_BSS_COLOR_ATTR_INVALID,
++
++	NL80211_HE_BSS_COLOR_ATTR_COLOR,
++	NL80211_HE_BSS_COLOR_ATTR_DISABLED,
++	NL80211_HE_BSS_COLOR_ATTR_PARTIAL,
++
++	/* keep last */
++	__NL80211_HE_BSS_COLOR_ATTR_LAST,
++	NL80211_HE_BSS_COLOR_ATTR_MAX = __NL80211_HE_BSS_COLOR_ATTR_LAST - 1,
++};
++
++/**
++ * enum nl80211_iftype_akm_attributes - interface type AKM attributes
++ * @__NL80211_IFTYPE_AKM_ATTR_INVALID: Invalid
++ *
++ * @NL80211_IFTYPE_AKM_ATTR_IFTYPES: nested attribute containing a flag
++ *	attribute for each interface type that supports AKM suites specified in
++ *	%NL80211_IFTYPE_AKM_ATTR_SUITES
++ * @NL80211_IFTYPE_AKM_ATTR_SUITES: an array of u32. Used to indicate supported
++ *	AKM suites for the specified interface types.
++ *
++ * @__NL80211_IFTYPE_AKM_ATTR_LAST: Internal
++ * @NL80211_IFTYPE_AKM_ATTR_MAX: highest interface type AKM attribute.
++ */
++enum nl80211_iftype_akm_attributes {
++	__NL80211_IFTYPE_AKM_ATTR_INVALID,
++
++	NL80211_IFTYPE_AKM_ATTR_IFTYPES,
++	NL80211_IFTYPE_AKM_ATTR_SUITES,
++
++	/* keep last */
++	__NL80211_IFTYPE_AKM_ATTR_LAST,
++	NL80211_IFTYPE_AKM_ATTR_MAX = __NL80211_IFTYPE_AKM_ATTR_LAST - 1,
++};
+ 
+ #endif /* __LINUX_NL80211_H */
+diff --git a/include/uapi/linux/prctl.h b/include/uapi/linux/prctl.h
+index 7da1b37b2..bc4a5d963 100644
+--- a/include/uapi/linux/prctl.h
++++ b/include/uapi/linux/prctl.h
+@@ -234,4 +234,7 @@ struct prctl_mm_map {
+ #define PR_GET_TAGGED_ADDR_CTRL		56
+ # define PR_TAGGED_ADDR_ENABLE		(1UL << 0)
+ 
++#define PR_SET_VMA		0x53564d41
++# define PR_SET_VMA_ANON_NAME		0
++
+ #endif /* _LINUX_PRCTL_H */
+diff --git a/include/uapi/linux/random.h b/include/uapi/linux/random.h
+index 26ee91300..dcc1b3e61 100644
+--- a/include/uapi/linux/random.h
++++ b/include/uapi/linux/random.h
+@@ -48,9 +48,11 @@ struct rand_pool_info {
+  * Flags for getrandom(2)
+  *
+  * GRND_NONBLOCK	Don't block and return EAGAIN instead
+- * GRND_RANDOM		Use the /dev/random pool instead of /dev/urandom
++ * GRND_RANDOM		No effect
++ * GRND_INSECURE	Return non-cryptographic random bytes
+  */
+ #define GRND_NONBLOCK	0x0001
+ #define GRND_RANDOM	0x0002
++#define GRND_INSECURE	0x0004
+ 
+ #endif /* _UAPI_LINUX_RANDOM_H */
+diff --git a/include/uapi/linux/stat.h b/include/uapi/linux/stat.h
+index 7b35e98d3..ad80a5c88 100644
+--- a/include/uapi/linux/stat.h
++++ b/include/uapi/linux/stat.h
+@@ -167,8 +167,8 @@ struct statx {
+ #define STATX_ATTR_APPEND		0x00000020 /* [I] File is append-only */
+ #define STATX_ATTR_NODUMP		0x00000040 /* [I] File is not to be dumped */
+ #define STATX_ATTR_ENCRYPTED		0x00000800 /* [I] File requires key to decrypt in fs */
+-
+ #define STATX_ATTR_AUTOMOUNT		0x00001000 /* Dir: Automount trigger */
++#define STATX_ATTR_VERITY		0x00100000 /* [I] Verity protected file */
+ 
+ 
+ #endif /* _UAPI_LINUX_STAT_H */
+diff --git a/include/uapi/linux/usb/f_accessory.h b/include/uapi/linux/usb/f_accessory.h
+new file mode 100644
+index 000000000..0baeb7d0d
+--- /dev/null
++++ b/include/uapi/linux/usb/f_accessory.h
+@@ -0,0 +1,146 @@
++/*
++ * Gadget Function Driver for Android USB accessories
++ *
++ * Copyright (C) 2011 Google, Inc.
++ * Author: Mike Lockwood <lockwood@android.com>
++ *
++ * This software is licensed under the terms of the GNU General Public
++ * License version 2, as published by the Free Software Foundation, and
++ * may be copied, distributed, and modified under those terms.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ */
++
++#ifndef _UAPI_LINUX_USB_F_ACCESSORY_H
++#define _UAPI_LINUX_USB_F_ACCESSORY_H
++
++/* Use Google Vendor ID when in accessory mode */
++#define USB_ACCESSORY_VENDOR_ID 0x18D1
++
++
++/* Product ID to use when in accessory mode */
++#define USB_ACCESSORY_PRODUCT_ID 0x2D00
++
++/* Product ID to use when in accessory mode and adb is enabled */
++#define USB_ACCESSORY_ADB_PRODUCT_ID 0x2D01
++
++/* Indexes for strings sent by the host via ACCESSORY_SEND_STRING */
++#define ACCESSORY_STRING_MANUFACTURER   0
++#define ACCESSORY_STRING_MODEL          1
++#define ACCESSORY_STRING_DESCRIPTION    2
++#define ACCESSORY_STRING_VERSION        3
++#define ACCESSORY_STRING_URI            4
++#define ACCESSORY_STRING_SERIAL         5
++
++/* Control request for retrieving device's protocol version
++ *
++ *	requestType:    USB_DIR_IN | USB_TYPE_VENDOR
++ *	request:        ACCESSORY_GET_PROTOCOL
++ *	value:          0
++ *	index:          0
++ *	data            version number (16 bits little endian)
++ *                     1 for original accessory support
++ *                     2 adds HID and device to host audio support
++ */
++#define ACCESSORY_GET_PROTOCOL  51
++
++/* Control request for host to send a string to the device
++ *
++ *	requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
++ *	request:        ACCESSORY_SEND_STRING
++ *	value:          0
++ *	index:          string ID
++ *	data            zero terminated UTF8 string
++ *
++ *  The device can later retrieve these strings via the
++ *  ACCESSORY_GET_STRING_* ioctls
++ */
++#define ACCESSORY_SEND_STRING   52
++
++/* Control request for starting device in accessory mode.
++ * The host sends this after setting all its strings to the device.
++ *
++ *	requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
++ *	request:        ACCESSORY_START
++ *	value:          0
++ *	index:          0
++ *	data            none
++ */
++#define ACCESSORY_START         53
++
++/* Control request for registering a HID device.
++ * Upon registering, a unique ID is sent by the accessory in the
++ * value parameter. This ID will be used for future commands for
++ * the device
++ *
++ *	requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
++ *	request:        ACCESSORY_REGISTER_HID_DEVICE
++ *	value:          Accessory assigned ID for the HID device
++ *	index:          total length of the HID report descriptor
++ *	data            none
++ */
++#define ACCESSORY_REGISTER_HID         54
++
++/* Control request for unregistering a HID device.
++ *
++ *	requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
++ *	request:        ACCESSORY_REGISTER_HID
++ *	value:          Accessory assigned ID for the HID device
++ *	index:          0
++ *	data            none
++ */
++#define ACCESSORY_UNREGISTER_HID         55
++
++/* Control request for sending the HID report descriptor.
++ * If the HID descriptor is longer than the endpoint zero max packet size,
++ * the descriptor will be sent in multiple ACCESSORY_SET_HID_REPORT_DESC
++ * commands. The data for the descriptor must be sent sequentially
++ * if multiple packets are needed.
++ *
++ *	requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
++ *	request:        ACCESSORY_SET_HID_REPORT_DESC
++ *	value:          Accessory assigned ID for the HID device
++ *	index:          offset of data in descriptor
++ *                      (needed when HID descriptor is too big for one packet)
++ *	data            the HID report descriptor
++ */
++#define ACCESSORY_SET_HID_REPORT_DESC         56
++
++/* Control request for sending HID events.
++ *
++ *	requestType:    USB_DIR_OUT | USB_TYPE_VENDOR
++ *	request:        ACCESSORY_SEND_HID_EVENT
++ *	value:          Accessory assigned ID for the HID device
++ *	index:          0
++ *	data            the HID report for the event
++ */
++#define ACCESSORY_SEND_HID_EVENT         57
++
++/* Control request for setting the audio mode.
++ *
++ *	requestType:	USB_DIR_OUT | USB_TYPE_VENDOR
++ *	request:        ACCESSORY_SET_AUDIO_MODE
++ *	value:          0 - no audio
++ *                     1 - device to host, 44100 16-bit stereo PCM
++ *	index:          0
++ *	data            none
++ */
++#define ACCESSORY_SET_AUDIO_MODE         58
++
++/* ioctls for retrieving strings set by the host */
++#define ACCESSORY_GET_STRING_MANUFACTURER   _IOW('M', 1, char[256])
++#define ACCESSORY_GET_STRING_MODEL          _IOW('M', 2, char[256])
++#define ACCESSORY_GET_STRING_DESCRIPTION    _IOW('M', 3, char[256])
++#define ACCESSORY_GET_STRING_VERSION        _IOW('M', 4, char[256])
++#define ACCESSORY_GET_STRING_URI            _IOW('M', 5, char[256])
++#define ACCESSORY_GET_STRING_SERIAL         _IOW('M', 6, char[256])
++/* returns 1 if there is a start request pending */
++#define ACCESSORY_IS_START_REQUESTED        _IO('M', 7)
++/* returns audio mode (set via the ACCESSORY_SET_AUDIO_MODE control request) */
++#define ACCESSORY_GET_AUDIO_MODE            _IO('M', 8)
++
++#endif /* _UAPI_LINUX_USB_F_ACCESSORY_H */
+diff --git a/include/uapi/linux/usb/raw_gadget.h b/include/uapi/linux/usb/raw_gadget.h
+new file mode 100644
+index 000000000..0be685272
+--- /dev/null
++++ b/include/uapi/linux/usb/raw_gadget.h
+@@ -0,0 +1,249 @@
++/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
++/*
++ * USB Raw Gadget driver.
++ *
++ * See Documentation/usb/raw-gadget.rst for more details.
++ */
++
++#ifndef _UAPI__LINUX_USB_RAW_GADGET_H
++#define _UAPI__LINUX_USB_RAW_GADGET_H
++
++#include <asm/ioctl.h>
++#include <linux/types.h>
++#include <linux/usb/ch9.h>
++
++/* Maximum length of driver_name/device_name in the usb_raw_init struct. */
++#define UDC_NAME_LENGTH_MAX 128
++
++/*
++ * struct usb_raw_init - argument for USB_RAW_IOCTL_INIT ioctl.
++ * @speed: The speed of the emulated USB device, takes the same values as
++ *     the usb_device_speed enum: USB_SPEED_FULL, USB_SPEED_HIGH, etc.
++ * @driver_name: The name of the UDC driver.
++ * @device_name: The name of a UDC instance.
++ *
++ * The last two fields identify a UDC the gadget driver should bind to.
++ * For example, Dummy UDC has "dummy_udc" as its driver_name and "dummy_udc.N"
++ * as its device_name, where N in the index of the Dummy UDC instance.
++ * At the same time the dwc2 driver that is used on Raspberry Pi Zero, has
++ * "20980000.usb" as both driver_name and device_name.
++ */
++struct usb_raw_init {
++	__u8	driver_name[UDC_NAME_LENGTH_MAX];
++	__u8	device_name[UDC_NAME_LENGTH_MAX];
++	__u8	speed;
++};
++
++/* The type of event fetched with the USB_RAW_IOCTL_EVENT_FETCH ioctl. */
++enum usb_raw_event_type {
++	USB_RAW_EVENT_INVALID = 0,
++
++	/* This event is queued when the driver has bound to a UDC. */
++	USB_RAW_EVENT_CONNECT = 1,
++
++	/* This event is queued when a new control request arrived to ep0. */
++	USB_RAW_EVENT_CONTROL = 2,
++
++	/* The list might grow in the future. */
++};
++
++/*
++ * struct usb_raw_event - argument for USB_RAW_IOCTL_EVENT_FETCH ioctl.
++ * @type: The type of the fetched event.
++ * @length: Length of the data buffer. Updated by the driver and set to the
++ *     actual length of the fetched event data.
++ * @data: A buffer to store the fetched event data.
++ *
++ * Currently the fetched data buffer is empty for USB_RAW_EVENT_CONNECT,
++ * and contains struct usb_ctrlrequest for USB_RAW_EVENT_CONTROL.
++ */
++struct usb_raw_event {
++	__u32		type;
++	__u32		length;
++	__u8		data[0];
++};
++
++#define USB_RAW_IO_FLAGS_ZERO	0x0001
++#define USB_RAW_IO_FLAGS_MASK	0x0001
++
++static inline int usb_raw_io_flags_valid(__u16 flags)
++{
++	return (flags & ~USB_RAW_IO_FLAGS_MASK) == 0;
++}
++
++static inline int usb_raw_io_flags_zero(__u16 flags)
++{
++	return (flags & USB_RAW_IO_FLAGS_ZERO);
++}
++
++/*
++ * struct usb_raw_ep_io - argument for USB_RAW_IOCTL_EP0/EP_WRITE/READ ioctls.
++ * @ep: Endpoint handle as returned by USB_RAW_IOCTL_EP_ENABLE for
++ *     USB_RAW_IOCTL_EP_WRITE/READ. Ignored for USB_RAW_IOCTL_EP0_WRITE/READ.
++ * @flags: When USB_RAW_IO_FLAGS_ZERO is specified, the zero flag is set on
++ *     the submitted USB request, see include/linux/usb/gadget.h for details.
++ * @length: Length of data.
++ * @data: Data to send for USB_RAW_IOCTL_EP0/EP_WRITE. Buffer to store received
++ *     data for USB_RAW_IOCTL_EP0/EP_READ.
++ */
++struct usb_raw_ep_io {
++	__u16		ep;
++	__u16		flags;
++	__u32		length;
++	__u8		data[0];
++};
++
++/* Maximum number of non-control endpoints in struct usb_raw_eps_info. */
++#define USB_RAW_EPS_NUM_MAX	30
++
++/* Maximum length of UDC endpoint name in struct usb_raw_ep_info. */
++#define USB_RAW_EP_NAME_MAX	16
++
++/* Used as addr in struct usb_raw_ep_info if endpoint accepts any address. */
++#define USB_RAW_EP_ADDR_ANY	0xff
++
++/*
++ * struct usb_raw_ep_caps - exposes endpoint capabilities from struct usb_ep
++ *     (technically from its member struct usb_ep_caps).
++ */
++struct usb_raw_ep_caps {
++	__u32	type_control	: 1;
++	__u32	type_iso	: 1;
++	__u32	type_bulk	: 1;
++	__u32	type_int	: 1;
++	__u32	dir_in		: 1;
++	__u32	dir_out		: 1;
++};
++
++/*
++ * struct usb_raw_ep_limits - exposes endpoint limits from struct usb_ep.
++ * @maxpacket_limit: Maximum packet size value supported by this endpoint.
++ * @max_streams: maximum number of streams supported by this endpoint
++ *     (actual number is 2^n).
++ * @reserved: Empty, reserved for potential future extensions.
++ */
++struct usb_raw_ep_limits {
++	__u16	maxpacket_limit;
++	__u16	max_streams;
++	__u32	reserved;
++};
++
++/*
++ * struct usb_raw_ep_info - stores information about a gadget endpoint.
++ * @name: Name of the endpoint as it is defined in the UDC driver.
++ * @addr: Address of the endpoint that must be specified in the endpoint
++ *     descriptor passed to USB_RAW_IOCTL_EP_ENABLE ioctl.
++ * @caps: Endpoint capabilities.
++ * @limits: Endpoint limits.
++ */
++struct usb_raw_ep_info {
++	__u8				name[USB_RAW_EP_NAME_MAX];
++	__u32				addr;
++	struct usb_raw_ep_caps		caps;
++	struct usb_raw_ep_limits	limits;
++};
++
++/*
++ * struct usb_raw_eps_info - argument for USB_RAW_IOCTL_EPS_INFO ioctl.
++ * eps: Structures that store information about non-control endpoints.
++ */
++struct usb_raw_eps_info {
++	struct usb_raw_ep_info	eps[USB_RAW_EPS_NUM_MAX];
++};
++
++/*
++ * Initializes a Raw Gadget instance.
++ * Accepts a pointer to the usb_raw_init struct as an argument.
++ * Returns 0 on success or negative error code on failure.
++ */
++#define USB_RAW_IOCTL_INIT		_IOW('U', 0, struct usb_raw_init)
++
++/*
++ * Instructs Raw Gadget to bind to a UDC and start emulating a USB device.
++ * Returns 0 on success or negative error code on failure.
++ */
++#define USB_RAW_IOCTL_RUN		_IO('U', 1)
++
++/*
++ * A blocking ioctl that waits for an event and returns fetched event data to
++ * the user.
++ * Accepts a pointer to the usb_raw_event struct.
++ * Returns 0 on success or negative error code on failure.
++ */
++#define USB_RAW_IOCTL_EVENT_FETCH	_IOR('U', 2, struct usb_raw_event)
++
++/*
++ * Queues an IN (OUT for READ) request as a response to the last setup request
++ * received on endpoint 0 (provided that was an IN (OUT for READ) request), and
++ * waits until the request is completed. Copies received data to user for READ.
++ * Accepts a pointer to the usb_raw_ep_io struct as an argument.
++ * Returns length of transferred data on success or negative error code on
++ * failure.
++ */
++#define USB_RAW_IOCTL_EP0_WRITE		_IOW('U', 3, struct usb_raw_ep_io)
++#define USB_RAW_IOCTL_EP0_READ		_IOWR('U', 4, struct usb_raw_ep_io)
++
++/*
++ * Finds an endpoint that satisfies the parameters specified in the provided
++ * descriptors (address, transfer type, etc.) and enables it.
++ * Accepts a pointer to the usb_raw_ep_descs struct as an argument.
++ * Returns enabled endpoint handle on success or negative error code on failure.
++ */
++#define USB_RAW_IOCTL_EP_ENABLE		_IOW('U', 5, struct usb_endpoint_descriptor)
++
++/*
++ * Disables specified endpoint.
++ * Accepts endpoint handle as an argument.
++ * Returns 0 on success or negative error code on failure.
++ */
++#define USB_RAW_IOCTL_EP_DISABLE	_IOW('U', 6, __u32)
++
++/*
++ * Queues an IN (OUT for READ) request as a response to the last setup request
++ * received on endpoint usb_raw_ep_io.ep (provided that was an IN (OUT for READ)
++ * request), and waits until the request is completed. Copies received data to
++ * user for READ.
++ * Accepts a pointer to the usb_raw_ep_io struct as an argument.
++ * Returns length of transferred data on success or negative error code on
++ * failure.
++ */
++#define USB_RAW_IOCTL_EP_WRITE		_IOW('U', 7, struct usb_raw_ep_io)
++#define USB_RAW_IOCTL_EP_READ		_IOWR('U', 8, struct usb_raw_ep_io)
++
++/*
++ * Switches the gadget into the configured state.
++ * Returns 0 on success or negative error code on failure.
++ */
++#define USB_RAW_IOCTL_CONFIGURE		_IO('U', 9)
++
++/*
++ * Constrains UDC VBUS power usage.
++ * Accepts current limit in 2 mA units as an argument.
++ * Returns 0 on success or negative error code on failure.
++ */
++#define USB_RAW_IOCTL_VBUS_DRAW		_IOW('U', 10, __u32)
++
++/*
++ * Fills in the usb_raw_eps_info structure with information about non-control
++ * endpoints available for the currently connected UDC.
++ * Returns the number of available endpoints on success or negative error code
++ * on failure.
++ */
++#define USB_RAW_IOCTL_EPS_INFO		_IOR('U', 11, struct usb_raw_eps_info)
++
++/*
++ * Stalls a pending control request on endpoint 0.
++ * Returns 0 on success or negative error code on failure.
++ */
++#define USB_RAW_IOCTL_EP0_STALL		_IO('U', 12)
++
++/*
++ * Sets or clears halt or wedge status of the endpoint.
++ * Accepts endpoint handle as an argument.
++ * Returns 0 on success or negative error code on failure.
++ */
++#define USB_RAW_IOCTL_EP_SET_HALT	_IOW('U', 13, __u32)
++#define USB_RAW_IOCTL_EP_CLEAR_HALT	_IOW('U', 14, __u32)
++#define USB_RAW_IOCTL_EP_SET_WEDGE	_IOW('U', 15, __u32)
++
++#endif /* _UAPI__LINUX_USB_RAW_GADGET_H */
+diff --git a/include/uapi/linux/v4l2-controls.h b/include/uapi/linux/v4l2-controls.h
+index a2669b79b..e632dcb7c 100644
+--- a/include/uapi/linux/v4l2-controls.h
++++ b/include/uapi/linux/v4l2-controls.h
+@@ -467,6 +467,10 @@ enum v4l2_mpeg_video_h264_level {
+ 	V4L2_MPEG_VIDEO_H264_LEVEL_4_2	= 13,
+ 	V4L2_MPEG_VIDEO_H264_LEVEL_5_0	= 14,
+ 	V4L2_MPEG_VIDEO_H264_LEVEL_5_1	= 15,
++	V4L2_MPEG_VIDEO_H264_LEVEL_5_2	= 16,
++	V4L2_MPEG_VIDEO_H264_LEVEL_6_0	= 17,
++	V4L2_MPEG_VIDEO_H264_LEVEL_6_1	= 18,
++	V4L2_MPEG_VIDEO_H264_LEVEL_6_2	= 19,
+ };
+ #define V4L2_CID_MPEG_VIDEO_H264_LOOP_FILTER_ALPHA	(V4L2_CID_MPEG_BASE+360)
+ #define V4L2_CID_MPEG_VIDEO_H264_LOOP_FILTER_BETA	(V4L2_CID_MPEG_BASE+361)
+@@ -495,6 +499,7 @@ enum v4l2_mpeg_video_h264_profile {
+ 	V4L2_MPEG_VIDEO_H264_PROFILE_SCALABLE_HIGH_INTRA	= 14,
+ 	V4L2_MPEG_VIDEO_H264_PROFILE_STEREO_HIGH		= 15,
+ 	V4L2_MPEG_VIDEO_H264_PROFILE_MULTIVIEW_HIGH		= 16,
++	V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_HIGH		= 17,
+ };
+ #define V4L2_CID_MPEG_VIDEO_H264_VUI_EXT_SAR_HEIGHT	(V4L2_CID_MPEG_BASE+364)
+ #define V4L2_CID_MPEG_VIDEO_H264_VUI_EXT_SAR_WIDTH	(V4L2_CID_MPEG_BASE+365)
+diff --git a/include/uapi/linux/videodev2.h b/include/uapi/linux/videodev2.h
+index 530638dff..ebb9755ed 100644
+--- a/include/uapi/linux/videodev2.h
++++ b/include/uapi/linux/videodev2.h
+@@ -70,7 +70,7 @@
+  * Common stuff for both V4L1 and V4L2
+  * Moved from videodev.h
+  */
+-#define VIDEO_MAX_FRAME               32
++#define VIDEO_MAX_FRAME               64
+ #define VIDEO_MAX_PLANES               8
+ 
+ /*
+@@ -935,7 +935,9 @@ struct v4l2_requestbuffers {
+  *			descriptor associated with this plane
+  * @data_offset:	offset in the plane to the start of data; usually 0,
+  *			unless there is a header in front of the data
+- *
++ * @reserved:		few userspace clients and drivers use reserved fields
++ *			and it is up to them how these fields are used. v4l2
++ *			simply copy reserved fields between them.
+  * Multi-planar buffers consist of one or more planes, e.g. an YCbCr buffer
+  * with two planes can have one plane for Y, and another for interleaved CbCr
+  * components. Each plane can reside in a separate memory buffer, or even in
+@@ -950,6 +952,7 @@ struct v4l2_plane {
+ 		__s32		fd;
+ 	} m;
+ 	__u32			data_offset;
++	/* reserved fields used by few userspace clients and drivers */
+ 	__u32			reserved[11];
+ };
+ 
+diff --git a/include/uapi/linux/xattr.h b/include/uapi/linux/xattr.h
+index c1395b5bd..1eba02616 100644
+--- a/include/uapi/linux/xattr.h
++++ b/include/uapi/linux/xattr.h
+@@ -17,8 +17,11 @@
+ #if __UAPI_DEF_XATTR
+ #define __USE_KERNEL_XATTR_DEFS
+ 
+-#define XATTR_CREATE	0x1	/* set value, fail if attr already exists */
+-#define XATTR_REPLACE	0x2	/* set value, fail if attr does not exist */
++#define XATTR_CREATE	 0x1	/* set value, fail if attr already exists */
++#define XATTR_REPLACE	 0x2	/* set value, fail if attr does not exist */
++#ifdef __KERNEL__ /* following is kernel internal, colocated for maintenance */
++#define XATTR_NOSECURITY 0x4	/* get value, do not involve security check */
++#endif
+ #endif
+ 
+ /* Namespaces */
+diff --git a/include/vdso/bits.h b/include/vdso/bits.h
+new file mode 100644
+index 000000000..6d005a1f5
+--- /dev/null
++++ b/include/vdso/bits.h
+@@ -0,0 +1,9 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_BITS_H
++#define __VDSO_BITS_H
++
++#include <vdso/const.h>
++
++#define BIT(nr)			(UL(1) << (nr))
++
++#endif	/* __VDSO_BITS_H */
+diff --git a/include/vdso/clocksource.h b/include/vdso/clocksource.h
+new file mode 100644
+index 000000000..c682e7c60
+--- /dev/null
++++ b/include/vdso/clocksource.h
+@@ -0,0 +1,22 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_CLOCKSOURCE_H
++#define __VDSO_CLOCKSOURCE_H
++
++#include <vdso/limits.h>
++
++#ifdef CONFIG_GENERIC_GETTIMEOFDAY
++#include <asm/vdso/clocksource.h>
++#endif /* CONFIG_GENERIC_GETTIMEOFDAY */
++
++enum vdso_clock_mode {
++	VDSO_CLOCKMODE_NONE,
++#ifdef CONFIG_GENERIC_GETTIMEOFDAY
++	VDSO_ARCH_CLOCKMODES,
++#endif
++	VDSO_CLOCKMODE_MAX,
++
++	/* Indicator for time namespace VDSO */
++	VDSO_CLOCKMODE_TIMENS = INT_MAX
++};
++
++#endif /* __VDSO_CLOCKSOURCE_H */
+diff --git a/include/vdso/const.h b/include/vdso/const.h
+new file mode 100644
+index 000000000..94b385ad4
+--- /dev/null
++++ b/include/vdso/const.h
+@@ -0,0 +1,10 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_CONST_H
++#define __VDSO_CONST_H
++
++#include <uapi/linux/const.h>
++
++#define UL(x)		(_UL(x))
++#define ULL(x)		(_ULL(x))
++
++#endif /* __VDSO_CONST_H */
+diff --git a/include/vdso/datapage.h b/include/vdso/datapage.h
+index 2e302c0f4..62484113b 100644
+--- a/include/vdso/datapage.h
++++ b/include/vdso/datapage.h
+@@ -4,9 +4,20 @@
+ 
+ #ifndef __ASSEMBLY__
+ 
+-#include <linux/bits.h>
+-#include <linux/time.h>
+-#include <linux/types.h>
++#include <linux/compiler.h>
++#include <uapi/linux/time.h>
++#include <uapi/linux/types.h>
++#include <uapi/asm-generic/errno-base.h>
++
++#include <vdso/bits.h>
++#include <vdso/clocksource.h>
++#include <vdso/ktime.h>
++#include <vdso/limits.h>
++#include <vdso/math64.h>
++#include <vdso/processor.h>
++#include <vdso/time.h>
++#include <vdso/time32.h>
++#include <vdso/time64.h>
+ 
+ #define VDSO_BASES	(CLOCK_TAI + 1)
+ #define VDSO_HRES	(BIT(CLOCK_REALTIME)		| \
+@@ -84,6 +95,22 @@ struct vdso_data {
+  */
+ extern struct vdso_data _vdso_data[CS_BASES] __attribute__((visibility("hidden")));
+ 
++/*
++ * The generic vDSO implementation requires that gettimeofday.h
++ * provides:
++ * - __arch_get_vdso_data(): to get the vdso datapage.
++ * - __arch_get_hw_counter(): to get the hw counter based on the
++ *   clock_mode.
++ * - gettimeofday_fallback(): fallback for gettimeofday.
++ * - clock_gettime_fallback(): fallback for clock_gettime.
++ * - clock_getres_fallback(): fallback for clock_getres.
++ */
++#ifdef ENABLE_COMPAT_VDSO
++#include <asm/vdso/compat_gettimeofday.h>
++#else
++#include <asm/vdso/gettimeofday.h>
++#endif /* ENABLE_COMPAT_VDSO */
++
+ #endif /* !__ASSEMBLY__ */
+ 
+ #endif /* __VDSO_DATAPAGE_H */
+diff --git a/include/vdso/jiffies.h b/include/vdso/jiffies.h
+new file mode 100644
+index 000000000..2f9d596c8
+--- /dev/null
++++ b/include/vdso/jiffies.h
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_JIFFIES_H
++#define __VDSO_JIFFIES_H
++
++#include <asm/param.h>			/* for HZ */
++#include <vdso/time64.h>
++
++/* TICK_NSEC is the time between ticks in nsec assuming SHIFTED_HZ */
++#define TICK_NSEC ((NSEC_PER_SEC+HZ/2)/HZ)
++
++#endif /* __VDSO_JIFFIES_H */
+diff --git a/include/vdso/ktime.h b/include/vdso/ktime.h
+new file mode 100644
+index 000000000..a0fd07239
+--- /dev/null
++++ b/include/vdso/ktime.h
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_KTIME_H
++#define __VDSO_KTIME_H
++
++#include <vdso/jiffies.h>
++
++/*
++ * The resolution of the clocks. The resolution value is returned in
++ * the clock_getres() system call to give application programmers an
++ * idea of the (in)accuracy of timers. Timer values are rounded up to
++ * this resolution values.
++ */
++#define LOW_RES_NSEC		TICK_NSEC
++#define KTIME_LOW_RES		(LOW_RES_NSEC)
++
++#endif /* __VDSO_KTIME_H */
+diff --git a/include/vdso/limits.h b/include/vdso/limits.h
+new file mode 100644
+index 000000000..0197888ad
+--- /dev/null
++++ b/include/vdso/limits.h
+@@ -0,0 +1,19 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_LIMITS_H
++#define __VDSO_LIMITS_H
++
++#define USHRT_MAX	((unsigned short)~0U)
++#define SHRT_MAX	((short)(USHRT_MAX >> 1))
++#define SHRT_MIN	((short)(-SHRT_MAX - 1))
++#define INT_MAX		((int)(~0U >> 1))
++#define INT_MIN		(-INT_MAX - 1)
++#define UINT_MAX	(~0U)
++#define LONG_MAX	((long)(~0UL >> 1))
++#define LONG_MIN	(-LONG_MAX - 1)
++#define ULONG_MAX	(~0UL)
++#define LLONG_MAX	((long long)(~0ULL >> 1))
++#define LLONG_MIN	(-LLONG_MAX - 1)
++#define ULLONG_MAX	(~0ULL)
++#define UINTPTR_MAX	ULONG_MAX
++
++#endif /* __VDSO_LIMITS_H */
+diff --git a/include/vdso/math64.h b/include/vdso/math64.h
+new file mode 100644
+index 000000000..7da703ee5
+--- /dev/null
++++ b/include/vdso/math64.h
+@@ -0,0 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_MATH64_H
++#define __VDSO_MATH64_H
++
++static __always_inline u32
++__iter_div_u64_rem(u64 dividend, u32 divisor, u64 *remainder)
++{
++	u32 ret = 0;
++
++	while (dividend >= divisor) {
++		/* The following asm() prevents the compiler from
++		   optimising this loop into a modulo operation.  */
++		asm("" : "+rm"(dividend));
++
++		dividend -= divisor;
++		ret++;
++	}
++
++	*remainder = dividend;
++
++	return ret;
++}
++
++#endif /* __VDSO_MATH64_H */
+diff --git a/include/vdso/processor.h b/include/vdso/processor.h
+new file mode 100644
+index 000000000..fbe8265ea
+--- /dev/null
++++ b/include/vdso/processor.h
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Copyright (C) 2020 ARM Ltd.
++ */
++#ifndef __VDSO_PROCESSOR_H
++#define __VDSO_PROCESSOR_H
++
++#ifndef __ASSEMBLY__
++
++#include <asm/vdso/processor.h>
++
++#endif /* __ASSEMBLY__ */
++
++#endif /* __VDSO_PROCESSOR_H */
+diff --git a/include/vdso/time.h b/include/vdso/time.h
+new file mode 100644
+index 000000000..e5afa84b4
+--- /dev/null
++++ b/include/vdso/time.h
+@@ -0,0 +1,5 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_TIME_H
++#define __VDSO_TIME_H
++
++#endif /* __VDSO_TIME_H */
+diff --git a/include/vdso/time32.h b/include/vdso/time32.h
+new file mode 100644
+index 000000000..fdf56f932
+--- /dev/null
++++ b/include/vdso/time32.h
+@@ -0,0 +1,17 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_TIME32_H
++#define __VDSO_TIME32_H
++
++typedef s32		old_time32_t;
++
++struct old_timespec32 {
++	old_time32_t	tv_sec;
++	s32		tv_nsec;
++};
++
++struct old_timeval32 {
++	old_time32_t	tv_sec;
++	s32		tv_usec;
++};
++
++#endif /* __VDSO_TIME32_H */
+diff --git a/include/vdso/time64.h b/include/vdso/time64.h
+new file mode 100644
+index 000000000..9d43c3f5e
+--- /dev/null
++++ b/include/vdso/time64.h
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __VDSO_TIME64_H
++#define __VDSO_TIME64_H
++
++/* Parameters used to convert the timespec values: */
++#define MSEC_PER_SEC	1000L
++#define USEC_PER_MSEC	1000L
++#define NSEC_PER_USEC	1000L
++#define NSEC_PER_MSEC	1000000L
++#define USEC_PER_SEC	1000000L
++#define NSEC_PER_SEC	1000000000L
++#define FSEC_PER_SEC	1000000000000000LL
++
++#endif /* __VDSO_TIME64_H */
+diff --git a/linaro/configs/sunxi-common.conf b/linaro/configs/sunxi-common.conf
+new file mode 100644
+index 000000000..8e84d87d3
+--- /dev/null
++++ b/linaro/configs/sunxi-common.conf
+@@ -0,0 +1,14 @@
++CONFIG_USB_CONFIGFS=y
++CONFIG_USB_CONFIGFS_F_FS=y
++CONFIG_USB_CONFIGFS_UEVENT=y
++CONFIG_ANDROID_BINDER_IPC=y
++CONFIG_ASHMEM=y
++CONFIG_ANDROID_LOW_MEMORY_KILLER=y
++CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES=y
++CONFIG_NET=y
++CONFIG_UNIX=y
++CONFIG_INET=y
++# open ext4
++CONFIG_EXT4_FS=y
++CONFIG_EXT4_USE_FOR_EXT2=y
++CONFIG_EXT4_FS_SECURITY=y
+diff --git a/linaro/configs/sunxi-sata-sun50iw12p1.conf b/linaro/configs/sunxi-sata-sun50iw12p1.conf
+new file mode 100644
+index 000000000..9da38167a
+--- /dev/null
++++ b/linaro/configs/sunxi-sata-sun50iw12p1.conf
+@@ -0,0 +1,19 @@
++#display
++CONFIG_FB=n
++CONFIG_FB_NOTIFY=n
++CONFIG_DISP2_SUNXI=n
++CONFIG_DISP2_SUNXI_DEBUG=n
++CONFIG_LCD_SUPPORT_WILLIAMLCD=n
++CONFIG_LCD_SUPPORT_LQ101R1SX03=n
++CONFIG_LCD_SUPPORT_INET_DSI_PANEL=n
++CONFIG_LCD_SUPPORT_HE0801A068=n
++CONFIG_DISP2_SUNXI_SUPPORT_SMBL=n
++CONFIG_DISP2_SUNXI_SUPPORT_ENAHNCE=n
++CONFIG_SUNXI_DISP2_FB_DISABLE_ROTATE=n
++CONFIG_DISP2_SUNXI_SATA_TEST=n
++#gcov
++CONFIG_DEBUG_FS=y
++CONFIG_GCOV_KERNEL=y
++CONFIG_ARCH_HAS_GCOV_PROFILE_ALL=y
++CONFIG_GCOV_PROFILE_ALL=y
++CONFIG_GCOV_FORMAT_AUTODETECT=y
+diff --git a/linaro/configs/sunxi-sata.conf b/linaro/configs/sunxi-sata.conf
+new file mode 100644
+index 000000000..b050fb012
+--- /dev/null
++++ b/linaro/configs/sunxi-sata.conf
+@@ -0,0 +1,34 @@
++CONFIG_PINCTRL_SUNXI_TEST=m
++CONFIG_SUNXI_TIMER_TEST=m
++
++CONFIG_CRYPTO_AEAD=y
++CONFIG_CRYPTO_BLKCIPHER=y
++CONFIG_CRYPTO_RNG=y
++CONFIG_CRYPTO_MD5=y
++CONFIG_CRYPTO_SHA1=y
++CONFIG_CRYPTO_DES=y
++CONFIG_CRYPTO_USER_API=y
++CONFIG_CRYPTO_USER_API_HASH=y
++CONFIG_CRYPTO_USER_API_SKCIPHER=y
++CONFIG_CRYPTO_USER_API_RNG=y
++CONFIG_CRYPTO_USER_API_AEAD=y
++CONFIG_CRYPTO_DEV_SUNXI=y
++#iommu
++CONFIG_IOMMU_DEBUG=y
++CONFIG_IOMMU_TESTS=y
++#tee
++CONFIG_TEE=y
++CONFIG_OPTEE=y
++##display
++#CONFIG_FB=y
++#CONFIG_FB_NOTIFY=y
++#CONFIG_DISP2_SUNXI=y
++#CONFIG_DISP2_SUNXI_DEBUG=y
++#CONFIG_LCD_SUPPORT_WILLIAMLCD=y
++#CONFIG_LCD_SUPPORT_LQ101R1SX03=y
++#CONFIG_LCD_SUPPORT_INET_DSI_PANEL=y
++#CONFIG_LCD_SUPPORT_HE0801A068=y
++#CONFIG_DISP2_SUNXI_SUPPORT_SMBL=y
++#CONFIG_DISP2_SUNXI_SUPPORT_ENAHNCE=y
++#CONFIG_SUNXI_DISP2_FB_DISABLE_ROTATE=y
++#CONFIG_DISP2_SUNXI_SATA_TEST=y
+-- 
+2.17.1
+

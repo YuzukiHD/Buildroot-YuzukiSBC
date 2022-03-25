@@ -1,0 +1,4670 @@
+From 3756e893817bacf0c7559c144644f1105e1ebb96 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Fri, 25 Mar 2022 16:38:10 +0800
+Subject: [PATCH 10/93] net add support for sun20i
+
+---
+ net/Kconfig                       |   1 -
+ net/bluetooth/hci_core.c          |  10 +-
+ net/bpfilter/main.c               |   1 +
+ net/caif/Kconfig                  |   2 +-
+ net/core/dev.c                    |  20 +-
+ net/core/filter.c                 |  51 ++-
+ net/core/net-traces.c             |   2 -
+ net/core/skbuff.c                 |  94 +++++
+ net/core/sock.c                   |   5 +
+ net/ipv4/af_inet.c                |   4 +
+ net/ipv4/icmp.c                   |   7 +-
+ net/ipv4/sysctl_net_ipv4.c        |  18 +-
+ net/ipv4/tcp_input.c              |   2 +
+ net/ipv4/udp_offload.c            | 105 +++--
+ net/ipv6/addrconf.c               |  33 +-
+ net/ipv6/af_inet6.c               |   2 +
+ net/ipv6/ndisc.c                  |   1 +
+ net/ipv6/route.c                  |  51 +--
+ net/ipv6/udp_offload.c            |  27 +-
+ net/mac80211/ieee80211_i.h        |   4 +-
+ net/mac80211/mesh.c               |  22 ++
+ net/mac80211/mesh.h               |   2 +
+ net/mac80211/mesh_plink.c         |   4 +-
+ net/mac80211/mlme.c               |   3 +
+ net/mac80211/scan.c               |  17 +-
+ net/mac80211/util.c               |  78 +++-
+ net/netfilter/Kconfig             |  23 ++
+ net/netfilter/Makefile            |   1 +
+ net/netfilter/nf_conntrack_core.c |   4 +
+ net/netfilter/xt_IDLETIMER.c      | 259 ++++++++++++-
+ net/netfilter/xt_quota2.c         | 400 +++++++++++++++++++
+ net/sctp/socket.c                 |   5 +
+ net/socket.c                      |   3 +-
+ net/wireless/chan.c               |  90 +++--
+ net/wireless/core.c               |  17 +-
+ net/wireless/nl80211.c            | 369 +++++++++++++++++-
+ net/wireless/rdev-ops.h           |  37 ++
+ net/wireless/reg.c                |  40 +-
+ net/wireless/scan.c               |   4 +-
+ net/wireless/sme.c                |  11 +-
+ net/wireless/trace.h              |  75 +++-
+ net/wireless/util.c               |  55 ++-
+ net/xfrm/Kconfig                  |  11 +
+ net/xfrm/Makefile                 |   1 +
+ net/xfrm/xfrm_algo.c              |   2 +-
+ net/xfrm/xfrm_compat.c            | 625 ++++++++++++++++++++++++++++++
+ net/xfrm/xfrm_state.c             |  80 +++-
+ net/xfrm/xfrm_user.c              | 113 +++++-
+ 48 files changed, 2539 insertions(+), 252 deletions(-)
+ create mode 100644 net/netfilter/xt_quota2.c
+ create mode 100644 net/xfrm/xfrm_compat.c
+
+diff --git a/net/Kconfig b/net/Kconfig
+index 0b2fecc83..2ce3667fe 100644
+--- a/net/Kconfig
++++ b/net/Kconfig
+@@ -190,7 +190,6 @@ config BRIDGE_NETFILTER
+ 	depends on NETFILTER_ADVANCED
+ 	select NETFILTER_FAMILY_BRIDGE
+ 	select SKB_EXTENSIONS
+-	default m
+ 	---help---
+ 	  Enabling this option will let arptables resp. iptables see bridged
+ 	  ARP resp. IP traffic. If you want a bridging firewall, you probably
+diff --git a/net/bluetooth/hci_core.c b/net/bluetooth/hci_core.c
+index 9e19d5a3a..a7878ff57 100644
+--- a/net/bluetooth/hci_core.c
++++ b/net/bluetooth/hci_core.c
+@@ -884,12 +884,14 @@ static int __hci_init(struct hci_dev *hdev)
+ 		return 0;
+ 
+ 	err = __hci_req_sync(hdev, hci_init3_req, 0, HCI_INIT_TIMEOUT, NULL);
+-	if (err < 0)
+-		return err;
++	if (err < 0) {
++		pr_err("%s(%d), err = %d, EINVAL.\n", __func__, __LINE__, err);
++	}
+ 
+ 	err = __hci_req_sync(hdev, hci_init4_req, 0, HCI_INIT_TIMEOUT, NULL);
+-	if (err < 0)
+-		return err;
++	if (err < 0) {
++		pr_err("%s(%d), err = %d, EIO.\n", __func__, __LINE__, err);
++	}
+ 
+ 	/* This function is only called when the controller is actually in
+ 	 * configured state. When the controller is marked as unconfigured,
+diff --git a/net/bpfilter/main.c b/net/bpfilter/main.c
+index 05e1cfc1e..efea48747 100644
+--- a/net/bpfilter/main.c
++++ b/net/bpfilter/main.c
+@@ -35,6 +35,7 @@ static void loop(void)
+ 		struct mbox_reply reply;
+ 		int n;
+ 
++		fprintf(debug_f, "testing the buffer\n");
+ 		n = read(0, &req, sizeof(req));
+ 		if (n != sizeof(req)) {
+ 			fprintf(debug_f, "invalid request %d\n", n);
+diff --git a/net/caif/Kconfig b/net/caif/Kconfig
+index eb83051c8..32815a309 100644
+--- a/net/caif/Kconfig
++++ b/net/caif/Kconfig
+@@ -4,7 +4,7 @@
+ #
+ 
+ menuconfig CAIF
+-	tristate "CAIF support"
++	bool "CAIF support"
+ 	select CRC_CCITT
+ 	default n
+ 	---help---
+diff --git a/net/core/dev.c b/net/core/dev.c
+index 25858f1f6..bfb7bf0f2 100644
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -143,6 +143,7 @@
+ #include <linux/net_namespace.h>
+ #include <linux/indirect_call_wrapper.h>
+ #include <net/devlink.h>
++#include <trace/hooks/net.h>
+ 
+ #include "net-sysfs.h"
+ 
+@@ -302,6 +303,12 @@ EXPORT_PER_CPU_SYMBOL(softnet_data);
+ 
+ static inline struct list_head *ptype_head(const struct packet_type *pt)
+ {
++	struct list_head vendor_pt = { .next  = NULL, };
++
++	trace_android_vh_ptype_head(pt, &vendor_pt);
++	if (vendor_pt.next)
++		return vendor_pt.next;
++
+ 	if (pt->type == htons(ETH_P_ALL))
+ 		return pt->dev ? &pt->dev->ptype_all : &ptype_all;
+ 	else
+@@ -3025,7 +3032,7 @@ struct sk_buff *__skb_gso_segment(struct sk_buff *skb,
+ 
+ 	segs = skb_mac_gso_segment(skb, features);
+ 
+-	if (unlikely(skb_needs_check(skb, tx_path) && !IS_ERR(segs)))
++	if (segs != skb && unlikely(skb_needs_check(skb, tx_path) && !IS_ERR(segs)))
+ 		skb_warn_bad_offload(skb);
+ 
+ 	return segs;
+@@ -5602,12 +5609,13 @@ static void napi_skb_free_stolen_head(struct sk_buff *skb)
+ 	kmem_cache_free(skbuff_head_cache, skb);
+ }
+ 
+-static gro_result_t napi_skb_finish(gro_result_t ret, struct sk_buff *skb)
++static gro_result_t napi_skb_finish(struct napi_struct *napi,
++				    struct sk_buff *skb,
++				    gro_result_t ret)
+ {
+ 	switch (ret) {
+ 	case GRO_NORMAL:
+-		if (netif_receive_skb_internal(skb))
+-			ret = GRO_DROP;
++		gro_normal_one(napi, skb);
+ 		break;
+ 
+ 	case GRO_DROP:
+@@ -5639,7 +5647,7 @@ gro_result_t napi_gro_receive(struct napi_struct *napi, struct sk_buff *skb)
+ 
+ 	skb_gro_reset_offset(skb);
+ 
+-	ret = napi_skb_finish(dev_gro_receive(napi, skb), skb);
++	ret = napi_skb_finish(napi, skb, dev_gro_receive(napi, skb));
+ 	trace_napi_gro_receive_exit(ret);
+ 
+ 	return ret;
+@@ -9034,7 +9042,7 @@ int register_netdevice(struct net_device *dev)
+ 	/* Transfer changeable features to wanted_features and enable
+ 	 * software offloads (GSO and GRO).
+ 	 */
+-	dev->hw_features |= NETIF_F_SOFT_FEATURES;
++	dev->hw_features |= (NETIF_F_SOFT_FEATURES | NETIF_F_SOFT_FEATURES_OFF);
+ 	dev->features |= NETIF_F_SOFT_FEATURES;
+ 
+ 	if (dev->netdev_ops->ndo_udp_tunnel_add) {
+diff --git a/net/core/filter.c b/net/core/filter.c
+index 5c490d473..55f5fda12 100644
+--- a/net/core/filter.c
++++ b/net/core/filter.c
+@@ -3148,8 +3148,9 @@ static int bpf_skb_net_shrink(struct sk_buff *skb, u32 off, u32 len_diff,
+ 
+ static u32 __bpf_skb_max_len(const struct sk_buff *skb)
+ {
+-	return skb->dev ? skb->dev->mtu + skb->dev->hard_header_len :
+-			  SKB_MAX_ALLOC;
++	if (skb_at_tc_ingress(skb) || !skb->dev)
++		return SKB_MAX_ALLOC;
++	return skb->dev->mtu + skb->dev->hard_header_len;
+ }
+ 
+ BPF_CALL_4(bpf_skb_adjust_room, struct sk_buff *, skb, s32, len_diff,
+@@ -6159,6 +6160,8 @@ tc_cls_act_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
+ 		return &bpf_skb_adjust_room_proto;
+ 	case BPF_FUNC_skb_change_tail:
+ 		return &bpf_skb_change_tail_proto;
++	case BPF_FUNC_skb_change_head:
++		return &bpf_skb_change_head_proto;
+ 	case BPF_FUNC_skb_get_tunnel_key:
+ 		return &bpf_skb_get_tunnel_key_proto;
+ 	case BPF_FUNC_skb_set_tunnel_key:
+@@ -7224,6 +7227,27 @@ static u32 flow_dissector_convert_ctx_access(enum bpf_access_type type,
+ 	return insn - insn_buf;
+ }
+ 
++static struct bpf_insn *bpf_convert_shinfo_access(const struct bpf_insn *si,
++						  struct bpf_insn *insn)
++{
++	/* si->dst_reg = skb_shinfo(SKB); */
++#ifdef NET_SKBUFF_DATA_USES_OFFSET
++	*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct sk_buff, end),
++			      BPF_REG_AX, si->src_reg,
++			      offsetof(struct sk_buff, end));
++	*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct sk_buff, head),
++			      si->dst_reg, si->src_reg,
++			      offsetof(struct sk_buff, head));
++	*insn++ = BPF_ALU64_REG(BPF_ADD, si->dst_reg, BPF_REG_AX);
++#else
++	*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct sk_buff, end),
++			      si->dst_reg, si->src_reg,
++			      offsetof(struct sk_buff, end));
++#endif
++
++	return insn;
++}
++
+ static u32 bpf_convert_ctx_access(enum bpf_access_type type,
+ 				  const struct bpf_insn *si,
+ 				  struct bpf_insn *insn_buf,
+@@ -7546,26 +7570,21 @@ static u32 bpf_convert_ctx_access(enum bpf_access_type type,
+ 		break;
+ 
+ 	case offsetof(struct __sk_buff, gso_segs):
+-		/* si->dst_reg = skb_shinfo(SKB); */
+-#ifdef NET_SKBUFF_DATA_USES_OFFSET
+-		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct sk_buff, end),
+-				      BPF_REG_AX, si->src_reg,
+-				      offsetof(struct sk_buff, end));
+-		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct sk_buff, head),
+-				      si->dst_reg, si->src_reg,
+-				      offsetof(struct sk_buff, head));
+-		*insn++ = BPF_ALU64_REG(BPF_ADD, si->dst_reg, BPF_REG_AX);
+-#else
+-		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct sk_buff, end),
+-				      si->dst_reg, si->src_reg,
+-				      offsetof(struct sk_buff, end));
+-#endif
++		insn = bpf_convert_shinfo_access(si, insn);
+ 		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct skb_shared_info, gso_segs),
+ 				      si->dst_reg, si->dst_reg,
+ 				      bpf_target_off(struct skb_shared_info,
+ 						     gso_segs, 2,
+ 						     target_size));
+ 		break;
++	case offsetof(struct __sk_buff, gso_size):
++		insn = bpf_convert_shinfo_access(si, insn);
++		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct skb_shared_info, gso_size),
++				      si->dst_reg, si->dst_reg,
++				      bpf_target_off(struct skb_shared_info,
++						     gso_size, 2,
++						     target_size));
++		break;
+ 	case offsetof(struct __sk_buff, wire_len):
+ 		BUILD_BUG_ON(FIELD_SIZEOF(struct qdisc_skb_cb, pkt_len) != 4);
+ 
+diff --git a/net/core/net-traces.c b/net/core/net-traces.c
+index 283ddb2db..465362a9b 100644
+--- a/net/core/net-traces.c
++++ b/net/core/net-traces.c
+@@ -35,13 +35,11 @@
+ #include <trace/events/tcp.h>
+ #include <trace/events/fib.h>
+ #include <trace/events/qdisc.h>
+-#if IS_ENABLED(CONFIG_BRIDGE)
+ #include <trace/events/bridge.h>
+ EXPORT_TRACEPOINT_SYMBOL_GPL(br_fdb_add);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(br_fdb_external_learn_add);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(fdb_delete);
+ EXPORT_TRACEPOINT_SYMBOL_GPL(br_fdb_update);
+-#endif
+ 
+ #if IS_ENABLED(CONFIG_PAGE_POOL)
+ #include <trace/events/page_pool.h>
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index 973a71f4b..b2c203bcf 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -75,6 +75,7 @@
+ #include <linux/capability.h>
+ #include <linux/user_namespace.h>
+ #include <linux/indirect_call_wrapper.h>
++#include <trace/hooks/net.h>
+ 
+ #include "datagram.h"
+ 
+@@ -693,6 +694,7 @@ void kfree_skb(struct sk_buff *skb)
+ 	if (!skb_unref(skb))
+ 		return;
+ 
++	trace_android_vh_kfree_skb(skb);
+ 	trace_kfree_skb(skb, __builtin_return_address(0));
+ 	__kfree_skb(skb);
+ }
+@@ -3638,6 +3640,98 @@ static inline skb_frag_t skb_head_frag_to_page_desc(struct sk_buff *frag_skb)
+ 	return head_frag;
+ }
+ 
++struct sk_buff *skb_segment_list(struct sk_buff *skb,
++				 netdev_features_t features,
++				 unsigned int offset)
++{
++	struct sk_buff *list_skb = skb_shinfo(skb)->frag_list;
++	unsigned int tnl_hlen = skb_tnl_header_len(skb);
++	unsigned int delta_truesize = 0;
++	unsigned int delta_len = 0;
++	struct sk_buff *tail = NULL;
++	struct sk_buff *nskb;
++
++	skb_push(skb, -skb_network_offset(skb) + offset);
++
++	skb_shinfo(skb)->frag_list = NULL;
++
++	do {
++		nskb = list_skb;
++		list_skb = list_skb->next;
++
++		if (!tail)
++			skb->next = nskb;
++		else
++			tail->next = nskb;
++
++		tail = nskb;
++
++		delta_len += nskb->len;
++		delta_truesize += nskb->truesize;
++
++		skb_push(nskb, -skb_network_offset(nskb) + offset);
++
++		skb_release_head_state(nskb);
++		 __copy_skb_header(nskb, skb);
++
++		skb_headers_offset_update(nskb, skb_headroom(nskb) - skb_headroom(skb));
++		skb_copy_from_linear_data_offset(skb, -tnl_hlen,
++						 nskb->data - tnl_hlen,
++						 offset + tnl_hlen);
++
++		if (skb_needs_linearize(nskb, features) &&
++		    __skb_linearize(nskb))
++			goto err_linearize;
++
++	} while (list_skb);
++
++	skb->truesize = skb->truesize - delta_truesize;
++	skb->data_len = skb->data_len - delta_len;
++	skb->len = skb->len - delta_len;
++
++	skb_gso_reset(skb);
++
++	skb->prev = tail;
++
++	if (skb_needs_linearize(skb, features) &&
++	    __skb_linearize(skb))
++		goto err_linearize;
++
++	skb_get(skb);
++
++	return skb;
++
++err_linearize:
++	kfree_skb_list(skb->next);
++	skb->next = NULL;
++	return ERR_PTR(-ENOMEM);
++}
++EXPORT_SYMBOL_GPL(skb_segment_list);
++
++int skb_gro_receive_list(struct sk_buff *p, struct sk_buff *skb)
++{
++	if (unlikely(p->len + skb->len >= 65536))
++		return -E2BIG;
++
++	if (NAPI_GRO_CB(p)->last == p)
++		skb_shinfo(p)->frag_list = skb;
++	else
++		NAPI_GRO_CB(p)->last->next = skb;
++
++	skb_pull(skb, skb_gro_offset(skb));
++
++	NAPI_GRO_CB(p)->last = skb;
++	NAPI_GRO_CB(p)->count++;
++	p->data_len += skb->len;
++	p->truesize += skb->truesize;
++	p->len += skb->len;
++
++	NAPI_GRO_CB(skb)->same_flow = 1;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(skb_gro_receive_list);
++
+ /**
+  *	skb_segment - Perform protocol segmentation on skb.
+  *	@head_skb: buffer to segment
+diff --git a/net/core/sock.c b/net/core/sock.c
+index 919f1a173..f87c9f757 100644
+--- a/net/core/sock.c
++++ b/net/core/sock.c
+@@ -134,6 +134,7 @@
+ #include <net/bpf_sk_storage.h>
+ 
+ #include <trace/events/sock.h>
++#include <trace/hooks/net.h>
+ 
+ #include <net/tcp.h>
+ #include <net/busy_poll.h>
+@@ -1608,6 +1609,8 @@ static struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority,
+ 		if (security_sk_alloc(sk, family, priority))
+ 			goto out_free;
+ 
++		trace_android_rvh_sk_alloc(sk);
++
+ 		if (!try_module_get(prot->owner))
+ 			goto out_free_sec;
+ 		sk_tx_queue_clear(sk);
+@@ -1617,6 +1620,7 @@ static struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority,
+ 
+ out_free_sec:
+ 	security_sk_free(sk);
++	trace_android_rvh_sk_free(sk);
+ out_free:
+ 	if (slab != NULL)
+ 		kmem_cache_free(slab, sk);
+@@ -1636,6 +1640,7 @@ static void sk_prot_free(struct proto *prot, struct sock *sk)
+ 	cgroup_sk_free(&sk->sk_cgrp_data);
+ 	mem_cgroup_sk_free(sk);
+ 	security_sk_free(sk);
++	trace_android_rvh_sk_free(sk);
+ 	if (slab != NULL)
+ 		kmem_cache_free(slab, sk);
+ 	else
+diff --git a/net/ipv4/af_inet.c b/net/ipv4/af_inet.c
+index 70f92aaca..e37150fc7 100644
+--- a/net/ipv4/af_inet.c
++++ b/net/ipv4/af_inet.c
+@@ -494,6 +494,10 @@ int __inet_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len,
+ 		goto out;
+ 
+ 	snum = ntohs(addr->sin_port);
++	err = -EPERM;
++	if (snum && inet_is_local_unbindable_port(net, snum))
++		goto out;
++
+ 	err = -EACCES;
+ 	if (snum && snum < inet_prot_sock(net) &&
+ 	    !ns_capable(net->user_ns, CAP_NET_BIND_SERVICE))
+diff --git a/net/ipv4/icmp.c b/net/ipv4/icmp.c
+index 73f46cb5e..d00533aea 100644
+--- a/net/ipv4/icmp.c
++++ b/net/ipv4/icmp.c
+@@ -239,7 +239,7 @@ static struct {
+ /**
+  * icmp_global_allow - Are we allowed to send one more ICMP message ?
+  *
+- * Uses a token bucket to limit our ICMP messages to sysctl_icmp_msgs_per_sec.
++ * Uses a token bucket to limit our ICMP messages to ~sysctl_icmp_msgs_per_sec.
+  * Returns false if we reached the limit and can not send another packet.
+  * Note: called with BH disabled
+  */
+@@ -267,7 +267,10 @@ bool icmp_global_allow(void)
+ 	}
+ 	credit = min_t(u32, icmp_global.credit + incr, sysctl_icmp_msgs_burst);
+ 	if (credit) {
+-		credit--;
++		/* We want to use a credit of one in average, but need to randomize
++		 * it for security reasons.
++		 */
++		credit = max_t(int, credit - prandom_u32_max(3), 0);
+ 		rc = true;
+ 	}
+ 	WRITE_ONCE(icmp_global.credit, credit);
+diff --git a/net/ipv4/sysctl_net_ipv4.c b/net/ipv4/sysctl_net_ipv4.c
+index c83a5d05a..ef0dff519 100644
+--- a/net/ipv4/sysctl_net_ipv4.c
++++ b/net/ipv4/sysctl_net_ipv4.c
+@@ -733,6 +733,13 @@ static struct ctl_table ipv4_net_table[] = {
+ 		.mode		= 0644,
+ 		.proc_handler	= proc_do_large_bitmap,
+ 	},
++	{
++		.procname	= "ip_local_unbindable_ports",
++		.data		= &init_net.ipv4.sysctl_local_unbindable_ports,
++		.maxlen		= 65536,
++		.mode		= 0644,
++		.proc_handler	= proc_do_large_bitmap,
++	},
+ 	{
+ 		.procname	= "ip_no_pmtu_disc",
+ 		.data		= &init_net.ipv4.sysctl_ip_no_pmtu_disc,
+@@ -1341,11 +1348,17 @@ static __net_init int ipv4_sysctl_init_net(struct net *net)
+ 
+ 	net->ipv4.sysctl_local_reserved_ports = kzalloc(65536 / 8, GFP_KERNEL);
+ 	if (!net->ipv4.sysctl_local_reserved_ports)
+-		goto err_ports;
++		goto err_reserved_ports;
++
++	net->ipv4.sysctl_local_unbindable_ports = kzalloc(65536 / 8, GFP_KERNEL);
++	if (!net->ipv4.sysctl_local_unbindable_ports)
++		goto err_unbindable_ports;
+ 
+ 	return 0;
+ 
+-err_ports:
++err_unbindable_ports:
++	kfree(net->ipv4.sysctl_local_reserved_ports);
++err_reserved_ports:
+ 	unregister_net_sysctl_table(net->ipv4.ipv4_hdr);
+ err_reg:
+ 	if (!net_eq(net, &init_net))
+@@ -1358,6 +1371,7 @@ static __net_exit void ipv4_sysctl_exit_net(struct net *net)
+ {
+ 	struct ctl_table *table;
+ 
++	kfree(net->ipv4.sysctl_local_unbindable_ports);
+ 	kfree(net->ipv4.sysctl_local_reserved_ports);
+ 	table = net->ipv4.ipv4_hdr->ctl_table_arg;
+ 	unregister_net_sysctl_table(net->ipv4.ipv4_hdr);
+diff --git a/net/ipv4/tcp_input.c b/net/ipv4/tcp_input.c
+index ab5358281..ea036bd22 100644
+--- a/net/ipv4/tcp_input.c
++++ b/net/ipv4/tcp_input.c
+@@ -79,6 +79,7 @@
+ #include <trace/events/tcp.h>
+ #include <linux/jump_label_ratelimit.h>
+ #include <net/busy_poll.h>
++#include <trace/hooks/net.h>
+ 
+ int sysctl_tcp_max_orphans __read_mostly = NR_FILE;
+ 
+@@ -4481,6 +4482,7 @@ static bool tcp_ooo_try_coalesce(struct sock *sk,
+ 
+ static void tcp_drop(struct sock *sk, struct sk_buff *skb)
+ {
++	trace_android_vh_kfree_skb(skb);
+ 	sk_drops_add(sk, skb);
+ 	__kfree_skb(skb);
+ }
+diff --git a/net/ipv4/udp_offload.c b/net/ipv4/udp_offload.c
+index a3908e55e..9455b0a07 100644
+--- a/net/ipv4/udp_offload.c
++++ b/net/ipv4/udp_offload.c
+@@ -184,6 +184,20 @@ struct sk_buff *skb_udp_tunnel_segment(struct sk_buff *skb,
+ }
+ EXPORT_SYMBOL(skb_udp_tunnel_segment);
+ 
++static struct sk_buff *__udp_gso_segment_list(struct sk_buff *skb,
++					      netdev_features_t features)
++{
++	unsigned int mss = skb_shinfo(skb)->gso_size;
++
++	skb = skb_segment_list(skb, features, skb_mac_header_len(skb));
++	if (IS_ERR(skb))
++		return skb;
++
++	udp_hdr(skb)->len = htons(sizeof(struct udphdr) + mss);
++
++	return skb;
++}
++
+ struct sk_buff *__udp_gso_segment(struct sk_buff *gso_skb,
+ 				  netdev_features_t features)
+ {
+@@ -196,6 +210,9 @@ struct sk_buff *__udp_gso_segment(struct sk_buff *gso_skb,
+ 	__sum16 check;
+ 	__be16 newlen;
+ 
++	if (skb_shinfo(gso_skb)->gso_type & SKB_GSO_FRAGLIST)
++		return __udp_gso_segment_list(gso_skb, features);
++
+ 	mss = skb_shinfo(gso_skb)->gso_size;
+ 	if (gso_skb->len <= sizeof(*uh) + mss)
+ 		return ERR_PTR(-EINVAL);
+@@ -354,6 +371,7 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
+ 	struct udphdr *uh2;
+ 	struct sk_buff *p;
+ 	unsigned int ulen;
++	int ret = 0;
+ 
+ 	/* requires non zero csum, for symmetry with GSO */
+ 	if (!uh->check) {
+@@ -369,7 +387,6 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
+ 	}
+ 	/* pull encapsulating udp header */
+ 	skb_gro_pull(skb, sizeof(struct udphdr));
+-	skb_gro_postpull_rcsum(skb, uh, sizeof(struct udphdr));
+ 
+ 	list_for_each_entry(p, head, list) {
+ 		if (!NAPI_GRO_CB(p)->same_flow)
+@@ -383,14 +400,40 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
+ 			continue;
+ 		}
+ 
++		if (NAPI_GRO_CB(skb)->is_flist != NAPI_GRO_CB(p)->is_flist) {
++			NAPI_GRO_CB(skb)->flush = 1;
++			return p;
++		}
++
+ 		/* Terminate the flow on len mismatch or if it grow "too much".
+ 		 * Under small packet flood GRO count could elsewhere grow a lot
+ 		 * leading to excessive truesize values.
+ 		 * On len mismatch merge the first packet shorter than gso_size,
+ 		 * otherwise complete the GRO packet.
+ 		 */
+-		if (ulen > ntohs(uh2->len) || skb_gro_receive(p, skb) ||
+-		    ulen != ntohs(uh2->len) ||
++		if (ulen > ntohs(uh2->len)) {
++			pp = p;
++		} else {
++			if (NAPI_GRO_CB(skb)->is_flist) {
++				if (!pskb_may_pull(skb, skb_gro_offset(skb))) {
++					NAPI_GRO_CB(skb)->flush = 1;
++					return NULL;
++				}
++				if ((skb->ip_summed != p->ip_summed) ||
++				    (skb->csum_level != p->csum_level)) {
++					NAPI_GRO_CB(skb)->flush = 1;
++					return NULL;
++				}
++				ret = skb_gro_receive_list(p, skb);
++			} else {
++				skb_gro_postpull_rcsum(skb, uh,
++						       sizeof(struct udphdr));
++
++				ret = skb_gro_receive(p, skb);
++			}
++		}
++
++		if (ret || ulen != ntohs(uh2->len) ||
+ 		    NAPI_GRO_CB(p)->count >= UDP_GRO_CNT_MAX)
+ 			pp = p;
+ 
+@@ -401,36 +444,30 @@ static struct sk_buff *udp_gro_receive_segment(struct list_head *head,
+ 	return NULL;
+ }
+ 
+-INDIRECT_CALLABLE_DECLARE(struct sock *udp6_lib_lookup_skb(struct sk_buff *skb,
+-						   __be16 sport, __be16 dport));
+ struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
+-				struct udphdr *uh, udp_lookup_t lookup)
++				struct udphdr *uh, struct sock *sk)
+ {
+ 	struct sk_buff *pp = NULL;
+ 	struct sk_buff *p;
+ 	struct udphdr *uh2;
+ 	unsigned int off = skb_gro_offset(skb);
+ 	int flush = 1;
+-	struct sock *sk;
+ 
+-	rcu_read_lock();
+-	sk = INDIRECT_CALL_INET(lookup, udp6_lib_lookup_skb,
+-				udp4_lib_lookup_skb, skb, uh->source, uh->dest);
+-	if (!sk)
+-		goto out_unlock;
++	NAPI_GRO_CB(skb)->is_flist = 0;
++	if (skb->dev->features & NETIF_F_GRO_FRAGLIST)
++		NAPI_GRO_CB(skb)->is_flist = sk ? !udp_sk(sk)->gro_enabled: 1;
+ 
+-	if (udp_sk(sk)->gro_enabled) {
++	if ((sk && udp_sk(sk)->gro_enabled) || NAPI_GRO_CB(skb)->is_flist) {
+ 		pp = call_gro_receive(udp_gro_receive_segment, head, skb);
+-		rcu_read_unlock();
+ 		return pp;
+ 	}
+ 
+-	if (NAPI_GRO_CB(skb)->encap_mark ||
++	if (!sk || NAPI_GRO_CB(skb)->encap_mark ||
+ 	    (skb->ip_summed != CHECKSUM_PARTIAL &&
+ 	     NAPI_GRO_CB(skb)->csum_cnt == 0 &&
+ 	     !NAPI_GRO_CB(skb)->csum_valid) ||
+ 	    !udp_sk(sk)->gro_receive)
+-		goto out_unlock;
++		goto out;
+ 
+ 	/* mark that this skb passed once through the tunnel gro layer */
+ 	NAPI_GRO_CB(skb)->encap_mark = 1;
+@@ -457,8 +494,7 @@ struct sk_buff *udp_gro_receive(struct list_head *head, struct sk_buff *skb,
+ 	skb_gro_postpull_rcsum(skb, uh, sizeof(struct udphdr));
+ 	pp = call_gro_receive_sk(udp_sk(sk)->gro_receive, sk, head, skb);
+ 
+-out_unlock:
+-	rcu_read_unlock();
++out:
+ 	skb_gro_flush_final(skb, pp, flush);
+ 	return pp;
+ }
+@@ -468,8 +504,10 @@ INDIRECT_CALLABLE_SCOPE
+ struct sk_buff *udp4_gro_receive(struct list_head *head, struct sk_buff *skb)
+ {
+ 	struct udphdr *uh = udp_gro_udphdr(skb);
++	struct sk_buff *pp;
++	struct sock *sk;
+ 
+-	if (unlikely(!uh) || !static_branch_unlikely(&udp_encap_needed_key))
++	if (unlikely(!uh))
+ 		goto flush;
+ 
+ 	/* Don't bother verifying checksum if we're going to flush anyway. */
+@@ -484,7 +522,11 @@ struct sk_buff *udp4_gro_receive(struct list_head *head, struct sk_buff *skb)
+ 					     inet_gro_compute_pseudo);
+ skip:
+ 	NAPI_GRO_CB(skb)->is_ipv6 = 0;
+-	return udp_gro_receive(head, skb, uh, udp4_lib_lookup_skb);
++	rcu_read_lock();
++	sk = static_branch_unlikely(&udp_encap_needed_key) ? udp4_lib_lookup_skb(skb, uh->source, uh->dest) : NULL;
++	pp = udp_gro_receive(head, skb, uh, sk);
++	rcu_read_unlock();
++	return pp;
+ 
+ flush:
+ 	NAPI_GRO_CB(skb)->flush = 1;
+@@ -517,9 +559,7 @@ int udp_gro_complete(struct sk_buff *skb, int nhoff,
+ 	rcu_read_lock();
+ 	sk = INDIRECT_CALL_INET(lookup, udp6_lib_lookup_skb,
+ 				udp4_lib_lookup_skb, skb, uh->source, uh->dest);
+-	if (sk && udp_sk(sk)->gro_enabled) {
+-		err = udp_gro_complete_segment(skb);
+-	} else if (sk && udp_sk(sk)->gro_complete) {
++	if (sk && udp_sk(sk)->gro_complete) {
+ 		skb_shinfo(skb)->gso_type = uh->check ? SKB_GSO_UDP_TUNNEL_CSUM
+ 					: SKB_GSO_UDP_TUNNEL;
+ 
+@@ -529,6 +569,8 @@ int udp_gro_complete(struct sk_buff *skb, int nhoff,
+ 		skb->encapsulation = 1;
+ 		err = udp_sk(sk)->gro_complete(sk, skb,
+ 				nhoff + sizeof(struct udphdr));
++	} else {
++		err = udp_gro_complete_segment(skb);
+ 	}
+ 	rcu_read_unlock();
+ 
+@@ -544,6 +586,23 @@ INDIRECT_CALLABLE_SCOPE int udp4_gro_complete(struct sk_buff *skb, int nhoff)
+ 	const struct iphdr *iph = ip_hdr(skb);
+ 	struct udphdr *uh = (struct udphdr *)(skb->data + nhoff);
+ 
++	if (NAPI_GRO_CB(skb)->is_flist) {
++		uh->len = htons(skb->len - nhoff);
++
++		skb_shinfo(skb)->gso_type |= (SKB_GSO_FRAGLIST|SKB_GSO_UDP_L4);
++		skb_shinfo(skb)->gso_segs = NAPI_GRO_CB(skb)->count;
++
++		if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
++			if (skb->csum_level < SKB_MAX_CSUM_LEVEL)
++				skb->csum_level++;
++		} else {
++			skb->ip_summed = CHECKSUM_UNNECESSARY;
++			skb->csum_level = 0;
++		}
++
++		return 0;
++	}
++
+ 	if (uh->check)
+ 		uh->check = ~udp_v4_check(skb->len - nhoff, iph->saddr,
+ 					  iph->daddr, 0);
+diff --git a/net/ipv6/addrconf.c b/net/ipv6/addrconf.c
+index 6e1d200f3..0f4a3c6d6 100644
+--- a/net/ipv6/addrconf.c
++++ b/net/ipv6/addrconf.c
+@@ -217,6 +217,7 @@ static struct ipv6_devconf ipv6_devconf __read_mostly = {
+ 	.accept_ra_rt_info_max_plen = 0,
+ #endif
+ #endif
++	.accept_ra_rt_table	= 0,
+ 	.proxy_ndp		= 0,
+ 	.accept_source_route	= 0,	/* we do not accept RH0 by default. */
+ 	.disable_ipv6		= 0,
+@@ -271,6 +272,7 @@ static struct ipv6_devconf ipv6_devconf_dflt __read_mostly = {
+ 	.accept_ra_rt_info_max_plen = 0,
+ #endif
+ #endif
++	.accept_ra_rt_table	= 0,
+ 	.proxy_ndp		= 0,
+ 	.accept_source_route	= 0,	/* we do not accept RH0 by default. */
+ 	.disable_ipv6		= 0,
+@@ -2363,6 +2365,26 @@ static void  ipv6_try_regen_rndid(struct inet6_dev *idev, struct in6_addr *tmpad
+ 		ipv6_regen_rndid(idev);
+ }
+ 
++u32 addrconf_rt_table(const struct net_device *dev, u32 default_table)
++{
++	struct inet6_dev *idev = in6_dev_get(dev);
++	int sysctl;
++	u32 table;
++
++	if (!idev)
++		return default_table;
++	sysctl = idev->cnf.accept_ra_rt_table;
++	if (sysctl == 0) {
++		table = default_table;
++	} else if (sysctl > 0) {
++		table = (u32) sysctl;
++	} else {
++		table = (unsigned) dev->ifindex + (-sysctl);
++	}
++	in6_dev_put(idev);
++	return table;
++}
++
+ /*
+  *	Add prefix route.
+  */
+@@ -2373,7 +2395,7 @@ addrconf_prefix_route(struct in6_addr *pfx, int plen, u32 metric,
+ 		      u32 flags, gfp_t gfp_flags)
+ {
+ 	struct fib6_config cfg = {
+-		.fc_table = l3mdev_fib_table(dev) ? : RT6_TABLE_PREFIX,
++		.fc_table = l3mdev_fib_table(dev) ? : addrconf_rt_table(dev, RT6_TABLE_PREFIX),
+ 		.fc_metric = metric ? : IP6_RT_PRIO_ADDRCONF,
+ 		.fc_ifindex = dev->ifindex,
+ 		.fc_expires = expires,
+@@ -2408,7 +2430,7 @@ static struct fib6_info *addrconf_get_prefix_route(const struct in6_addr *pfx,
+ 	struct fib6_node *fn;
+ 	struct fib6_info *rt = NULL;
+ 	struct fib6_table *table;
+-	u32 tb_id = l3mdev_fib_table(dev) ? : RT6_TABLE_PREFIX;
++	u32 tb_id = l3mdev_fib_table(dev) ? : addrconf_rt_table(dev, RT6_TABLE_PREFIX);
+ 
+ 	table = fib6_get_table(dev_net(dev), tb_id);
+ 	if (!table)
+@@ -6677,6 +6699,13 @@ static const struct ctl_table addrconf_sysctl[] = {
+ 	},
+ #endif
+ #endif
++	{
++		.procname	= "accept_ra_rt_table",
++		.data		= &ipv6_devconf.accept_ra_rt_table,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec,
++	},
+ 	{
+ 		.procname	= "proxy_ndp",
+ 		.data		= &ipv6_devconf.proxy_ndp,
+diff --git a/net/ipv6/af_inet6.c b/net/ipv6/af_inet6.c
+index 14ac1d911..ff76df59f 100644
+--- a/net/ipv6/af_inet6.c
++++ b/net/ipv6/af_inet6.c
+@@ -292,6 +292,8 @@ static int __inet6_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len,
+ 		return -EINVAL;
+ 
+ 	snum = ntohs(addr->sin6_port);
++	if (snum && inet_is_local_unbindable_port(net, snum))
++		return -EPERM;
+ 	if (snum && snum < inet_prot_sock(net) &&
+ 	    !ns_capable(net->user_ns, CAP_NET_BIND_SERVICE))
+ 		return -EACCES;
+diff --git a/net/ipv6/ndisc.c b/net/ipv6/ndisc.c
+index 53caf59c5..945ef37ea 100644
+--- a/net/ipv6/ndisc.c
++++ b/net/ipv6/ndisc.c
+@@ -197,6 +197,7 @@ static inline int ndisc_is_useropt(const struct net_device *dev,
+ 	return opt->nd_opt_type == ND_OPT_RDNSS ||
+ 		opt->nd_opt_type == ND_OPT_DNSSL ||
+ 		opt->nd_opt_type == ND_OPT_CAPTIVE_PORTAL ||
++		opt->nd_opt_type == ND_OPT_PREF64 ||
+ 		ndisc_ops_is_useropt(dev, opt->nd_opt_type);
+ }
+ 
+diff --git a/net/ipv6/route.c b/net/ipv6/route.c
+index 46df6345b..792656cab 100644
+--- a/net/ipv6/route.c
++++ b/net/ipv6/route.c
+@@ -4124,7 +4124,7 @@ static struct fib6_info *rt6_get_route_info(struct net *net,
+ 					   const struct in6_addr *gwaddr,
+ 					   struct net_device *dev)
+ {
+-	u32 tb_id = l3mdev_fib_table(dev) ? : RT6_TABLE_INFO;
++	u32 tb_id = l3mdev_fib_table(dev) ? : addrconf_rt_table(dev, RT6_TABLE_INFO);
+ 	int ifindex = dev->ifindex;
+ 	struct fib6_node *fn;
+ 	struct fib6_info *rt = NULL;
+@@ -4178,7 +4178,7 @@ static struct fib6_info *rt6_add_route_info(struct net *net,
+ 		.fc_nlinfo.nl_net = net,
+ 	};
+ 
+-	cfg.fc_table = l3mdev_fib_table(dev) ? : RT6_TABLE_INFO,
++	cfg.fc_table = l3mdev_fib_table(dev) ? : addrconf_rt_table(dev, RT6_TABLE_INFO),
+ 	cfg.fc_dst = *prefix;
+ 	cfg.fc_gateway = *gwaddr;
+ 
+@@ -4196,7 +4196,7 @@ struct fib6_info *rt6_get_dflt_router(struct net *net,
+ 				     const struct in6_addr *addr,
+ 				     struct net_device *dev)
+ {
+-	u32 tb_id = l3mdev_fib_table(dev) ? : RT6_TABLE_DFLT;
++	u32 tb_id = l3mdev_fib_table(dev) ? : addrconf_rt_table(dev, RT6_TABLE_DFLT);
+ 	struct fib6_info *rt;
+ 	struct fib6_table *table;
+ 
+@@ -4230,7 +4230,7 @@ struct fib6_info *rt6_add_dflt_router(struct net *net,
+ 				     unsigned int pref)
+ {
+ 	struct fib6_config cfg = {
+-		.fc_table	= l3mdev_fib_table(dev) ? : RT6_TABLE_DFLT,
++		.fc_table	= l3mdev_fib_table(dev) ? : addrconf_rt_table(dev, RT6_TABLE_DFLT),
+ 		.fc_metric	= IP6_RT_PRIO_USER,
+ 		.fc_ifindex	= dev->ifindex,
+ 		.fc_flags	= RTF_GATEWAY | RTF_ADDRCONF | RTF_DEFAULT |
+@@ -4255,47 +4255,24 @@ struct fib6_info *rt6_add_dflt_router(struct net *net,
+ 	return rt6_get_dflt_router(net, gwaddr, dev);
+ }
+ 
+-static void __rt6_purge_dflt_routers(struct net *net,
+-				     struct fib6_table *table)
++static int rt6_addrconf_purge(struct fib6_info *rt, void *arg)
+ {
+-	struct fib6_info *rt;
+-
+-restart:
+-	rcu_read_lock();
+-	for_each_fib6_node_rt_rcu(&table->tb6_root) {
+-		struct net_device *dev = fib6_info_nh_dev(rt);
+-		struct inet6_dev *idev = dev ? __in6_dev_get(dev) : NULL;
++	struct net_device *dev = fib6_info_nh_dev(rt);
++	struct inet6_dev *idev = dev ? __in6_dev_get(dev) : NULL;
+ 
+-		if (rt->fib6_flags & (RTF_DEFAULT | RTF_ADDRCONF) &&
+-		    (!idev || idev->cnf.accept_ra != 2) &&
+-		    fib6_info_hold_safe(rt)) {
+-			rcu_read_unlock();
+-			ip6_del_rt(net, rt);
+-			goto restart;
+-		}
++	if (rt->fib6_flags & (RTF_DEFAULT | RTF_ADDRCONF) &&
++	    (!idev || idev->cnf.accept_ra != 2)) {
++		/* Delete this route. See fib6_clean_tree() */
++		return -1;
+ 	}
+-	rcu_read_unlock();
+ 
+-	table->flags &= ~RT6_TABLE_HAS_DFLT_ROUTER;
++	/* Continue walking */
++	return 0;
+ }
+ 
+ void rt6_purge_dflt_routers(struct net *net)
+ {
+-	struct fib6_table *table;
+-	struct hlist_head *head;
+-	unsigned int h;
+-
+-	rcu_read_lock();
+-
+-	for (h = 0; h < FIB6_TABLE_HASHSZ; h++) {
+-		head = &net->ipv6.fib_table_hash[h];
+-		hlist_for_each_entry_rcu(table, head, tb6_hlist) {
+-			if (table->flags & RT6_TABLE_HAS_DFLT_ROUTER)
+-				__rt6_purge_dflt_routers(net, table);
+-		}
+-	}
+-
+-	rcu_read_unlock();
++	fib6_clean_all(net, rt6_addrconf_purge, NULL);
+ }
+ 
+ static void rtmsg_to_fib6_config(struct net *net,
+diff --git a/net/ipv6/udp_offload.c b/net/ipv6/udp_offload.c
+index 64b8f05d6..7a46bd33f 100644
+--- a/net/ipv6/udp_offload.c
++++ b/net/ipv6/udp_offload.c
+@@ -115,8 +115,10 @@ INDIRECT_CALLABLE_SCOPE
+ struct sk_buff *udp6_gro_receive(struct list_head *head, struct sk_buff *skb)
+ {
+ 	struct udphdr *uh = udp_gro_udphdr(skb);
++	struct sk_buff *pp;
++	struct sock *sk;
+ 
+-	if (unlikely(!uh) || !static_branch_unlikely(&udpv6_encap_needed_key))
++	if (unlikely(!uh))
+ 		goto flush;
+ 
+ 	/* Don't bother verifying checksum if we're going to flush anyway. */
+@@ -132,7 +134,11 @@ struct sk_buff *udp6_gro_receive(struct list_head *head, struct sk_buff *skb)
+ 
+ skip:
+ 	NAPI_GRO_CB(skb)->is_ipv6 = 1;
+-	return udp_gro_receive(head, skb, uh, udp6_lib_lookup_skb);
++	rcu_read_lock();
++	sk = static_branch_unlikely(&udpv6_encap_needed_key) ? udp6_lib_lookup_skb(skb, uh->source, uh->dest) : NULL;
++	pp = udp_gro_receive(head, skb, uh, sk);
++	rcu_read_unlock();
++	return pp;
+ 
+ flush:
+ 	NAPI_GRO_CB(skb)->flush = 1;
+@@ -144,6 +150,23 @@ INDIRECT_CALLABLE_SCOPE int udp6_gro_complete(struct sk_buff *skb, int nhoff)
+ 	const struct ipv6hdr *ipv6h = ipv6_hdr(skb);
+ 	struct udphdr *uh = (struct udphdr *)(skb->data + nhoff);
+ 
++	if (NAPI_GRO_CB(skb)->is_flist) {
++		uh->len = htons(skb->len - nhoff);
++
++		skb_shinfo(skb)->gso_type |= (SKB_GSO_FRAGLIST|SKB_GSO_UDP_L4);
++		skb_shinfo(skb)->gso_segs = NAPI_GRO_CB(skb)->count;
++
++		if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
++			if (skb->csum_level < SKB_MAX_CSUM_LEVEL)
++				skb->csum_level++;
++		} else {
++			skb->ip_summed = CHECKSUM_UNNECESSARY;
++			skb->csum_level = 0;
++		}
++
++		return 0;
++	}
++
+ 	if (uh->check)
+ 		uh->check = ~udp_v6_check(skb->len - nhoff, &ipv6h->saddr,
+ 					  &ipv6h->daddr, 0);
+diff --git a/net/mac80211/ieee80211_i.h b/net/mac80211/ieee80211_i.h
+index 05406e9c0..e79cf1f7b 100644
+--- a/net/mac80211/ieee80211_i.h
++++ b/net/mac80211/ieee80211_i.h
+@@ -2109,7 +2109,7 @@ enum {
+ 	IEEE80211_PROBE_FLAG_RANDOM_SN		= BIT(2),
+ };
+ 
+-int ieee80211_build_preq_ies(struct ieee80211_local *local, u8 *buffer,
++int ieee80211_build_preq_ies(struct ieee80211_sub_if_data *sdata, u8 *buffer,
+ 			     size_t buffer_len,
+ 			     struct ieee80211_scan_ies *ie_desc,
+ 			     const u8 *ie, size_t ie_len,
+@@ -2149,6 +2149,8 @@ u8 ieee80211_ie_len_he_cap(struct ieee80211_sub_if_data *sdata, u8 iftype);
+ u8 *ieee80211_ie_build_he_cap(u8 *pos,
+ 			      const struct ieee80211_sta_he_cap *he_cap,
+ 			      u8 *end);
++void ieee80211_ie_build_he_6ghz_cap(struct ieee80211_sub_if_data *sdata,
++				    struct sk_buff *skb);
+ u8 *ieee80211_ie_build_he_oper(u8 *pos);
+ int ieee80211_parse_bitrates(struct cfg80211_chan_def *chandef,
+ 			     const struct ieee80211_supported_band *sband,
+diff --git a/net/mac80211/mesh.c b/net/mac80211/mesh.c
+index 36978a0e5..66e830727 100644
+--- a/net/mac80211/mesh.c
++++ b/net/mac80211/mesh.c
+@@ -587,6 +587,26 @@ int mesh_add_he_oper_ie(struct ieee80211_sub_if_data *sdata,
+ 	return 0;
+ }
+ 
++int mesh_add_he_6ghz_cap_ie(struct ieee80211_sub_if_data *sdata,
++			    struct sk_buff *skb)
++{
++	struct ieee80211_supported_band *sband;
++	const struct ieee80211_sband_iftype_data *iftd;
++
++	sband = ieee80211_get_sband(sdata);
++	if (!sband)
++		return -EINVAL;
++
++	iftd = ieee80211_get_sband_iftype_data(sband,
++					       NL80211_IFTYPE_MESH_POINT);
++	/* The device doesn't support HE in mesh mode or at all */
++	if (!iftd)
++		return 0;
++
++	ieee80211_ie_build_he_6ghz_cap(sdata, skb);
++	return 0;
++}
++
+ static void ieee80211_mesh_path_timer(struct timer_list *t)
+ {
+ 	struct ieee80211_sub_if_data *sdata =
+@@ -766,6 +786,7 @@ ieee80211_mesh_build_beacon(struct ieee80211_if_mesh *ifmsh)
+ 		   2 + sizeof(struct ieee80211_vht_operation) +
+ 		   ie_len_he_cap +
+ 		   2 + 1 + sizeof(struct ieee80211_he_operation) +
++		   2 + 1 + sizeof(struct ieee80211_he_6ghz_capa) +
+ 		   ifmsh->ie_len;
+ 
+ 	bcn = kzalloc(sizeof(*bcn) + head_len + tail_len, GFP_KERNEL);
+@@ -885,6 +906,7 @@ ieee80211_mesh_build_beacon(struct ieee80211_if_mesh *ifmsh)
+ 	    mesh_add_vht_oper_ie(sdata, skb) ||
+ 	    mesh_add_he_cap_ie(sdata, skb, ie_len_he_cap) ||
+ 	    mesh_add_he_oper_ie(sdata, skb) ||
++	    mesh_add_he_6ghz_cap_ie(sdata, skb) ||
+ 	    mesh_add_vendor_ies(sdata, skb))
+ 		goto out_free;
+ 
+diff --git a/net/mac80211/mesh.h b/net/mac80211/mesh.h
+index 953f72075..40492d1bd 100644
+--- a/net/mac80211/mesh.h
++++ b/net/mac80211/mesh.h
+@@ -222,6 +222,8 @@ int mesh_add_he_cap_ie(struct ieee80211_sub_if_data *sdata,
+ 		       struct sk_buff *skb, u8 ie_len);
+ int mesh_add_he_oper_ie(struct ieee80211_sub_if_data *sdata,
+ 			struct sk_buff *skb);
++int mesh_add_he_6ghz_cap_ie(struct ieee80211_sub_if_data *sdata,
++			    struct sk_buff *skb);
+ void mesh_rmc_free(struct ieee80211_sub_if_data *sdata);
+ int mesh_rmc_init(struct ieee80211_sub_if_data *sdata);
+ void ieee80211s_init(void);
+diff --git a/net/mac80211/mesh_plink.c b/net/mac80211/mesh_plink.c
+index 737c5f4db..3aca89c97 100644
+--- a/net/mac80211/mesh_plink.c
++++ b/net/mac80211/mesh_plink.c
+@@ -238,6 +238,7 @@ static int mesh_plink_frame_tx(struct ieee80211_sub_if_data *sdata,
+ 			    2 + sizeof(struct ieee80211_vht_operation) +
+ 			    ie_len_he_cap +
+ 			    2 + 1 + sizeof(struct ieee80211_he_operation) +
++			    2 + 1 + sizeof(struct ieee80211_he_6ghz_capa) +
+ 			    2 + 8 + /* peering IE */
+ 			    sdata->u.mesh.ie_len);
+ 	if (!skb)
+@@ -328,7 +329,8 @@ static int mesh_plink_frame_tx(struct ieee80211_sub_if_data *sdata,
+ 		    mesh_add_vht_cap_ie(sdata, skb) ||
+ 		    mesh_add_vht_oper_ie(sdata, skb) ||
+ 		    mesh_add_he_cap_ie(sdata, skb, ie_len_he_cap) ||
+-		    mesh_add_he_oper_ie(sdata, skb))
++		    mesh_add_he_oper_ie(sdata, skb) ||
++		    mesh_add_he_6ghz_cap_ie(sdata, skb))
+ 			goto free;
+ 	}
+ 
+diff --git a/net/mac80211/mlme.c b/net/mac80211/mlme.c
+index 17a3a1c93..7820615aa 100644
+--- a/net/mac80211/mlme.c
++++ b/net/mac80211/mlme.c
+@@ -633,6 +633,8 @@ static void ieee80211_add_he_ie(struct ieee80211_sub_if_data *sdata,
+ 				      he_cap->he_cap_elem.phy_cap_info);
+ 	pos = skb_put(skb, he_cap_size);
+ 	ieee80211_ie_build_he_cap(pos, he_cap, pos + he_cap_size);
++
++	ieee80211_ie_build_he_6ghz_cap(sdata, skb);
+ }
+ 
+ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
+@@ -699,6 +701,7 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
+ 			2 + 1 + sizeof(struct ieee80211_he_cap_elem) + /* HE */
+ 				sizeof(struct ieee80211_he_mcs_nss_supp) +
+ 				IEEE80211_HE_PPE_THRES_MAX_LEN +
++			2 + 1 + sizeof(struct ieee80211_he_6ghz_capa) +
+ 			assoc_data->ie_len + /* extra IEs */
+ 			(assoc_data->fils_kek_len ? 16 /* AES-SIV */ : 0) +
+ 			9, /* WMM */
+diff --git a/net/mac80211/scan.c b/net/mac80211/scan.c
+index 4d31d9688..b8ac4df11 100644
+--- a/net/mac80211/scan.c
++++ b/net/mac80211/scan.c
+@@ -307,8 +307,9 @@ ieee80211_prepare_scan_chandef(struct cfg80211_chan_def *chandef,
+ }
+ 
+ /* return false if no more work */
+-static bool ieee80211_prep_hw_scan(struct ieee80211_local *local)
++static bool ieee80211_prep_hw_scan(struct ieee80211_sub_if_data *sdata)
+ {
++	struct ieee80211_local *local = sdata->local;
+ 	struct cfg80211_scan_request *req;
+ 	struct cfg80211_chan_def chandef;
+ 	u8 bands_used = 0;
+@@ -355,7 +356,7 @@ static bool ieee80211_prep_hw_scan(struct ieee80211_local *local)
+ 	if (req->flags & NL80211_SCAN_FLAG_MIN_PREQ_CONTENT)
+ 		flags |= IEEE80211_PROBE_FLAG_MIN_CONTENT;
+ 
+-	ielen = ieee80211_build_preq_ies(local,
++	ielen = ieee80211_build_preq_ies(sdata,
+ 					 (u8 *)local->hw_scan_req->req.ie,
+ 					 local->hw_scan_ies_bufsize,
+ 					 &local->hw_scan_req->ies,
+@@ -395,9 +396,12 @@ static void __ieee80211_scan_completed(struct ieee80211_hw *hw, bool aborted)
+ 	if (WARN_ON(!local->scan_req))
+ 		return;
+ 
++	scan_sdata = rcu_dereference_protected(local->scan_sdata,
++					       lockdep_is_held(&local->mtx));
++
+ 	if (hw_scan && !aborted &&
+ 	    !ieee80211_hw_check(&local->hw, SINGLE_SCAN_ON_ALL_BANDS) &&
+-	    ieee80211_prep_hw_scan(local)) {
++	    ieee80211_prep_hw_scan(scan_sdata)) {
+ 		int rc;
+ 
+ 		rc = drv_hw_scan(local,
+@@ -426,9 +430,6 @@ static void __ieee80211_scan_completed(struct ieee80211_hw *hw, bool aborted)
+ 		cfg80211_scan_done(scan_req, &local->scan_info);
+ 	}
+ 	RCU_INIT_POINTER(local->scan_req, NULL);
+-
+-	scan_sdata = rcu_dereference_protected(local->scan_sdata,
+-					       lockdep_is_held(&local->mtx));
+ 	RCU_INIT_POINTER(local->scan_sdata, NULL);
+ 
+ 	local->scanning = 0;
+@@ -770,7 +771,7 @@ static int __ieee80211_start_scan(struct ieee80211_sub_if_data *sdata,
+ 	ieee80211_recalc_idle(local);
+ 
+ 	if (hw_scan) {
+-		WARN_ON(!ieee80211_prep_hw_scan(local));
++		WARN_ON(!ieee80211_prep_hw_scan(sdata));
+ 		rc = drv_hw_scan(local, sdata, local->hw_scan_req);
+ 	} else {
+ 		rc = ieee80211_start_sw_scan(local, sdata);
+@@ -1267,7 +1268,7 @@ int __ieee80211_request_sched_scan_start(struct ieee80211_sub_if_data *sdata,
+ 
+ 	ieee80211_prepare_scan_chandef(&chandef, req->scan_width);
+ 
+-	ieee80211_build_preq_ies(local, ie, num_bands * iebufsz,
++	ieee80211_build_preq_ies(sdata, ie, num_bands * iebufsz,
+ 				 &sched_scan_ies, req->ie,
+ 				 req->ie_len, bands_used, rate_masks, &chandef,
+ 				 flags);
+diff --git a/net/mac80211/util.c b/net/mac80211/util.c
+index decd46b38..9fdee728f 100644
+--- a/net/mac80211/util.c
++++ b/net/mac80211/util.c
+@@ -1630,7 +1630,20 @@ void ieee80211_send_deauth_disassoc(struct ieee80211_sub_if_data *sdata,
+ 	}
+ }
+ 
+-static int ieee80211_build_preq_ies_band(struct ieee80211_local *local,
++static u8 *ieee80211_write_he_6ghz_cap(u8 *pos, __le16 cap, u8 *end)
++{
++	if ((end - pos) < 5)
++		return pos;
++
++	*pos++ = WLAN_EID_EXTENSION;
++	*pos++ = 1 + sizeof(cap);
++	*pos++ = WLAN_EID_EXT_HE_6GHZ_CAPA;
++	memcpy(pos, &cap, sizeof(cap));
++
++	return pos + 2;
++}
++
++static int ieee80211_build_preq_ies_band(struct ieee80211_sub_if_data *sdata,
+ 					 u8 *buffer, size_t buffer_len,
+ 					 const u8 *ie, size_t ie_len,
+ 					 enum nl80211_band band,
+@@ -1638,6 +1651,7 @@ static int ieee80211_build_preq_ies_band(struct ieee80211_local *local,
+ 					 struct cfg80211_chan_def *chandef,
+ 					 size_t *offset, u32 flags)
+ {
++	struct ieee80211_local *local = sdata->local;
+ 	struct ieee80211_supported_band *sband;
+ 	const struct ieee80211_sta_he_cap *he_cap;
+ 	u8 *pos = buffer, *end = buffer + buffer_len;
+@@ -1815,6 +1829,14 @@ static int ieee80211_build_preq_ies_band(struct ieee80211_local *local,
+ 		pos = ieee80211_ie_build_he_cap(pos, he_cap, end);
+ 		if (!pos)
+ 			goto out_err;
++
++		if (sband->band == NL80211_BAND_6GHZ) {
++			enum nl80211_iftype iftype =
++				ieee80211_vif_type_p2p(&sdata->vif);
++			__le16 cap = ieee80211_get_he_6ghz_capa(sband, iftype);
++
++			pos = ieee80211_write_he_6ghz_cap(pos, cap, end);
++		}
+ 	}
+ 
+ 	/*
+@@ -1829,7 +1851,7 @@ static int ieee80211_build_preq_ies_band(struct ieee80211_local *local,
+ 	return pos - buffer;
+ }
+ 
+-int ieee80211_build_preq_ies(struct ieee80211_local *local, u8 *buffer,
++int ieee80211_build_preq_ies(struct ieee80211_sub_if_data *sdata, u8 *buffer,
+ 			     size_t buffer_len,
+ 			     struct ieee80211_scan_ies *ie_desc,
+ 			     const u8 *ie, size_t ie_len,
+@@ -1844,7 +1866,7 @@ int ieee80211_build_preq_ies(struct ieee80211_local *local, u8 *buffer,
+ 
+ 	for (i = 0; i < NUM_NL80211_BANDS; i++) {
+ 		if (bands_used & BIT(i)) {
+-			pos += ieee80211_build_preq_ies_band(local,
++			pos += ieee80211_build_preq_ies_band(sdata,
+ 							     buffer + pos,
+ 							     buffer_len - pos,
+ 							     ie, ie_len, i,
+@@ -1906,7 +1928,7 @@ struct sk_buff *ieee80211_build_probe_req(struct ieee80211_sub_if_data *sdata,
+ 		return NULL;
+ 
+ 	rate_masks[chan->band] = ratemask;
+-	ies_len = ieee80211_build_preq_ies(local, skb_tail_pointer(skb),
++	ies_len = ieee80211_build_preq_ies(sdata, skb_tail_pointer(skb),
+ 					   skb_tailroom(skb), &dummy_ie_desc,
+ 					   ie, ie_len, BIT(chan->band),
+ 					   rate_masks, &chandef, flags);
+@@ -2806,6 +2828,54 @@ u8 *ieee80211_ie_build_he_cap(u8 *pos,
+ 	return pos;
+ }
+ 
++void ieee80211_ie_build_he_6ghz_cap(struct ieee80211_sub_if_data *sdata,
++				    struct sk_buff *skb)
++{
++	struct ieee80211_supported_band *sband;
++	const struct ieee80211_sband_iftype_data *iftd;
++	enum nl80211_iftype iftype = ieee80211_vif_type_p2p(&sdata->vif);
++	u8 *pos;
++	u16 cap;
++
++	sband = ieee80211_get_sband(sdata);
++	if (!sband)
++		return;
++
++	iftd = ieee80211_get_sband_iftype_data(sband, iftype);
++	if (WARN_ON(!iftd))
++		return;
++
++	/* Check for device HE 6 GHz capability before adding element */
++	if (!iftd->he_6ghz_capa.capa)
++		return;
++
++	cap = le16_to_cpu(iftd->he_6ghz_capa.capa);
++	cap &= ~IEEE80211_HE_6GHZ_CAP_SM_PS;
++
++	switch (sdata->smps_mode) {
++	case IEEE80211_SMPS_AUTOMATIC:
++	case IEEE80211_SMPS_NUM_MODES:
++		WARN_ON(1);
++		/* fall through */
++	case IEEE80211_SMPS_OFF:
++		cap |= u16_encode_bits(WLAN_HT_CAP_SM_PS_DISABLED,
++				       IEEE80211_HE_6GHZ_CAP_SM_PS);
++		break;
++	case IEEE80211_SMPS_STATIC:
++		cap |= u16_encode_bits(WLAN_HT_CAP_SM_PS_STATIC,
++				       IEEE80211_HE_6GHZ_CAP_SM_PS);
++		break;
++	case IEEE80211_SMPS_DYNAMIC:
++		cap |= u16_encode_bits(WLAN_HT_CAP_SM_PS_DYNAMIC,
++				       IEEE80211_HE_6GHZ_CAP_SM_PS);
++		break;
++	}
++
++	pos = skb_put(skb, 2 + 1 + sizeof(cap));
++	ieee80211_write_he_6ghz_cap(pos, cpu_to_le16(cap),
++				    pos + 2 + 1 + sizeof(cap));
++}
++
+ u8 *ieee80211_ie_build_ht_oper(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
+ 			       const struct cfg80211_chan_def *chandef,
+ 			       u16 prot_mode, bool rifs_mode)
+diff --git a/net/netfilter/Kconfig b/net/netfilter/Kconfig
+index 91efae88e..ea957f78a 100644
+--- a/net/netfilter/Kconfig
++++ b/net/netfilter/Kconfig
+@@ -1484,6 +1484,29 @@ config NETFILTER_XT_MATCH_QUOTA
+ 	  If you want to compile it as a module, say M here and read
+ 	  <file:Documentation/kbuild/modules.rst>.  If unsure, say `N'.
+ 
++config NETFILTER_XT_MATCH_QUOTA2
++	tristate '"quota2" match support'
++	depends on NETFILTER_ADVANCED
++	help
++	  This option adds a `quota2' match, which allows to match on a
++	  byte counter correctly and not per CPU.
++	  It allows naming the quotas.
++	  This is based on http://xtables-addons.git.sourceforge.net
++
++	  If you want to compile it as a module, say M here and read
++	  <file:Documentation/kbuild/modules.txt>.  If unsure, say `N'.
++
++config NETFILTER_XT_MATCH_QUOTA2_LOG
++	bool '"quota2" Netfilter LOG support'
++	depends on NETFILTER_XT_MATCH_QUOTA2
++	default n
++	help
++	  This option allows `quota2' to log ONCE when a quota limit
++	  is passed. It logs via NETLINK using the NETLINK_NFLOG family.
++	  It logs similarly to how ipt_ULOG would without data.
++
++	  If unsure, say `N'.
++
+ config NETFILTER_XT_MATCH_RATEEST
+ 	tristate '"rateest" match support'
+ 	depends on NETFILTER_ADVANCED
+diff --git a/net/netfilter/Makefile b/net/netfilter/Makefile
+index 4fc075b61..f3e1af382 100644
+--- a/net/netfilter/Makefile
++++ b/net/netfilter/Makefile
+@@ -192,6 +192,7 @@ obj-$(CONFIG_NETFILTER_XT_MATCH_PHYSDEV) += xt_physdev.o
+ obj-$(CONFIG_NETFILTER_XT_MATCH_PKTTYPE) += xt_pkttype.o
+ obj-$(CONFIG_NETFILTER_XT_MATCH_POLICY) += xt_policy.o
+ obj-$(CONFIG_NETFILTER_XT_MATCH_QUOTA) += xt_quota.o
++obj-$(CONFIG_NETFILTER_XT_MATCH_QUOTA2) += xt_quota2.o
+ obj-$(CONFIG_NETFILTER_XT_MATCH_RATEEST) += xt_rateest.o
+ obj-$(CONFIG_NETFILTER_XT_MATCH_REALM) += xt_realm.o
+ obj-$(CONFIG_NETFILTER_XT_MATCH_RECENT) += xt_recent.o
+diff --git a/net/netfilter/nf_conntrack_core.c b/net/netfilter/nf_conntrack_core.c
+index 200cdad3f..3d4cf16dc 100644
+--- a/net/netfilter/nf_conntrack_core.c
++++ b/net/netfilter/nf_conntrack_core.c
+@@ -33,6 +33,7 @@
+ #include <linux/mm.h>
+ #include <linux/nsproxy.h>
+ #include <linux/rculist_nulls.h>
++#include <trace/hooks/net.h>
+ 
+ #include <net/netfilter/nf_conntrack.h>
+ #include <net/netfilter/nf_conntrack_l4proto.h>
+@@ -1387,6 +1388,8 @@ __nf_conntrack_alloc(struct net *net,
+ 
+ 	nf_ct_zone_add(ct, zone);
+ 
++	trace_android_rvh_nf_conn_alloc(ct);
++
+ 	/* Because we use RCU lookups, we set ct_general.use to zero before
+ 	 * this is inserted in any list.
+ 	 */
+@@ -1420,6 +1423,7 @@ void nf_conntrack_free(struct nf_conn *ct)
+ 	nf_ct_ext_free(ct);
+ 	kmem_cache_free(nf_conntrack_cachep, ct);
+ 	smp_mb__before_atomic();
++	trace_android_rvh_nf_conn_free(ct);
+ 	atomic_dec(&net->ct.count);
+ }
+ EXPORT_SYMBOL_GPL(nf_conntrack_free);
+diff --git a/net/netfilter/xt_IDLETIMER.c b/net/netfilter/xt_IDLETIMER.c
+index f56d3ed93..a7e0b7fc4 100644
+--- a/net/netfilter/xt_IDLETIMER.c
++++ b/net/netfilter/xt_IDLETIMER.c
+@@ -6,6 +6,7 @@
+  * After timer expires a kevent will be sent.
+  *
+  * Copyright (C) 2004, 2010 Nokia Corporation
++ *
+  * Written by Timo Teras <ext-timo.teras@nokia.com>
+  *
+  * Converted to x_tables and reworked for upstream inclusion
+@@ -25,8 +26,17 @@
+ #include <linux/netfilter/xt_IDLETIMER.h>
+ #include <linux/kdev_t.h>
+ #include <linux/kobject.h>
++#include <linux/skbuff.h>
+ #include <linux/workqueue.h>
+ #include <linux/sysfs.h>
++#include <linux/rtc.h>
++#include <linux/time.h>
++#include <linux/math64.h>
++#include <linux/suspend.h>
++#include <linux/notifier.h>
++#include <net/net_namespace.h>
++#include <net/sock.h>
++#include <net/inet_sock.h>
+ 
+ struct idletimer_tg {
+ 	struct list_head entry;
+@@ -36,14 +46,112 @@ struct idletimer_tg {
+ 	struct kobject *kobj;
+ 	struct device_attribute attr;
+ 
++	struct timespec64 delayed_timer_trigger;
++	struct timespec64 last_modified_timer;
++	struct timespec64 last_suspend_time;
++	struct notifier_block pm_nb;
++
++	int timeout;
+ 	unsigned int refcnt;
++	bool work_pending;
++	bool send_nl_msg;
++	bool active;
++	uid_t uid;
++	bool suspend_time_valid;
+ };
+ 
+ static LIST_HEAD(idletimer_tg_list);
+ static DEFINE_MUTEX(list_mutex);
++static DEFINE_SPINLOCK(timestamp_lock);
+ 
+ static struct kobject *idletimer_tg_kobj;
+ 
++static bool check_for_delayed_trigger(struct idletimer_tg *timer,
++		struct timespec64 *ts)
++{
++	bool state;
++	struct timespec64 temp;
++	spin_lock_bh(&timestamp_lock);
++	timer->work_pending = false;
++	if ((ts->tv_sec - timer->last_modified_timer.tv_sec) > timer->timeout ||
++			timer->delayed_timer_trigger.tv_sec != 0) {
++		state = false;
++		temp.tv_sec = timer->timeout;
++		temp.tv_nsec = 0;
++		if (timer->delayed_timer_trigger.tv_sec != 0) {
++			temp = timespec64_add(timer->delayed_timer_trigger,
++					      temp);
++			ts->tv_sec = temp.tv_sec;
++			ts->tv_nsec = temp.tv_nsec;
++			timer->delayed_timer_trigger.tv_sec = 0;
++			timer->work_pending = true;
++			schedule_work(&timer->work);
++		} else {
++			temp = timespec64_add(timer->last_modified_timer, temp);
++			ts->tv_sec = temp.tv_sec;
++			ts->tv_nsec = temp.tv_nsec;
++		}
++	} else {
++		state = timer->active;
++	}
++	spin_unlock_bh(&timestamp_lock);
++	return state;
++}
++
++static void notify_netlink_uevent(const char *iface, struct idletimer_tg *timer)
++{
++	char iface_msg[NLMSG_MAX_SIZE];
++	char state_msg[NLMSG_MAX_SIZE];
++	char timestamp_msg[NLMSG_MAX_SIZE];
++	char uid_msg[NLMSG_MAX_SIZE];
++	char *envp[] = { iface_msg, state_msg, timestamp_msg, uid_msg, NULL };
++	int res;
++	struct timespec64 ts;
++	uint64_t time_ns;
++	bool state;
++
++	res = snprintf(iface_msg, NLMSG_MAX_SIZE, "INTERFACE=%s",
++		       iface);
++	if (NLMSG_MAX_SIZE <= res) {
++		pr_err("message too long (%d)", res);
++		return;
++	}
++
++	ts = ktime_to_timespec64(ktime_get_boottime());
++	state = check_for_delayed_trigger(timer, &ts);
++	res = snprintf(state_msg, NLMSG_MAX_SIZE, "STATE=%s",
++			state ? "active" : "inactive");
++
++	if (NLMSG_MAX_SIZE <= res) {
++		pr_err("message too long (%d)", res);
++		return;
++	}
++
++	if (state) {
++		res = snprintf(uid_msg, NLMSG_MAX_SIZE, "UID=%u", timer->uid);
++		if (NLMSG_MAX_SIZE <= res)
++			pr_err("message too long (%d)", res);
++	} else {
++		res = snprintf(uid_msg, NLMSG_MAX_SIZE, "UID=");
++		if (NLMSG_MAX_SIZE <= res)
++			pr_err("message too long (%d)", res);
++	}
++
++	time_ns = timespec64_to_ns(&ts);
++	res = snprintf(timestamp_msg, NLMSG_MAX_SIZE, "TIME_NS=%llu", time_ns);
++	if (NLMSG_MAX_SIZE <= res) {
++		timestamp_msg[0] = '\0';
++		pr_err("message too long (%d)", res);
++	}
++
++	pr_debug("putting nlmsg: <%s> <%s> <%s> <%s>\n", iface_msg, state_msg,
++		 timestamp_msg, uid_msg);
++	kobject_uevent_env(idletimer_tg_kobj, KOBJ_CHANGE, envp);
++	return;
++
++
++}
++
+ static
+ struct idletimer_tg *__idletimer_tg_find_by_label(const char *label)
+ {
+@@ -62,6 +170,7 @@ static ssize_t idletimer_tg_show(struct device *dev,
+ {
+ 	struct idletimer_tg *timer;
+ 	unsigned long expires = 0;
++	unsigned long now = jiffies;
+ 
+ 	mutex_lock(&list_mutex);
+ 
+@@ -71,11 +180,15 @@ static ssize_t idletimer_tg_show(struct device *dev,
+ 
+ 	mutex_unlock(&list_mutex);
+ 
+-	if (time_after(expires, jiffies))
++	if (time_after(expires, now))
+ 		return sprintf(buf, "%u\n",
+-			       jiffies_to_msecs(expires - jiffies) / 1000);
++			       jiffies_to_msecs(expires - now) / 1000);
+ 
+-	return sprintf(buf, "0\n");
++	if (timer->send_nl_msg)
++		return sprintf(buf, "0 %d\n",
++			jiffies_to_msecs(now - expires) / 1000);
++	else
++		return sprintf(buf, "0\n");
+ }
+ 
+ static void idletimer_tg_work(struct work_struct *work)
+@@ -84,6 +197,9 @@ static void idletimer_tg_work(struct work_struct *work)
+ 						  work);
+ 
+ 	sysfs_notify(idletimer_tg_kobj, NULL, timer->attr.attr.name);
++
++	if (timer->send_nl_msg)
++		notify_netlink_uevent(timer->attr.attr.name, timer);
+ }
+ 
+ static void idletimer_tg_expired(struct timer_list *t)
+@@ -91,8 +207,61 @@ static void idletimer_tg_expired(struct timer_list *t)
+ 	struct idletimer_tg *timer = from_timer(timer, t, timer);
+ 
+ 	pr_debug("timer %s expired\n", timer->attr.attr.name);
+-
++	spin_lock_bh(&timestamp_lock);
++	timer->active = false;
++	timer->work_pending = true;
+ 	schedule_work(&timer->work);
++	spin_unlock_bh(&timestamp_lock);
++}
++
++static int idletimer_resume(struct notifier_block *notifier,
++		unsigned long pm_event, void *unused)
++{
++	struct timespec64 ts;
++	unsigned long time_diff, now = jiffies;
++	struct idletimer_tg *timer = container_of(notifier,
++			struct idletimer_tg, pm_nb);
++	if (!timer)
++		return NOTIFY_DONE;
++	switch (pm_event) {
++	case PM_SUSPEND_PREPARE:
++		timer->last_suspend_time =
++			ktime_to_timespec64(ktime_get_boottime());
++		timer->suspend_time_valid = true;
++		break;
++	case PM_POST_SUSPEND:
++		if (!timer->suspend_time_valid)
++			break;
++		timer->suspend_time_valid = false;
++
++		spin_lock_bh(&timestamp_lock);
++		if (!timer->active) {
++			spin_unlock_bh(&timestamp_lock);
++			break;
++		}
++		/* since jiffies are not updated when suspended now represents
++		 * the time it would have suspended */
++		if (time_after(timer->timer.expires, now)) {
++			ts = ktime_to_timespec64(ktime_get_boottime());
++			ts = timespec64_sub(ts, timer->last_suspend_time);
++			time_diff = timespec64_to_jiffies(&ts);
++			if (timer->timer.expires > (time_diff + now)) {
++				mod_timer_pending(&timer->timer,
++						(timer->timer.expires - time_diff));
++			} else {
++				del_timer(&timer->timer);
++				timer->timer.expires = 0;
++				timer->active = false;
++				timer->work_pending = true;
++				schedule_work(&timer->work);
++			}
++		}
++		spin_unlock_bh(&timestamp_lock);
++		break;
++	default:
++		break;
++	}
++	return NOTIFY_DONE;
+ }
+ 
+ static int idletimer_check_sysfs_name(const char *name, unsigned int size)
+@@ -115,7 +284,7 @@ static int idletimer_tg_create(struct idletimer_tg_info *info)
+ {
+ 	int ret;
+ 
+-	info->timer = kmalloc(sizeof(*info->timer), GFP_KERNEL);
++	info->timer = kzalloc(sizeof(*info->timer), GFP_KERNEL);
+ 	if (!info->timer) {
+ 		ret = -ENOMEM;
+ 		goto out;
+@@ -144,6 +313,22 @@ static int idletimer_tg_create(struct idletimer_tg_info *info)
+ 
+ 	timer_setup(&info->timer->timer, idletimer_tg_expired, 0);
+ 	info->timer->refcnt = 1;
++	info->timer->send_nl_msg = (info->send_nl_msg == 0) ? false : true;
++	info->timer->active = true;
++	info->timer->timeout = info->timeout;
++
++	info->timer->delayed_timer_trigger.tv_sec = 0;
++	info->timer->delayed_timer_trigger.tv_nsec = 0;
++	info->timer->work_pending = false;
++	info->timer->uid = 0;
++	info->timer->last_modified_timer =
++		ktime_to_timespec64(ktime_get_boottime());
++
++	info->timer->pm_nb.notifier_call = idletimer_resume;
++	ret = register_pm_notifier(&info->timer->pm_nb);
++	if (ret)
++		printk(KERN_WARNING "[%s] Failed to register pm notifier %d\n",
++				__func__, ret);
+ 
+ 	INIT_WORK(&info->timer->work, idletimer_tg_work);
+ 
+@@ -160,6 +345,42 @@ static int idletimer_tg_create(struct idletimer_tg_info *info)
+ 	return ret;
+ }
+ 
++static void reset_timer(const struct idletimer_tg_info *info,
++			struct sk_buff *skb)
++{
++	unsigned long now = jiffies;
++	struct idletimer_tg *timer = info->timer;
++	bool timer_prev;
++
++	spin_lock_bh(&timestamp_lock);
++	timer_prev = timer->active;
++	timer->active = true;
++	/* timer_prev is used to guard overflow problem in time_before*/
++	if (!timer_prev || time_before(timer->timer.expires, now)) {
++		pr_debug("Starting Checkentry timer (Expired, Jiffies): %lu, %lu\n",
++				timer->timer.expires, now);
++
++		/* Stores the uid resposible for waking up the radio */
++		if (skb && (skb->sk)) {
++			timer->uid = from_kuid_munged(current_user_ns(),
++					sock_i_uid(skb_to_full_sk(skb)));
++		}
++
++		/* checks if there is a pending inactive notification*/
++		if (timer->work_pending)
++			timer->delayed_timer_trigger = timer->last_modified_timer;
++		else {
++			timer->work_pending = true;
++			schedule_work(&timer->work);
++		}
++	}
++
++	timer->last_modified_timer = ktime_to_timespec64(ktime_get_boottime());
++	mod_timer(&timer->timer,
++			msecs_to_jiffies(info->timeout * 1000) + now);
++	spin_unlock_bh(&timestamp_lock);
++}
++
+ /*
+  * The actual xt_tables plugin.
+  */
+@@ -167,13 +388,23 @@ static unsigned int idletimer_tg_target(struct sk_buff *skb,
+ 					 const struct xt_action_param *par)
+ {
+ 	const struct idletimer_tg_info *info = par->targinfo;
++	unsigned long now = jiffies;
+ 
+ 	pr_debug("resetting timer %s, timeout period %u\n",
+ 		 info->label, info->timeout);
+ 
+-	mod_timer(&info->timer->timer,
+-		  msecs_to_jiffies(info->timeout * 1000) + jiffies);
++	BUG_ON(!info->timer);
++
++	info->timer->active = true;
++
++	if (time_before(info->timer->timer.expires, now)) {
++		schedule_work(&info->timer->work);
++		pr_debug("Starting timer %s (Expired, Jiffies): %lu, %lu\n",
++			 info->label, info->timer->timer.expires, now);
++	}
+ 
++	/* TODO: Avoid modifying timers on each packet */
++	reset_timer(info, skb);
+ 	return XT_CONTINUE;
+ }
+ 
+@@ -182,7 +413,7 @@ static int idletimer_tg_checkentry(const struct xt_tgchk_param *par)
+ 	struct idletimer_tg_info *info = par->targinfo;
+ 	int ret;
+ 
+-	pr_debug("checkentry targinfo%s\n", info->label);
++	pr_debug("checkentry targinfo %s\n", info->label);
+ 
+ 	if (info->timeout == 0) {
+ 		pr_debug("timeout value is zero\n");
+@@ -204,9 +435,7 @@ static int idletimer_tg_checkentry(const struct xt_tgchk_param *par)
+ 	info->timer = __idletimer_tg_find_by_label(info->label);
+ 	if (info->timer) {
+ 		info->timer->refcnt++;
+-		mod_timer(&info->timer->timer,
+-			  msecs_to_jiffies(info->timeout * 1000) + jiffies);
+-
++		reset_timer(info, NULL);
+ 		pr_debug("increased refcnt of timer %s to %u\n",
+ 			 info->label, info->timer->refcnt);
+ 	} else {
+@@ -219,6 +448,7 @@ static int idletimer_tg_checkentry(const struct xt_tgchk_param *par)
+ 	}
+ 
+ 	mutex_unlock(&list_mutex);
++
+ 	return 0;
+ }
+ 
+@@ -235,13 +465,14 @@ static void idletimer_tg_destroy(const struct xt_tgdtor_param *par)
+ 
+ 		list_del(&info->timer->entry);
+ 		del_timer_sync(&info->timer->timer);
+-		cancel_work_sync(&info->timer->work);
+ 		sysfs_remove_file(idletimer_tg_kobj, &info->timer->attr.attr);
++		unregister_pm_notifier(&info->timer->pm_nb);
++		cancel_work_sync(&info->timer->work);
+ 		kfree(info->timer->attr.attr.name);
+ 		kfree(info->timer);
+ 	} else {
+ 		pr_debug("decreased refcnt of timer %s to %u\n",
+-			 info->label, info->timer->refcnt);
++		info->label, info->timer->refcnt);
+ 	}
+ 
+ 	mutex_unlock(&list_mutex);
+@@ -249,6 +480,7 @@ static void idletimer_tg_destroy(const struct xt_tgdtor_param *par)
+ 
+ static struct xt_target idletimer_tg __read_mostly = {
+ 	.name		= "IDLETIMER",
++	.revision	= 1,
+ 	.family		= NFPROTO_UNSPEC,
+ 	.target		= idletimer_tg_target,
+ 	.targetsize     = sizeof(struct idletimer_tg_info),
+@@ -315,3 +547,4 @@ MODULE_DESCRIPTION("Xtables: idle time monitor");
+ MODULE_LICENSE("GPL v2");
+ MODULE_ALIAS("ipt_IDLETIMER");
+ MODULE_ALIAS("ip6t_IDLETIMER");
++MODULE_ALIAS("arpt_IDLETIMER");
+diff --git a/net/netfilter/xt_quota2.c b/net/netfilter/xt_quota2.c
+new file mode 100644
+index 000000000..c9a06d065
+--- /dev/null
++++ b/net/netfilter/xt_quota2.c
+@@ -0,0 +1,400 @@
++/*
++ * xt_quota2 - enhanced xt_quota that can count upwards and in packets
++ * as a minimal accounting match.
++ * by Jan Engelhardt <jengelh@medozas.de>, 2008
++ *
++ * Originally based on xt_quota.c:
++ * 	netfilter module to enforce network quotas
++ * 	Sam Johnston <samj@samj.net>
++ *
++ *	This program is free software; you can redistribute it and/or modify
++ *	it under the terms of the GNU General Public License; either
++ *	version 2 of the License, as published by the Free Software Foundation.
++ */
++#include <linux/list.h>
++#include <linux/module.h>
++#include <linux/proc_fs.h>
++#include <linux/skbuff.h>
++#include <linux/spinlock.h>
++#include <asm/atomic.h>
++#include <net/netlink.h>
++
++#include <linux/netfilter/x_tables.h>
++#include <linux/netfilter/xt_quota2.h>
++
++#ifdef CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG
++/* For compatibility, these definitions are copied from the
++ * deprecated header file <linux/netfilter_ipv4/ipt_ULOG.h> */
++#define ULOG_MAC_LEN	80
++#define ULOG_PREFIX_LEN	32
++
++/* Format of the ULOG packets passed through netlink */
++typedef struct ulog_packet_msg {
++	unsigned long mark;
++	long timestamp_sec;
++	long timestamp_usec;
++	unsigned int hook;
++	char indev_name[IFNAMSIZ];
++	char outdev_name[IFNAMSIZ];
++	size_t data_len;
++	char prefix[ULOG_PREFIX_LEN];
++	unsigned char mac_len;
++	unsigned char mac[ULOG_MAC_LEN];
++	unsigned char payload[0];
++} ulog_packet_msg_t;
++#endif
++
++/**
++ * @lock:	lock to protect quota writers from each other
++ */
++struct xt_quota_counter {
++	u_int64_t quota;
++	spinlock_t lock;
++	struct list_head list;
++	atomic_t ref;
++	char name[sizeof(((struct xt_quota_mtinfo2 *)NULL)->name)];
++	struct proc_dir_entry *procfs_entry;
++};
++
++#ifdef CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG
++/* Harald's favorite number +1 :D From ipt_ULOG.C */
++static int qlog_nl_event = 112;
++module_param_named(event_num, qlog_nl_event, uint, S_IRUGO | S_IWUSR);
++MODULE_PARM_DESC(event_num,
++		 "Event number for NETLINK_NFLOG message. 0 disables log."
++		 "111 is what ipt_ULOG uses.");
++static struct sock *nflognl;
++#endif
++
++static LIST_HEAD(counter_list);
++static DEFINE_SPINLOCK(counter_list_lock);
++
++static struct proc_dir_entry *proc_xt_quota;
++static unsigned int quota_list_perms = S_IRUGO | S_IWUSR;
++static kuid_t quota_list_uid = KUIDT_INIT(0);
++static kgid_t quota_list_gid = KGIDT_INIT(0);
++module_param_named(perms, quota_list_perms, uint, S_IRUGO | S_IWUSR);
++
++#ifdef CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG
++static void quota2_log(unsigned int hooknum,
++		       const struct sk_buff *skb,
++		       const struct net_device *in,
++		       const struct net_device *out,
++		       const char *prefix)
++{
++	ulog_packet_msg_t *pm;
++	struct sk_buff *log_skb;
++	size_t size;
++	struct nlmsghdr *nlh;
++
++	if (!qlog_nl_event)
++		return;
++
++	size = NLMSG_SPACE(sizeof(*pm));
++	size = max(size, (size_t)NLMSG_GOODSIZE);
++	log_skb = alloc_skb(size, GFP_ATOMIC);
++	if (!log_skb) {
++		pr_err("xt_quota2: cannot alloc skb for logging\n");
++		return;
++	}
++
++	nlh = nlmsg_put(log_skb, /*pid*/0, /*seq*/0, qlog_nl_event,
++			sizeof(*pm), 0);
++	if (!nlh) {
++		pr_err("xt_quota2: nlmsg_put failed\n");
++		kfree_skb(log_skb);
++		return;
++	}
++	pm = nlmsg_data(nlh);
++	if (skb->tstamp == 0)
++		__net_timestamp((struct sk_buff *)skb);
++	pm->data_len = 0;
++	pm->hook = hooknum;
++	if (prefix != NULL)
++		strlcpy(pm->prefix, prefix, sizeof(pm->prefix));
++	else
++		*(pm->prefix) = '\0';
++	if (in)
++		strlcpy(pm->indev_name, in->name, sizeof(pm->indev_name));
++	else
++		pm->indev_name[0] = '\0';
++
++	if (out)
++		strlcpy(pm->outdev_name, out->name, sizeof(pm->outdev_name));
++	else
++		pm->outdev_name[0] = '\0';
++
++	NETLINK_CB(log_skb).dst_group = 1;
++	pr_debug("throwing 1 packets to netlink group 1\n");
++	netlink_broadcast(nflognl, log_skb, 0, 1, GFP_ATOMIC);
++}
++#else
++static void quota2_log(unsigned int hooknum,
++		       const struct sk_buff *skb,
++		       const struct net_device *in,
++		       const struct net_device *out,
++		       const char *prefix)
++{
++}
++#endif  /* if+else CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG */
++
++static ssize_t quota_proc_read(struct file *file, char __user *buf,
++			   size_t size, loff_t *ppos)
++{
++	struct xt_quota_counter *e = PDE_DATA(file_inode(file));
++	char tmp[24];
++	size_t tmp_size;
++
++	spin_lock_bh(&e->lock);
++	tmp_size = scnprintf(tmp, sizeof(tmp), "%llu\n", e->quota);
++	spin_unlock_bh(&e->lock);
++	return simple_read_from_buffer(buf, size, ppos, tmp, tmp_size);
++}
++
++static ssize_t quota_proc_write(struct file *file, const char __user *input,
++                            size_t size, loff_t *ppos)
++{
++	struct xt_quota_counter *e = PDE_DATA(file_inode(file));
++	char buf[sizeof("18446744073709551616")];
++
++	if (size > sizeof(buf))
++		size = sizeof(buf);
++	if (copy_from_user(buf, input, size) != 0)
++		return -EFAULT;
++	buf[sizeof(buf)-1] = '\0';
++
++	spin_lock_bh(&e->lock);
++	e->quota = simple_strtoull(buf, NULL, 0);
++	spin_unlock_bh(&e->lock);
++	return size;
++}
++
++static const struct file_operations q2_counter_fops = {
++	.read		= quota_proc_read,
++	.write		= quota_proc_write,
++	.llseek		= default_llseek,
++};
++
++static struct xt_quota_counter *
++q2_new_counter(const struct xt_quota_mtinfo2 *q, bool anon)
++{
++	struct xt_quota_counter *e;
++	unsigned int size;
++
++	/* Do not need all the procfs things for anonymous counters. */
++	size = anon ? offsetof(typeof(*e), list) : sizeof(*e);
++	e = kmalloc(size, GFP_KERNEL);
++	if (e == NULL)
++		return NULL;
++
++	e->quota = q->quota;
++	spin_lock_init(&e->lock);
++	if (!anon) {
++		INIT_LIST_HEAD(&e->list);
++		atomic_set(&e->ref, 1);
++		strlcpy(e->name, q->name, sizeof(e->name));
++	}
++	return e;
++}
++
++/**
++ * q2_get_counter - get ref to counter or create new
++ * @name:	name of counter
++ */
++static struct xt_quota_counter *
++q2_get_counter(const struct xt_quota_mtinfo2 *q)
++{
++	struct proc_dir_entry *p;
++	struct xt_quota_counter *e = NULL;
++	struct xt_quota_counter *new_e;
++
++	if (*q->name == '\0')
++		return q2_new_counter(q, true);
++
++	/* No need to hold a lock while getting a new counter */
++	new_e = q2_new_counter(q, false);
++	if (new_e == NULL)
++		goto out;
++
++	spin_lock_bh(&counter_list_lock);
++	list_for_each_entry(e, &counter_list, list)
++		if (strcmp(e->name, q->name) == 0) {
++			atomic_inc(&e->ref);
++			spin_unlock_bh(&counter_list_lock);
++			kfree(new_e);
++			pr_debug("xt_quota2: old counter name=%s", e->name);
++			return e;
++		}
++	e = new_e;
++	pr_debug("xt_quota2: new_counter name=%s", e->name);
++	list_add_tail(&e->list, &counter_list);
++	/* The entry having a refcount of 1 is not directly destructible.
++	 * This func has not yet returned the new entry, thus iptables
++	 * has not references for destroying this entry.
++	 * For another rule to try to destroy it, it would 1st need for this
++	 * func* to be re-invoked, acquire a new ref for the same named quota.
++	 * Nobody will access the e->procfs_entry either.
++	 * So release the lock. */
++	spin_unlock_bh(&counter_list_lock);
++
++	/* create_proc_entry() is not spin_lock happy */
++	p = e->procfs_entry = proc_create_data(e->name, quota_list_perms,
++	                      proc_xt_quota, &q2_counter_fops, e);
++
++	if (IS_ERR_OR_NULL(p)) {
++		spin_lock_bh(&counter_list_lock);
++		list_del(&e->list);
++		spin_unlock_bh(&counter_list_lock);
++		goto out;
++	}
++	proc_set_user(p, quota_list_uid, quota_list_gid);
++	return e;
++
++ out:
++	kfree(e);
++	return NULL;
++}
++
++static int quota_mt2_check(const struct xt_mtchk_param *par)
++{
++	struct xt_quota_mtinfo2 *q = par->matchinfo;
++
++	pr_debug("xt_quota2: check() flags=0x%04x", q->flags);
++
++	if (q->flags & ~XT_QUOTA_MASK)
++		return -EINVAL;
++
++	q->name[sizeof(q->name)-1] = '\0';
++	if (*q->name == '.' || strchr(q->name, '/') != NULL) {
++		printk(KERN_ERR "xt_quota.3: illegal name\n");
++		return -EINVAL;
++	}
++
++	q->master = q2_get_counter(q);
++	if (q->master == NULL) {
++		printk(KERN_ERR "xt_quota.3: memory alloc failure\n");
++		return -ENOMEM;
++	}
++
++	return 0;
++}
++
++static void quota_mt2_destroy(const struct xt_mtdtor_param *par)
++{
++	struct xt_quota_mtinfo2 *q = par->matchinfo;
++	struct xt_quota_counter *e = q->master;
++
++	if (*q->name == '\0') {
++		kfree(e);
++		return;
++	}
++
++	spin_lock_bh(&counter_list_lock);
++	if (!atomic_dec_and_test(&e->ref)) {
++		spin_unlock_bh(&counter_list_lock);
++		return;
++	}
++
++	list_del(&e->list);
++	spin_unlock_bh(&counter_list_lock);
++	remove_proc_entry(e->name, proc_xt_quota);
++	kfree(e);
++}
++
++static bool
++quota_mt2(const struct sk_buff *skb, struct xt_action_param *par)
++{
++	struct xt_quota_mtinfo2 *q = (void *)par->matchinfo;
++	struct xt_quota_counter *e = q->master;
++	int charge = (q->flags & XT_QUOTA_PACKET) ? 1 : skb->len;
++	bool no_change = q->flags & XT_QUOTA_NO_CHANGE;
++	bool ret = q->flags & XT_QUOTA_INVERT;
++
++	spin_lock_bh(&e->lock);
++	if (q->flags & XT_QUOTA_GROW) {
++		/*
++		 * While no_change is pointless in "grow" mode, we will
++		 * implement it here simply to have a consistent behavior.
++		 */
++		if (!no_change)
++			e->quota += charge;
++		ret = true; /* note: does not respect inversion (bug??) */
++	} else {
++		if (e->quota > charge) {
++			if (!no_change)
++				e->quota -= charge;
++			ret = !ret;
++		} else if (e->quota) {
++			/* We are transitioning, log that fact. */
++			quota2_log(xt_hooknum(par),
++				   skb,
++				   xt_in(par),
++				   xt_out(par),
++				   q->name);
++			/* we do not allow even small packets from now on */
++			e->quota = 0;
++		}
++	}
++	spin_unlock_bh(&e->lock);
++	return ret;
++}
++
++static struct xt_match quota_mt2_reg[] __read_mostly = {
++	{
++		.name       = "quota2",
++		.revision   = 3,
++		.family     = NFPROTO_IPV4,
++		.checkentry = quota_mt2_check,
++		.match      = quota_mt2,
++		.destroy    = quota_mt2_destroy,
++		.matchsize  = sizeof(struct xt_quota_mtinfo2),
++		.me         = THIS_MODULE,
++	},
++	{
++		.name       = "quota2",
++		.revision   = 3,
++		.family     = NFPROTO_IPV6,
++		.checkentry = quota_mt2_check,
++		.match      = quota_mt2,
++		.destroy    = quota_mt2_destroy,
++		.matchsize  = sizeof(struct xt_quota_mtinfo2),
++		.me         = THIS_MODULE,
++	},
++};
++
++static int __init quota_mt2_init(void)
++{
++	int ret;
++	pr_debug("xt_quota2: init()");
++
++#ifdef CONFIG_NETFILTER_XT_MATCH_QUOTA2_LOG
++	nflognl = netlink_kernel_create(&init_net, NETLINK_NFLOG, NULL);
++	if (!nflognl)
++		return -ENOMEM;
++#endif
++
++	proc_xt_quota = proc_mkdir("xt_quota", init_net.proc_net);
++	if (proc_xt_quota == NULL)
++		return -EACCES;
++
++	ret = xt_register_matches(quota_mt2_reg, ARRAY_SIZE(quota_mt2_reg));
++	if (ret < 0)
++		remove_proc_entry("xt_quota", init_net.proc_net);
++	pr_debug("xt_quota2: init() %d", ret);
++	return ret;
++}
++
++static void __exit quota_mt2_exit(void)
++{
++	xt_unregister_matches(quota_mt2_reg, ARRAY_SIZE(quota_mt2_reg));
++	remove_proc_entry("xt_quota", init_net.proc_net);
++}
++
++module_init(quota_mt2_init);
++module_exit(quota_mt2_exit);
++MODULE_DESCRIPTION("Xtables: countdown quota match; up counter");
++MODULE_AUTHOR("Sam Johnston <samj@samj.net>");
++MODULE_AUTHOR("Jan Engelhardt <jengelh@medozas.de>");
++MODULE_LICENSE("GPL");
++MODULE_ALIAS("ipt_quota2");
++MODULE_ALIAS("ip6t_quota2");
+diff --git a/net/sctp/socket.c b/net/sctp/socket.c
+index 58fe6556c..110755c42 100644
+--- a/net/sctp/socket.c
++++ b/net/sctp/socket.c
+@@ -399,6 +399,9 @@ static int sctp_do_bind(struct sock *sk, union sctp_addr *addr, int len)
+ 		}
+ 	}
+ 
++	if (snum && inet_is_local_unbindable_port(net, snum))
++		return -EPERM;
++
+ 	if (snum && snum < inet_prot_sock(net) &&
+ 	    !ns_capable(net->user_ns, CAP_NET_BIND_SERVICE))
+ 		return -EACCES;
+@@ -1076,6 +1079,8 @@ static int sctp_connect_new_asoc(struct sctp_endpoint *ep,
+ 		if (sctp_autobind(sk))
+ 			return -EAGAIN;
+ 	} else {
++		if (inet_is_local_unbindable_port(net, ep->base.bind_addr.port))
++			return -EPERM;
+ 		if (ep->base.bind_addr.port < inet_prot_sock(net) &&
+ 		    !ns_capable(net->user_ns, CAP_NET_BIND_SERVICE))
+ 			return -EACCES;
+diff --git a/net/socket.c b/net/socket.c
+index d1a026440..72e5dfb38 100644
+--- a/net/socket.c
++++ b/net/socket.c
+@@ -300,7 +300,8 @@ static const struct dentry_operations sockfs_dentry_operations = {
+ 
+ static int sockfs_xattr_get(const struct xattr_handler *handler,
+ 			    struct dentry *dentry, struct inode *inode,
+-			    const char *suffix, void *value, size_t size)
++			    const char *suffix, void *value, size_t size,
++			    int flags)
+ {
+ 	if (value) {
+ 		if (dentry->d_name.len + 1 > size)
+diff --git a/net/wireless/chan.c b/net/wireless/chan.c
+index fcac5c636..dd8bb88a6 100644
+--- a/net/wireless/chan.c
++++ b/net/wireless/chan.c
+@@ -6,7 +6,7 @@
+  *
+  * Copyright 2009	Johannes Berg <johannes@sipsolutions.net>
+  * Copyright 2013-2014  Intel Mobile Communications GmbH
+- * Copyright 2018       Intel Corporation
++ * Copyright 2018-2020	Intel Corporation
+  */
+ 
+ #include <linux/export.h>
+@@ -27,6 +27,7 @@ void cfg80211_chandef_create(struct cfg80211_chan_def *chandef,
+ 		return;
+ 
+ 	chandef->chan = chan;
++	chandef->freq1_offset = chan->freq_offset;
+ 	chandef->center_freq2 = 0;
+ 	chandef->edmg.bw_config = 0;
+ 	chandef->edmg.channels = 0;
+@@ -153,7 +154,8 @@ bool cfg80211_chandef_valid(const struct cfg80211_chan_def *chandef)
+ 	case NL80211_CHAN_WIDTH_10:
+ 	case NL80211_CHAN_WIDTH_20:
+ 	case NL80211_CHAN_WIDTH_20_NOHT:
+-		if (chandef->center_freq1 != control_freq)
++		if (ieee80211_chandef_to_khz(chandef) !=
++		    ieee80211_channel_to_khz(chandef->chan))
+ 			return false;
+ 		if (chandef->center_freq2)
+ 			return false;
+@@ -386,10 +388,11 @@ static u32 cfg80211_get_start_freq(u32 center_freq,
+ {
+ 	u32 start_freq;
+ 
+-	if (bandwidth <= 20)
++	bandwidth = MHZ_TO_KHZ(bandwidth);
++	if (bandwidth <= MHZ_TO_KHZ(20))
+ 		start_freq = center_freq;
+ 	else
+-		start_freq = center_freq - bandwidth/2 + 10;
++		start_freq = center_freq - bandwidth / 2 + MHZ_TO_KHZ(10);
+ 
+ 	return start_freq;
+ }
+@@ -399,10 +402,11 @@ static u32 cfg80211_get_end_freq(u32 center_freq,
+ {
+ 	u32 end_freq;
+ 
+-	if (bandwidth <= 20)
++	bandwidth = MHZ_TO_KHZ(bandwidth);
++	if (bandwidth <= MHZ_TO_KHZ(20))
+ 		end_freq = center_freq;
+ 	else
+-		end_freq = center_freq + bandwidth/2 - 10;
++		end_freq = center_freq + bandwidth / 2 - MHZ_TO_KHZ(10);
+ 
+ 	return end_freq;
+ }
+@@ -417,8 +421,8 @@ static int cfg80211_get_chans_dfs_required(struct wiphy *wiphy,
+ 	start_freq = cfg80211_get_start_freq(center_freq, bandwidth);
+ 	end_freq = cfg80211_get_end_freq(center_freq, bandwidth);
+ 
+-	for (freq = start_freq; freq <= end_freq; freq += 20) {
+-		c = ieee80211_get_channel(wiphy, freq);
++	for (freq = start_freq; freq <= end_freq; freq += MHZ_TO_KHZ(20)) {
++		c = ieee80211_get_channel_khz(wiphy, freq);
+ 		if (!c)
+ 			return -EINVAL;
+ 
+@@ -449,8 +453,8 @@ int cfg80211_chandef_dfs_required(struct wiphy *wiphy,
+ 			return -EINVAL;
+ 
+ 		ret = cfg80211_get_chans_dfs_required(wiphy,
+-						      chandef->center_freq1,
+-						      width);
++					ieee80211_chandef_to_khz(chandef),
++					width);
+ 		if (ret < 0)
+ 			return ret;
+ 		else if (ret > 0)
+@@ -460,8 +464,8 @@ int cfg80211_chandef_dfs_required(struct wiphy *wiphy,
+ 			return 0;
+ 
+ 		ret = cfg80211_get_chans_dfs_required(wiphy,
+-						      chandef->center_freq2,
+-						      width);
++					MHZ_TO_KHZ(chandef->center_freq2),
++					width);
+ 		if (ret < 0)
+ 			return ret;
+ 		else if (ret > 0)
+@@ -503,8 +507,8 @@ static int cfg80211_get_chans_dfs_usable(struct wiphy *wiphy,
+ 	 * DFS_AVAILABLE). Return number of usable channels
+ 	 * (require CAC). Allow DFS and non-DFS channel mix.
+ 	 */
+-	for (freq = start_freq; freq <= end_freq; freq += 20) {
+-		c = ieee80211_get_channel(wiphy, freq);
++	for (freq = start_freq; freq <= end_freq; freq += MHZ_TO_KHZ(20)) {
++		c = ieee80211_get_channel_khz(wiphy, freq);
+ 		if (!c)
+ 			return -EINVAL;
+ 
+@@ -536,8 +540,9 @@ bool cfg80211_chandef_dfs_usable(struct wiphy *wiphy,
+ 	if (width < 0)
+ 		return false;
+ 
+-	r1 = cfg80211_get_chans_dfs_usable(wiphy, chandef->center_freq1,
+-					  width);
++	r1 = cfg80211_get_chans_dfs_usable(wiphy,
++					   MHZ_TO_KHZ(chandef->center_freq1),
++					   width);
+ 
+ 	if (r1 < 0)
+ 		return false;
+@@ -546,8 +551,8 @@ bool cfg80211_chandef_dfs_usable(struct wiphy *wiphy,
+ 	case NL80211_CHAN_WIDTH_80P80:
+ 		WARN_ON(!chandef->center_freq2);
+ 		r2 = cfg80211_get_chans_dfs_usable(wiphy,
+-						   chandef->center_freq2,
+-						   width);
++					MHZ_TO_KHZ(chandef->center_freq2),
++					width);
+ 		if (r2 < 0)
+ 			return false;
+ 		break;
+@@ -694,8 +699,8 @@ static bool cfg80211_get_chans_dfs_available(struct wiphy *wiphy,
+ 	 * If any channel in between is disabled or has not
+ 	 * had gone through CAC return false
+ 	 */
+-	for (freq = start_freq; freq <= end_freq; freq += 20) {
+-		c = ieee80211_get_channel(wiphy, freq);
++	for (freq = start_freq; freq <= end_freq; freq += MHZ_TO_KHZ(20)) {
++		c = ieee80211_get_channel_khz(wiphy, freq);
+ 		if (!c)
+ 			return false;
+ 
+@@ -724,7 +729,8 @@ static bool cfg80211_chandef_dfs_available(struct wiphy *wiphy,
+ 	if (width < 0)
+ 		return false;
+ 
+-	r = cfg80211_get_chans_dfs_available(wiphy, chandef->center_freq1,
++	r = cfg80211_get_chans_dfs_available(wiphy,
++					     MHZ_TO_KHZ(chandef->center_freq1),
+ 					     width);
+ 
+ 	/* If any of channels unavailable for cf1 just return */
+@@ -735,8 +741,8 @@ static bool cfg80211_chandef_dfs_available(struct wiphy *wiphy,
+ 	case NL80211_CHAN_WIDTH_80P80:
+ 		WARN_ON(!chandef->center_freq2);
+ 		r = cfg80211_get_chans_dfs_available(wiphy,
+-						     chandef->center_freq2,
+-						     width);
++					MHZ_TO_KHZ(chandef->center_freq2),
++					width);
+ 		break;
+ 	default:
+ 		WARN_ON(chandef->center_freq2);
+@@ -757,8 +763,8 @@ static unsigned int cfg80211_get_chans_dfs_cac_time(struct wiphy *wiphy,
+ 	start_freq = cfg80211_get_start_freq(center_freq, bandwidth);
+ 	end_freq = cfg80211_get_end_freq(center_freq, bandwidth);
+ 
+-	for (freq = start_freq; freq <= end_freq; freq += 20) {
+-		c = ieee80211_get_channel(wiphy, freq);
++	for (freq = start_freq; freq <= end_freq; freq += MHZ_TO_KHZ(20)) {
++		c = ieee80211_get_channel_khz(wiphy, freq);
+ 		if (!c)
+ 			return 0;
+ 
+@@ -790,14 +796,14 @@ cfg80211_chandef_dfs_cac_time(struct wiphy *wiphy,
+ 		return 0;
+ 
+ 	t1 = cfg80211_get_chans_dfs_cac_time(wiphy,
+-					     chandef->center_freq1,
++					     MHZ_TO_KHZ(chandef->center_freq1),
+ 					     width);
+ 
+ 	if (!chandef->center_freq2)
+ 		return t1;
+ 
+ 	t2 = cfg80211_get_chans_dfs_cac_time(wiphy,
+-					     chandef->center_freq2,
++					     MHZ_TO_KHZ(chandef->center_freq2),
+ 					     width);
+ 
+ 	return max(t1, t2);
+@@ -813,8 +819,8 @@ static bool cfg80211_secondary_chans_ok(struct wiphy *wiphy,
+ 	start_freq = cfg80211_get_start_freq(center_freq, bandwidth);
+ 	end_freq = cfg80211_get_end_freq(center_freq, bandwidth);
+ 
+-	for (freq = start_freq; freq <= end_freq; freq += 20) {
+-		c = ieee80211_get_channel(wiphy, freq);
++	for (freq = start_freq; freq <= end_freq; freq += MHZ_TO_KHZ(20)) {
++		c = ieee80211_get_channel_khz(wiphy, freq);
+ 		if (!c || c->flags & prohibited_flags)
+ 			return false;
+ 	}
+@@ -910,7 +916,8 @@ bool cfg80211_chandef_usable(struct wiphy *wiphy,
+ 		width = 10;
+ 		break;
+ 	case NL80211_CHAN_WIDTH_20:
+-		if (!ht_cap->ht_supported)
++		if (!ht_cap->ht_supported &&
++		    chandef->chan->band != NL80211_BAND_6GHZ)
+ 			return false;
+ 		/* fall through */
+ 	case NL80211_CHAN_WIDTH_20_NOHT:
+@@ -919,6 +926,8 @@ bool cfg80211_chandef_usable(struct wiphy *wiphy,
+ 		break;
+ 	case NL80211_CHAN_WIDTH_40:
+ 		width = 40;
++		if (chandef->chan->band == NL80211_BAND_6GHZ)
++			break;
+ 		if (!ht_cap->ht_supported)
+ 			return false;
+ 		if (!(ht_cap->cap & IEEE80211_HT_CAP_SUP_WIDTH_20_40) ||
+@@ -933,24 +942,29 @@ bool cfg80211_chandef_usable(struct wiphy *wiphy,
+ 		break;
+ 	case NL80211_CHAN_WIDTH_80P80:
+ 		cap = vht_cap->cap & IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_MASK;
+-		if (cap != IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ)
++		if (chandef->chan->band != NL80211_BAND_6GHZ &&
++		    cap != IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ)
+ 			return false;
+ 		/* fall through */
+ 	case NL80211_CHAN_WIDTH_80:
+-		if (!vht_cap->vht_supported)
+-			return false;
+ 		prohibited_flags |= IEEE80211_CHAN_NO_80MHZ;
+ 		width = 80;
++		if (chandef->chan->band == NL80211_BAND_6GHZ)
++			break;
++		if (!vht_cap->vht_supported)
++			return false;
+ 		break;
+ 	case NL80211_CHAN_WIDTH_160:
++		prohibited_flags |= IEEE80211_CHAN_NO_160MHZ;
++		width = 160;
++		if (chandef->chan->band == NL80211_BAND_6GHZ)
++			break;
+ 		if (!vht_cap->vht_supported)
+ 			return false;
+ 		cap = vht_cap->cap & IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_MASK;
+ 		if (cap != IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160MHZ &&
+ 		    cap != IEEE80211_VHT_CAP_SUPP_CHAN_WIDTH_160_80PLUS80MHZ)
+ 			return false;
+-		prohibited_flags |= IEEE80211_CHAN_NO_160MHZ;
+-		width = 160;
+ 		break;
+ 	default:
+ 		WARN_ON_ONCE(1);
+@@ -976,13 +990,15 @@ bool cfg80211_chandef_usable(struct wiphy *wiphy,
+ 		prohibited_flags |= IEEE80211_CHAN_NO_OFDM;
+ 
+ 
+-	if (!cfg80211_secondary_chans_ok(wiphy, chandef->center_freq1,
++	if (!cfg80211_secondary_chans_ok(wiphy,
++					 ieee80211_chandef_to_khz(chandef),
+ 					 width, prohibited_flags))
+ 		return false;
+ 
+ 	if (!chandef->center_freq2)
+ 		return true;
+-	return cfg80211_secondary_chans_ok(wiphy, chandef->center_freq2,
++	return cfg80211_secondary_chans_ok(wiphy,
++					   MHZ_TO_KHZ(chandef->center_freq2),
+ 					   width, prohibited_flags);
+ }
+ EXPORT_SYMBOL(cfg80211_chandef_usable);
+diff --git a/net/wireless/core.c b/net/wireless/core.c
+index ee5bb8d8a..e52fd39ec 100644
+--- a/net/wireless/core.c
++++ b/net/wireless/core.c
+@@ -5,7 +5,7 @@
+  * Copyright 2006-2010		Johannes Berg <johannes@sipsolutions.net>
+  * Copyright 2013-2014  Intel Mobile Communications GmbH
+  * Copyright 2015-2017	Intel Deutschland GmbH
+- * Copyright (C) 2018-2019 Intel Corporation
++ * Copyright (C) 2018-2020 Intel Corporation
+  */
+ 
+ #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+@@ -788,6 +788,7 @@ int wiphy_register(struct wiphy *wiphy)
+ 	/* sanity check supported bands/channels */
+ 	for (band = 0; band < NUM_NL80211_BANDS; band++) {
+ 		u16 types = 0;
++		bool have_he = false;
+ 
+ 		sband = wiphy->bands[band];
+ 		if (!sband)
+@@ -804,6 +805,11 @@ int wiphy_register(struct wiphy *wiphy)
+ 			    !sband->n_bitrates))
+ 			return -EINVAL;
+ 
++		if (WARN_ON(band == NL80211_BAND_6GHZ &&
++			    (sband->ht_cap.ht_supported ||
++			     sband->vht_cap.vht_supported)))
++			return -EINVAL;
++
+ 		/*
+ 		 * Since cfg80211_disable_40mhz_24ghz is global, we can
+ 		 * modify the sband's ht data even if the driver uses a
+@@ -848,8 +854,17 @@ int wiphy_register(struct wiphy *wiphy)
+ 				return -EINVAL;
+ 
+ 			types |= iftd->types_mask;
++
++			if (i == 0)
++				have_he = iftd->he_cap.has_he;
++			else
++				have_he = have_he &&
++					  iftd->he_cap.has_he;
+ 		}
+ 
++		if (WARN_ON(!have_he && band == NL80211_BAND_6GHZ))
++			return -EINVAL;
++
+ 		have_band = true;
+ 	}
+ 
+diff --git a/net/wireless/nl80211.c b/net/wireless/nl80211.c
+index ec559dbad..fec0dbcfa 100644
+--- a/net/wireless/nl80211.c
++++ b/net/wireless/nl80211.c
+@@ -321,6 +321,23 @@ he_obss_pd_policy[NL80211_HE_OBSS_PD_ATTR_MAX + 1] = {
+ 		NLA_POLICY_RANGE(NLA_U8, 1, 20),
+ };
+ 
++static const struct nla_policy
++he_bss_color_policy[NL80211_HE_BSS_COLOR_ATTR_MAX + 1] = {
++	[NL80211_HE_BSS_COLOR_ATTR_COLOR] = NLA_POLICY_RANGE(NLA_U8, 1, 63),
++	[NL80211_HE_BSS_COLOR_ATTR_DISABLED] = { .type = NLA_FLAG },
++	[NL80211_HE_BSS_COLOR_ATTR_PARTIAL] = { .type = NLA_FLAG },
++};
++
++static const struct nla_policy
++nl80211_tid_config_attr_policy[NL80211_TID_CONFIG_ATTR_MAX + 1] = {
++	[NL80211_TID_CONFIG_ATTR_VIF_SUPP] = { .type = NLA_U64 },
++	[NL80211_TID_CONFIG_ATTR_PEER_SUPP] = { .type = NLA_U64 },
++	[NL80211_TID_CONFIG_ATTR_OVERRIDE] = { .type = NLA_FLAG },
++	[NL80211_TID_CONFIG_ATTR_TIDS] = NLA_POLICY_RANGE(NLA_U16, 1, 0xff),
++	[NL80211_TID_CONFIG_ATTR_NOACK] =
++			NLA_POLICY_MAX(NLA_U8, NL80211_TID_CONFIG_DISABLE),
++};
++
+ const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
+ 	[0] = { .strict_start_type = NL80211_ATTR_HE_OBSS_PD },
+ 	[NL80211_ATTR_WIPHY] = { .type = NLA_U32 },
+@@ -361,7 +378,7 @@ const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
+ 	[NL80211_ATTR_KEY] = { .type = NLA_NESTED, },
+ 	[NL80211_ATTR_KEY_DATA] = { .type = NLA_BINARY,
+ 				    .len = WLAN_MAX_KEY_LEN },
+-	[NL80211_ATTR_KEY_IDX] = NLA_POLICY_MAX(NLA_U8, 5),
++	[NL80211_ATTR_KEY_IDX] = NLA_POLICY_MAX(NLA_U8, 7),
+ 	[NL80211_ATTR_KEY_CIPHER] = { .type = NLA_U32 },
+ 	[NL80211_ATTR_KEY_DEFAULT] = { .type = NLA_FLAG },
+ 	[NL80211_ATTR_KEY_SEQ] = { .type = NLA_BINARY, .len = 16 },
+@@ -628,6 +645,17 @@ const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
+ 					.len = SAE_PASSWORD_MAX_LEN },
+ 	[NL80211_ATTR_TWT_RESPONDER] = { .type = NLA_FLAG },
+ 	[NL80211_ATTR_HE_OBSS_PD] = NLA_POLICY_NESTED(he_obss_pd_policy),
++	[NL80211_ATTR_VLAN_ID] = NLA_POLICY_RANGE(NLA_U16, 1, VLAN_N_VID - 2),
++	[NL80211_ATTR_HE_BSS_COLOR] = NLA_POLICY_NESTED(he_bss_color_policy),
++	[NL80211_ATTR_TID_CONFIG] =
++		NLA_POLICY_NESTED_ARRAY(nl80211_tid_config_attr_policy),
++	[NL80211_ATTR_CONTROL_PORT_NO_PREAUTH] = { .type = NLA_FLAG },
++	[NL80211_ATTR_PMK_LIFETIME] = NLA_POLICY_MIN(NLA_U32, 1),
++	[NL80211_ATTR_PMK_REAUTH_THRESHOLD] = NLA_POLICY_RANGE(NLA_U8, 1, 100),
++	[NL80211_ATTR_HE_6GHZ_CAPABILITY] = {
++		.type = NLA_EXACT_LEN,
++		.len = sizeof(struct ieee80211_he_6ghz_capa),
++	},
+ };
+ 
+ /* policy for the key attributes */
+@@ -1028,7 +1056,7 @@ struct key_parse {
+ 	struct key_params p;
+ 	int idx;
+ 	int type;
+-	bool def, defmgmt;
++	bool def, defmgmt, defbeacon;
+ 	bool def_uni, def_multi;
+ };
+ 
+@@ -1044,12 +1072,13 @@ static int nl80211_parse_key_new(struct genl_info *info, struct nlattr *key,
+ 
+ 	k->def = !!tb[NL80211_KEY_DEFAULT];
+ 	k->defmgmt = !!tb[NL80211_KEY_DEFAULT_MGMT];
++	k->defbeacon = !!tb[NL80211_KEY_DEFAULT_BEACON];
+ 
+ 	if (k->def) {
+ 		k->def_uni = true;
+ 		k->def_multi = true;
+ 	}
+-	if (k->defmgmt)
++	if (k->defmgmt || k->defbeacon)
+ 		k->def_multi = true;
+ 
+ 	if (tb[NL80211_KEY_IDX])
+@@ -1156,14 +1185,17 @@ static int nl80211_parse_key(struct genl_info *info, struct key_parse *k)
+ 	if (err)
+ 		return err;
+ 
+-	if (k->def && k->defmgmt) {
+-		GENL_SET_ERR_MSG(info, "key with def && defmgmt is invalid");
++	if ((k->def ? 1 : 0) + (k->defmgmt ? 1 : 0) +
++	    (k->defbeacon ? 1 : 0) > 1) {
++		GENL_SET_ERR_MSG(info,
++				 "key with multiple default flags is invalid");
+ 		return -EINVAL;
+ 	}
+ 
+-	if (k->defmgmt) {
++	if (k->defmgmt || k->defbeacon) {
+ 		if (k->def_uni || !k->def_multi) {
+-			GENL_SET_ERR_MSG(info, "defmgmt key must be mcast");
++			GENL_SET_ERR_MSG(info,
++					 "defmgmt/defbeacon key must be mcast");
+ 			return -EINVAL;
+ 		}
+ 	}
+@@ -1175,14 +1207,20 @@ static int nl80211_parse_key(struct genl_info *info, struct key_parse *k)
+ 						 "defmgmt key idx not 4 or 5");
+ 				return -EINVAL;
+ 			}
++		} else if (k->defbeacon) {
++			if (k->idx < 6 || k->idx > 7) {
++				GENL_SET_ERR_MSG(info,
++						 "defbeacon key idx not 6 or 7");
++				return -EINVAL;
++			}
+ 		} else if (k->def) {
+ 			if (k->idx < 0 || k->idx > 3) {
+ 				GENL_SET_ERR_MSG(info, "def key idx not 0-3");
+ 				return -EINVAL;
+ 			}
+ 		} else {
+-			if (k->idx < 0 || k->idx > 5) {
+-				GENL_SET_ERR_MSG(info, "key idx not 0-5");
++			if (k->idx < 0 || k->idx > 7) {
++				GENL_SET_ERR_MSG(info, "key idx not 0-7");
+ 				return -EINVAL;
+ 			}
+ 		}
+@@ -1536,6 +1574,7 @@ static int nl80211_send_coalesce(struct sk_buff *msg,
+ 
+ static int
+ nl80211_send_iftype_data(struct sk_buff *msg,
++			 const struct ieee80211_supported_band *sband,
+ 			 const struct ieee80211_sband_iftype_data *iftdata)
+ {
+ 	const struct ieee80211_sta_he_cap *he_cap = &iftdata->he_cap;
+@@ -1559,6 +1598,12 @@ nl80211_send_iftype_data(struct sk_buff *msg,
+ 			return -ENOBUFS;
+ 	}
+ 
++	if (sband->band == NL80211_BAND_6GHZ &&
++	    nla_put(msg, NL80211_BAND_IFTYPE_ATTR_HE_6GHZ_CAPA,
++		    sizeof(iftdata->he_6ghz_capa),
++		    &iftdata->he_6ghz_capa))
++		return -ENOBUFS;
++
+ 	return 0;
+ }
+ 
+@@ -1607,7 +1652,7 @@ static int nl80211_send_band_rateinfo(struct sk_buff *msg,
+ 			if (!iftdata)
+ 				return -ENOBUFS;
+ 
+-			err = nl80211_send_iftype_data(msg,
++			err = nl80211_send_iftype_data(msg, sband,
+ 						       &sband->iftype_data[i]);
+ 			if (err)
+ 				return err;
+@@ -1888,6 +1933,80 @@ static int nl80211_send_pmsr_capa(struct cfg80211_registered_device *rdev,
+ 	return 0;
+ }
+ 
++static int
++nl80211_put_iftype_akm_suites(struct cfg80211_registered_device *rdev,
++			      struct sk_buff *msg)
++{
++	int i;
++	struct nlattr *nested, *nested_akms;
++	const struct wiphy_iftype_akm_suites *iftype_akms;
++
++	if (!rdev->wiphy.num_iftype_akm_suites ||
++	    !rdev->wiphy.iftype_akm_suites)
++		return 0;
++
++	nested = nla_nest_start(msg, NL80211_ATTR_IFTYPE_AKM_SUITES);
++	if (!nested)
++		return -ENOBUFS;
++
++	for (i = 0; i < rdev->wiphy.num_iftype_akm_suites; i++) {
++		nested_akms = nla_nest_start(msg, i + 1);
++		if (!nested_akms)
++			return -ENOBUFS;
++
++		iftype_akms = &rdev->wiphy.iftype_akm_suites[i];
++
++		if (nl80211_put_iftypes(msg, NL80211_IFTYPE_AKM_ATTR_IFTYPES,
++					iftype_akms->iftypes_mask))
++			return -ENOBUFS;
++
++		if (nla_put(msg, NL80211_IFTYPE_AKM_ATTR_SUITES,
++			    sizeof(u32) * iftype_akms->n_akm_suites,
++			    iftype_akms->akm_suites)) {
++			return -ENOBUFS;
++		}
++		nla_nest_end(msg, nested_akms);
++	}
++
++	nla_nest_end(msg, nested);
++
++	return 0;
++}
++
++static int
++nl80211_put_tid_config_support(struct cfg80211_registered_device *rdev,
++			       struct sk_buff *msg)
++{
++	struct nlattr *supp;
++
++	if (!rdev->wiphy.tid_config_support.vif &&
++	    !rdev->wiphy.tid_config_support.peer)
++		return 0;
++
++	supp = nla_nest_start(msg, NL80211_ATTR_TID_CONFIG);
++	if (!supp)
++		return -ENOSPC;
++
++	if (rdev->wiphy.tid_config_support.vif &&
++	    nla_put_u64_64bit(msg, NL80211_TID_CONFIG_ATTR_VIF_SUPP,
++			      rdev->wiphy.tid_config_support.vif,
++			      NL80211_TID_CONFIG_ATTR_PAD))
++		goto fail;
++
++	if (rdev->wiphy.tid_config_support.peer &&
++	    nla_put_u64_64bit(msg, NL80211_TID_CONFIG_ATTR_PEER_SUPP,
++			      rdev->wiphy.tid_config_support.peer,
++			      NL80211_TID_CONFIG_ATTR_PAD))
++		goto fail;
++
++	nla_nest_end(msg, supp);
++
++	return 0;
++fail:
++	nla_nest_cancel(msg, supp);
++	return -ENOBUFS;
++}
++
+ struct nl80211_dump_wiphy_state {
+ 	s64 filter_wiphy;
+ 	long start;
+@@ -2446,6 +2565,12 @@ static int nl80211_send_wiphy(struct cfg80211_registered_device *rdev,
+ 			    rdev->wiphy.akm_suites))
+ 			goto nla_put_failure;
+ 
++		if (nl80211_put_iftype_akm_suites(rdev, msg))
++			goto nla_put_failure;
++
++		if (nl80211_put_tid_config_support(rdev, msg))
++			goto nla_put_failure;
++
+ 		/* done */
+ 		state->split_start = 0;
+ 		break;
+@@ -3765,8 +3890,14 @@ static int nl80211_get_key(struct sk_buff *skb, struct genl_info *info)
+ 	void *hdr;
+ 	struct sk_buff *msg;
+ 
+-	if (info->attrs[NL80211_ATTR_KEY_IDX])
++	if (info->attrs[NL80211_ATTR_KEY_IDX]) {
+ 		key_idx = nla_get_u8(info->attrs[NL80211_ATTR_KEY_IDX]);
++		if (key_idx > 5 &&
++		    !wiphy_ext_feature_isset(
++			    &rdev->wiphy,
++			    NL80211_EXT_FEATURE_BEACON_PROTECTION))
++			return -EINVAL;
++	}
+ 
+ 	if (info->attrs[NL80211_ATTR_MAC])
+ 		mac_addr = nla_data(info->attrs[NL80211_ATTR_MAC]);
+@@ -3842,7 +3973,7 @@ static int nl80211_set_key(struct sk_buff *skb, struct genl_info *info)
+ 	/* Only support setting default key and
+ 	 * Extended Key ID action NL80211_KEY_SET_TX.
+ 	 */
+-	if (!key.def && !key.defmgmt &&
++	if (!key.def && !key.defmgmt && !key.defbeacon &&
+ 	    !(key.p.mode == NL80211_KEY_SET_TX))
+ 		return -EINVAL;
+ 
+@@ -3889,6 +4020,24 @@ static int nl80211_set_key(struct sk_buff *skb, struct genl_info *info)
+ #ifdef CONFIG_CFG80211_WEXT
+ 		dev->ieee80211_ptr->wext.default_mgmt_key = key.idx;
+ #endif
++	} else if (key.defbeacon) {
++		if (key.def_uni || !key.def_multi) {
++			err = -EINVAL;
++			goto out;
++		}
++
++		if (!rdev->ops->set_default_beacon_key) {
++			err = -EOPNOTSUPP;
++			goto out;
++		}
++
++		err = nl80211_key_allowed(dev->ieee80211_ptr);
++		if (err)
++			goto out;
++
++		err = rdev_set_default_beacon_key(rdev, dev, key.idx);
++		if (err)
++			goto out;
+ 	} else if (key.p.mode == NL80211_KEY_SET_TX &&
+ 		   wiphy_ext_feature_isset(&rdev->wiphy,
+ 					   NL80211_EXT_FEATURE_EXT_KEY_ID)) {
+@@ -3926,8 +4075,10 @@ static int nl80211_new_key(struct sk_buff *skb, struct genl_info *info)
+ 	if (err)
+ 		return err;
+ 
+-	if (!key.p.key)
++	if (!key.p.key) {
++		GENL_SET_ERR_MSG(info, "no key");
+ 		return -EINVAL;
++	}
+ 
+ 	if (info->attrs[NL80211_ATTR_MAC])
+ 		mac_addr = nla_data(info->attrs[NL80211_ATTR_MAC]);
+@@ -3941,23 +4092,36 @@ static int nl80211_new_key(struct sk_buff *skb, struct genl_info *info)
+ 
+ 	/* for now */
+ 	if (key.type != NL80211_KEYTYPE_PAIRWISE &&
+-	    key.type != NL80211_KEYTYPE_GROUP)
++	    key.type != NL80211_KEYTYPE_GROUP) {
++		GENL_SET_ERR_MSG(info, "key type not pairwise or group");
+ 		return -EINVAL;
++	}
++
++	if (key.type == NL80211_KEYTYPE_GROUP &&
++	    info->attrs[NL80211_ATTR_VLAN_ID])
++		key.p.vlan_id = nla_get_u16(info->attrs[NL80211_ATTR_VLAN_ID]);
+ 
+ 	if (!rdev->ops->add_key)
+ 		return -EOPNOTSUPP;
+ 
+ 	if (cfg80211_validate_key_settings(rdev, &key.p, key.idx,
+ 					   key.type == NL80211_KEYTYPE_PAIRWISE,
+-					   mac_addr))
++					   mac_addr)) {
++		GENL_SET_ERR_MSG(info, "key setting validation failed");
+ 		return -EINVAL;
++	}
+ 
+ 	wdev_lock(dev->ieee80211_ptr);
+ 	err = nl80211_key_allowed(dev->ieee80211_ptr);
+-	if (!err)
++	if (err)
++		GENL_SET_ERR_MSG(info, "key not allowed");
++	if (!err) {
+ 		err = rdev_add_key(rdev, dev, key.idx,
+ 				   key.type == NL80211_KEYTYPE_PAIRWISE,
+ 				    mac_addr, &key.p);
++		if (err)
++			GENL_SET_ERR_MSG(info, "key addition failed");
++	}
+ 	wdev_unlock(dev->ieee80211_ptr);
+ 
+ 	return err;
+@@ -4510,6 +4674,30 @@ static int nl80211_parse_he_obss_pd(struct nlattr *attrs,
+ 	return 0;
+ }
+ 
++static int nl80211_parse_he_bss_color(struct nlattr *attrs,
++				      struct cfg80211_he_bss_color *he_bss_color)
++{
++	struct nlattr *tb[NL80211_HE_BSS_COLOR_ATTR_MAX + 1];
++	int err;
++
++	err = nla_parse_nested(tb, NL80211_HE_BSS_COLOR_ATTR_MAX, attrs,
++			       he_bss_color_policy, NULL);
++	if (err)
++		return err;
++
++	if (!tb[NL80211_HE_BSS_COLOR_ATTR_COLOR])
++		return -EINVAL;
++
++	he_bss_color->color =
++		nla_get_u8(tb[NL80211_HE_BSS_COLOR_ATTR_COLOR]);
++	he_bss_color->disabled =
++		nla_get_flag(tb[NL80211_HE_BSS_COLOR_ATTR_DISABLED]);
++	he_bss_color->partial =
++		nla_get_flag(tb[NL80211_HE_BSS_COLOR_ATTR_PARTIAL]);
++
++	return 0;
++}
++
+ static void nl80211_check_ap_rate_selectors(struct cfg80211_ap_settings *params,
+ 					    const u8 *rates)
+ {
+@@ -4802,6 +4990,14 @@ static int nl80211_start_ap(struct sk_buff *skb, struct genl_info *info)
+ 			goto out;
+ 	}
+ 
++	if (info->attrs[NL80211_ATTR_HE_BSS_COLOR]) {
++		err = nl80211_parse_he_bss_color(
++					info->attrs[NL80211_ATTR_HE_BSS_COLOR],
++					&params.he_bss_color);
++		if (err)
++			goto out;
++	}
++
+ 	nl80211_calculate_ap_params(&params);
+ 
+ 	if (info->attrs[NL80211_ATTR_EXTERNAL_AUTH_SUPPORT])
+@@ -5716,6 +5912,9 @@ static int nl80211_set_station(struct sk_buff *skb, struct genl_info *info)
+ 	if (info->attrs[NL80211_ATTR_STA_AID])
+ 		params.aid = nla_get_u16(info->attrs[NL80211_ATTR_STA_AID]);
+ 
++	if (info->attrs[NL80211_ATTR_VLAN_ID])
++		params.vlan_id = nla_get_u16(info->attrs[NL80211_ATTR_VLAN_ID]);
++
+ 	if (info->attrs[NL80211_ATTR_STA_LISTEN_INTERVAL])
+ 		params.listen_interval =
+ 		     nla_get_u16(info->attrs[NL80211_ATTR_STA_LISTEN_INTERVAL]);
+@@ -5779,6 +5978,10 @@ static int nl80211_set_station(struct sk_buff *skb, struct genl_info *info)
+ 			nla_get_u8(info->attrs[NL80211_ATTR_OPMODE_NOTIF]);
+ 	}
+ 
++	if (info->attrs[NL80211_ATTR_HE_6GHZ_CAPABILITY])
++		params.he_6ghz_capa =
++			nla_data(info->attrs[NL80211_ATTR_HE_6GHZ_CAPABILITY]);
++
+ 	if (info->attrs[NL80211_ATTR_AIRTIME_WEIGHT])
+ 		params.airtime_weight =
+ 			nla_get_u16(info->attrs[NL80211_ATTR_AIRTIME_WEIGHT]);
+@@ -5861,6 +6064,9 @@ static int nl80211_new_station(struct sk_buff *skb, struct genl_info *info)
+ 	params.listen_interval =
+ 		nla_get_u16(info->attrs[NL80211_ATTR_STA_LISTEN_INTERVAL]);
+ 
++	if (info->attrs[NL80211_ATTR_VLAN_ID])
++		params.vlan_id = nla_get_u16(info->attrs[NL80211_ATTR_VLAN_ID]);
++
+ 	if (info->attrs[NL80211_ATTR_STA_SUPPORT_P2P_PS]) {
+ 		params.support_p2p_ps =
+ 			nla_get_u8(info->attrs[NL80211_ATTR_STA_SUPPORT_P2P_PS]);
+@@ -5910,6 +6116,10 @@ static int nl80211_new_station(struct sk_buff *skb, struct genl_info *info)
+ 			return -EINVAL;
+ 	}
+ 
++	if (info->attrs[NL80211_ATTR_HE_6GHZ_CAPABILITY])
++		params.he_6ghz_capa =
++			nla_data(info->attrs[NL80211_ATTR_HE_6GHZ_CAPABILITY]);
++
+ 	if (info->attrs[NL80211_ATTR_OPMODE_NOTIF]) {
+ 		params.opmode_notif_used = true;
+ 		params.opmode_notif =
+@@ -5954,10 +6164,14 @@ static int nl80211_new_station(struct sk_buff *skb, struct genl_info *info)
+ 		params.vht_capa = NULL;
+ 
+ 		/* HE requires WME */
+-		if (params.he_capa_len)
++		if (params.he_capa_len || params.he_6ghz_capa)
+ 			return -EINVAL;
+ 	}
+ 
++	/* Ensure that HT/VHT capabilities are not set for 6 GHz HE STA */
++	if (params.he_6ghz_capa && (params.ht_capa || params.vht_capa))
++		return -EINVAL;
++
+ 	/* When you run into this, adjust the code below for the new flag */
+ 	BUILD_BUG_ON(NL80211_STA_FLAG_MAX != 7);
+ 
+@@ -10289,6 +10503,15 @@ static int nl80211_setdel_pmksa(struct sk_buff *skb, struct genl_info *info)
+ 		pmksa.pmk_len = nla_len(info->attrs[NL80211_ATTR_PMK]);
+ 	}
+ 
++	if (info->attrs[NL80211_ATTR_PMK_LIFETIME])
++		pmksa.pmk_lifetime =
++			nla_get_u32(info->attrs[NL80211_ATTR_PMK_LIFETIME]);
++
++	if (info->attrs[NL80211_ATTR_PMK_REAUTH_THRESHOLD])
++		pmksa.pmk_reauth_threshold =
++			nla_get_u8(
++				info->attrs[NL80211_ATTR_PMK_REAUTH_THRESHOLD]);
++
+ 	if (dev->ieee80211_ptr->iftype != NL80211_IFTYPE_STATION &&
+ 	    dev->ieee80211_ptr->iftype != NL80211_IFTYPE_P2P_CLIENT &&
+ 	    !(dev->ieee80211_ptr->iftype == NL80211_IFTYPE_AP &&
+@@ -13798,6 +14021,111 @@ static int nl80211_probe_mesh_link(struct sk_buff *skb, struct genl_info *info)
+ 	return rdev_probe_mesh_link(rdev, dev, dest, buf, len);
+ }
+ 
++static int parse_tid_conf(struct cfg80211_registered_device *rdev,
++			  struct nlattr *attrs[], struct net_device *dev,
++			  struct cfg80211_tid_cfg *tid_conf,
++			  struct genl_info *info, const u8 *peer)
++{
++	struct netlink_ext_ack *extack = info->extack;
++	u64 mask;
++	int err;
++
++	if (!attrs[NL80211_TID_CONFIG_ATTR_TIDS])
++		return -EINVAL;
++
++	tid_conf->config_override =
++			nla_get_flag(attrs[NL80211_TID_CONFIG_ATTR_OVERRIDE]);
++	tid_conf->tids = nla_get_u16(attrs[NL80211_TID_CONFIG_ATTR_TIDS]);
++
++	if (tid_conf->config_override) {
++		if (rdev->ops->reset_tid_config) {
++			err = rdev_reset_tid_config(rdev, dev, peer,
++						    tid_conf->tids);
++			/* If peer is there no other configuration will be
++			 * allowed
++			 */
++			if (err || peer)
++				return err;
++		} else {
++			return -EINVAL;
++		}
++	}
++
++	if (attrs[NL80211_TID_CONFIG_ATTR_NOACK]) {
++		tid_conf->mask |= BIT(NL80211_TID_CONFIG_ATTR_NOACK);
++		tid_conf->noack =
++			nla_get_u8(attrs[NL80211_TID_CONFIG_ATTR_NOACK]);
++	}
++
++	if (peer)
++		mask = rdev->wiphy.tid_config_support.peer;
++	else
++		mask = rdev->wiphy.tid_config_support.vif;
++
++	if (tid_conf->mask & ~mask) {
++		NL_SET_ERR_MSG(extack, "unsupported TID configuration");
++		return -ENOTSUPP;
++	}
++
++	return 0;
++}
++
++static int nl80211_set_tid_config(struct sk_buff *skb,
++				  struct genl_info *info)
++{
++	struct cfg80211_registered_device *rdev = info->user_ptr[0];
++	struct nlattr *attrs[NL80211_TID_CONFIG_ATTR_MAX + 1];
++	struct net_device *dev = info->user_ptr[1];
++	struct cfg80211_tid_config *tid_config;
++	struct nlattr *tid;
++	int conf_idx = 0, rem_conf;
++	int ret = -EINVAL;
++	u32 num_conf = 0;
++
++	if (!info->attrs[NL80211_ATTR_TID_CONFIG])
++		return -EINVAL;
++
++	if (!rdev->ops->set_tid_config)
++		return -EOPNOTSUPP;
++
++	nla_for_each_nested(tid, info->attrs[NL80211_ATTR_TID_CONFIG],
++			    rem_conf)
++		num_conf++;
++
++	tid_config = kzalloc(struct_size(tid_config, tid_conf, num_conf),
++			     GFP_KERNEL);
++	if (!tid_config)
++		return -ENOMEM;
++
++	tid_config->n_tid_conf = num_conf;
++
++	if (info->attrs[NL80211_ATTR_MAC])
++		tid_config->peer = nla_data(info->attrs[NL80211_ATTR_MAC]);
++
++	nla_for_each_nested(tid, info->attrs[NL80211_ATTR_TID_CONFIG],
++			    rem_conf) {
++		ret = nla_parse_nested(attrs, NL80211_TID_CONFIG_ATTR_MAX,
++				       tid, NULL, NULL);
++
++		if (ret)
++			goto bad_tid_conf;
++
++		ret = parse_tid_conf(rdev, attrs, dev,
++				     &tid_config->tid_conf[conf_idx],
++				     info, tid_config->peer);
++		if (ret)
++			goto bad_tid_conf;
++
++		conf_idx++;
++	}
++
++	ret = rdev_set_tid_config(rdev, dev, tid_config);
++
++bad_tid_conf:
++	kfree(tid_config);
++	return ret;
++}
++
+ #define NL80211_FLAG_NEED_WIPHY		0x01
+ #define NL80211_FLAG_NEED_NETDEV	0x02
+ #define NL80211_FLAG_NEED_RTNL		0x04
+@@ -14752,6 +15080,13 @@ static const struct genl_ops nl80211_ops[] = {
+ 		.internal_flags = NL80211_FLAG_NEED_NETDEV_UP |
+ 				  NL80211_FLAG_NEED_RTNL,
+ 	},
++	{
++		.cmd = NL80211_CMD_SET_TID_CONFIG,
++		.doit = nl80211_set_tid_config,
++		.flags = GENL_UNS_ADMIN_PERM,
++		.internal_flags = NL80211_FLAG_NEED_NETDEV |
++				  NL80211_FLAG_NEED_RTNL,
++	},
+ };
+ 
+ static struct genl_family nl80211_fam __ro_after_init = {
+diff --git a/net/wireless/rdev-ops.h b/net/wireless/rdev-ops.h
+index e0d34f796..99462f0c4 100644
+--- a/net/wireless/rdev-ops.h
++++ b/net/wireless/rdev-ops.h
+@@ -136,6 +136,19 @@ rdev_set_default_mgmt_key(struct cfg80211_registered_device *rdev,
+ 	return ret;
+ }
+ 
++static inline int
++rdev_set_default_beacon_key(struct cfg80211_registered_device *rdev,
++			    struct net_device *netdev, u8 key_index)
++{
++	int ret;
++
++	trace_rdev_set_default_beacon_key(&rdev->wiphy, netdev, key_index);
++	ret = rdev->ops->set_default_beacon_key(&rdev->wiphy, netdev,
++						key_index);
++	trace_rdev_return_int(&rdev->wiphy, ret);
++	return ret;
++}
++
+ static inline int rdev_start_ap(struct cfg80211_registered_device *rdev,
+ 				struct net_device *dev,
+ 				struct cfg80211_ap_settings *settings)
+@@ -1313,4 +1326,28 @@ rdev_probe_mesh_link(struct cfg80211_registered_device *rdev,
+ 	return ret;
+ }
+ 
++static inline int rdev_set_tid_config(struct cfg80211_registered_device *rdev,
++				      struct net_device *dev,
++				      struct cfg80211_tid_config *tid_conf)
++{
++	int ret;
++
++	trace_rdev_set_tid_config(&rdev->wiphy, dev, tid_conf);
++	ret = rdev->ops->set_tid_config(&rdev->wiphy, dev, tid_conf);
++	trace_rdev_return_int(&rdev->wiphy, ret);
++	return ret;
++}
++
++static inline int rdev_reset_tid_config(struct cfg80211_registered_device *rdev,
++					struct net_device *dev, const u8 *peer,
++					u8 tids)
++{
++	int ret;
++
++	trace_rdev_reset_tid_config(&rdev->wiphy, dev, peer, tids);
++	ret = rdev->ops->reset_tid_config(&rdev->wiphy, dev, peer, tids);
++	trace_rdev_return_int(&rdev->wiphy, ret);
++	return ret;
++}
++
+ #endif /* __CFG80211_RDEV_OPS */
+diff --git a/net/wireless/reg.c b/net/wireless/reg.c
+index 1a8218f1b..0d8ab9e48 100644
+--- a/net/wireless/reg.c
++++ b/net/wireless/reg.c
+@@ -1656,22 +1656,23 @@ static uint32_t reg_rule_to_chan_bw_flags(const struct ieee80211_regdomain *regd
+ 					  const struct ieee80211_channel *chan)
+ {
+ 	const struct ieee80211_freq_range *freq_range = NULL;
+-	u32 max_bandwidth_khz, bw_flags = 0;
++	u32 max_bandwidth_khz, center_freq_khz, bw_flags = 0;
+ 
+ 	freq_range = &reg_rule->freq_range;
+ 
+ 	max_bandwidth_khz = freq_range->max_bandwidth_khz;
++	center_freq_khz = ieee80211_channel_to_khz(chan);
+ 	/* Check if auto calculation requested */
+ 	if (reg_rule->flags & NL80211_RRF_AUTO_BW)
+ 		max_bandwidth_khz = reg_get_max_bandwidth(regd, reg_rule);
+ 
+ 	/* If we get a reg_rule we can assume that at least 5Mhz fit */
+ 	if (!cfg80211_does_bw_fit_range(freq_range,
+-					MHZ_TO_KHZ(chan->center_freq),
++					center_freq_khz,
+ 					MHZ_TO_KHZ(10)))
+ 		bw_flags |= IEEE80211_CHAN_NO_10MHZ;
+ 	if (!cfg80211_does_bw_fit_range(freq_range,
+-					MHZ_TO_KHZ(chan->center_freq),
++					center_freq_khz,
+ 					MHZ_TO_KHZ(20)))
+ 		bw_flags |= IEEE80211_CHAN_NO_20MHZ;
+ 
+@@ -1708,7 +1709,7 @@ static void handle_channel(struct wiphy *wiphy,
+ 
+ 	flags = chan->orig_flags;
+ 
+-	reg_rule = freq_reg_info(wiphy, MHZ_TO_KHZ(chan->center_freq));
++	reg_rule = freq_reg_info(wiphy, ieee80211_channel_to_khz(chan));
+ 	if (IS_ERR(reg_rule)) {
+ 		/*
+ 		 * We will disable all channels that do not match our
+@@ -1727,13 +1728,13 @@ static void handle_channel(struct wiphy *wiphy,
+ 		if (lr->initiator == NL80211_REGDOM_SET_BY_DRIVER &&
+ 		    request_wiphy && request_wiphy == wiphy &&
+ 		    request_wiphy->regulatory_flags & REGULATORY_STRICT_REG) {
+-			pr_debug("Disabling freq %d MHz for good\n",
+-				 chan->center_freq);
++			pr_debug("Disabling freq %d.%03d MHz for good\n",
++				 chan->center_freq, chan->freq_offset);
+ 			chan->orig_flags |= IEEE80211_CHAN_DISABLED;
+ 			chan->flags = chan->orig_flags;
+ 		} else {
+-			pr_debug("Disabling freq %d MHz\n",
+-				 chan->center_freq);
++			pr_debug("Disabling freq %d.%03d MHz\n",
++				 chan->center_freq, chan->freq_offset);
+ 			chan->flags |= IEEE80211_CHAN_DISABLED;
+ 		}
+ 		return;
+@@ -1934,7 +1935,7 @@ static void handle_reg_beacon(struct wiphy *wiphy, unsigned int chan_idx,
+ 	sband = wiphy->bands[reg_beacon->chan.band];
+ 	chan = &sband->channels[chan_idx];
+ 
+-	if (likely(chan->center_freq != reg_beacon->chan.center_freq))
++	if (likely(!ieee80211_channel_equal(chan, &reg_beacon->chan)))
+ 		return;
+ 
+ 	if (chan->beacon_found)
+@@ -2267,18 +2268,18 @@ static void handle_channel_custom(struct wiphy *wiphy,
+ 	u32 bw_flags = 0;
+ 	const struct ieee80211_reg_rule *reg_rule = NULL;
+ 	const struct ieee80211_power_rule *power_rule = NULL;
+-	u32 bw;
++	u32 bw, center_freq_khz;
+ 
++	center_freq_khz = ieee80211_channel_to_khz(chan);
+ 	for (bw = MHZ_TO_KHZ(20); bw >= min_bw; bw = bw / 2) {
+-		reg_rule = freq_reg_info_regd(MHZ_TO_KHZ(chan->center_freq),
+-					      regd, bw);
++		reg_rule = freq_reg_info_regd(center_freq_khz, regd, bw);
+ 		if (!IS_ERR(reg_rule))
+ 			break;
+ 	}
+ 
+ 	if (IS_ERR_OR_NULL(reg_rule)) {
+-		pr_debug("Disabling freq %d MHz as custom regd has no rule that fits it\n",
+-			 chan->center_freq);
++		pr_debug("Disabling freq %d.%03d MHz as custom regd has no rule that fits it\n",
++			 chan->center_freq, chan->freq_offset);
+ 		if (wiphy->regulatory_flags & REGULATORY_WIPHY_SELF_MANAGED) {
+ 			chan->flags |= IEEE80211_CHAN_DISABLED;
+ 		} else {
+@@ -3335,8 +3336,8 @@ static bool pending_reg_beacon(struct ieee80211_channel *beacon_chan)
+ 	struct reg_beacon *pending_beacon;
+ 
+ 	list_for_each_entry(pending_beacon, &reg_pending_beacons, list)
+-		if (beacon_chan->center_freq ==
+-		    pending_beacon->chan.center_freq)
++		if (ieee80211_channel_equal(beacon_chan,
++					    &pending_beacon->chan))
+ 			return true;
+ 	return false;
+ }
+@@ -3365,9 +3366,10 @@ int regulatory_hint_found_beacon(struct wiphy *wiphy,
+ 	if (!reg_beacon)
+ 		return -ENOMEM;
+ 
+-	pr_debug("Found new beacon on frequency: %d MHz (Ch %d) on %s\n",
+-		 beacon_chan->center_freq,
+-		 ieee80211_frequency_to_channel(beacon_chan->center_freq),
++	pr_debug("Found new beacon on frequency: %d.%03d MHz (Ch %d) on %s\n",
++		 beacon_chan->center_freq, beacon_chan->freq_offset,
++		 ieee80211_freq_khz_to_channel(
++			 ieee80211_channel_to_khz(beacon_chan)),
+ 		 wiphy_name(wiphy));
+ 
+ 	memcpy(&reg_beacon->chan, beacon_chan,
+diff --git a/net/wireless/scan.c b/net/wireless/scan.c
+index 328402ab6..33b3c990e 100644
+--- a/net/wireless/scan.c
++++ b/net/wireless/scan.c
+@@ -1323,8 +1323,8 @@ cfg80211_get_bss_channel(struct wiphy *wiphy, const u8 *ie, size_t ielen,
+ 		return channel;
+ 	}
+ 
+-	freq = ieee80211_channel_to_frequency(channel_number, channel->band);
+-	alt_channel = ieee80211_get_channel(wiphy, freq);
++	freq = ieee80211_channel_to_freq_khz(channel_number, channel->band);
++	alt_channel = ieee80211_get_channel_khz(wiphy, freq);
+ 	if (!alt_channel) {
+ 		if (channel->band == NL80211_BAND_2GHZ) {
+ 			/*
+diff --git a/net/wireless/sme.c b/net/wireless/sme.c
+index d32a2ec4d..ac3e60aa1 100644
+--- a/net/wireless/sme.c
++++ b/net/wireless/sme.c
+@@ -1111,9 +1111,16 @@ void __cfg80211_disconnected(struct net_device *dev, const u8 *ie,
+ 	 * Delete all the keys ... pairwise keys can't really
+ 	 * exist any more anyway, but default keys might.
+ 	 */
+-	if (rdev->ops->del_key)
+-		for (i = 0; i < 6; i++)
++	if (rdev->ops->del_key) {
++		int max_key_idx = 5;
++
++		if (wiphy_ext_feature_isset(
++			    wdev->wiphy,
++			    NL80211_EXT_FEATURE_BEACON_PROTECTION))
++			max_key_idx = 7;
++		for (i = 0; i <= max_key_idx; i++)
+ 			rdev_del_key(rdev, dev, i, false, NULL);
++	}
+ 
+ 	rdev_set_qos_map(rdev, dev, NULL);
+ 
+diff --git a/net/wireless/trace.h b/net/wireless/trace.h
+index 8677d7ab7..0927dcbca 100644
+--- a/net/wireless/trace.h
++++ b/net/wireless/trace.h
+@@ -112,24 +112,29 @@
+ 	} while (0)
+ 
+ #define CHAN_ENTRY __field(enum nl80211_band, band) \
+-		   __field(u32, center_freq)
++		   __field(u32, center_freq)		\
++		   __field(u16, freq_offset)
+ #define CHAN_ASSIGN(chan)					  \
+ 	do {							  \
+ 		if (chan) {					  \
+ 			__entry->band = chan->band;		  \
+ 			__entry->center_freq = chan->center_freq; \
++			__entry->freq_offset = chan->freq_offset; \
+ 		} else {					  \
+ 			__entry->band = 0;			  \
+ 			__entry->center_freq = 0;		  \
++			__entry->freq_offset = 0;		  \
+ 		}						  \
+ 	} while (0)
+-#define CHAN_PR_FMT "band: %d, freq: %u"
+-#define CHAN_PR_ARG __entry->band, __entry->center_freq
++#define CHAN_PR_FMT "band: %d, freq: %u.%03u"
++#define CHAN_PR_ARG __entry->band, __entry->center_freq, __entry->freq_offset
+ 
+ #define CHAN_DEF_ENTRY __field(enum nl80211_band, band)		\
+ 		       __field(u32, control_freq)			\
++		       __field(u32, freq_offset)			\
+ 		       __field(u32, width)				\
+ 		       __field(u32, center_freq1)			\
++		       __field(u32, freq1_offset)			\
+ 		       __field(u32, center_freq2)
+ #define CHAN_DEF_ASSIGN(chandef)					\
+ 	do {								\
+@@ -137,21 +142,27 @@
+ 			__entry->band = (chandef)->chan->band;		\
+ 			__entry->control_freq =				\
+ 				(chandef)->chan->center_freq;		\
++			__entry->freq_offset =				\
++				(chandef)->chan->freq_offset;		\
+ 			__entry->width = (chandef)->width;		\
+ 			__entry->center_freq1 = (chandef)->center_freq1;\
++			__entry->freq1_offset = (chandef)->freq1_offset;\
+ 			__entry->center_freq2 = (chandef)->center_freq2;\
+ 		} else {						\
+ 			__entry->band = 0;				\
+ 			__entry->control_freq = 0;			\
++			__entry->freq_offset = 0;			\
+ 			__entry->width = 0;				\
+ 			__entry->center_freq1 = 0;			\
++			__entry->freq1_offset = 0;			\
+ 			__entry->center_freq2 = 0;			\
+ 		}							\
+ 	} while (0)
+ #define CHAN_DEF_PR_FMT							\
+-	"band: %d, control freq: %u, width: %d, cf1: %u, cf2: %u"
++	"band: %d, control freq: %u.%03u, width: %d, cf1: %u.%03u, cf2: %u"
+ #define CHAN_DEF_PR_ARG __entry->band, __entry->control_freq,		\
+-			__entry->width, __entry->center_freq1,		\
++			__entry->freq_offset, __entry->width,		\
++			__entry->center_freq1, __entry->freq1_offset,	\
+ 			__entry->center_freq2
+ 
+ #define SINFO_ENTRY __field(int, generation)	    \
+@@ -510,6 +521,23 @@ TRACE_EVENT(rdev_set_default_mgmt_key,
+ 		  WIPHY_PR_ARG, NETDEV_PR_ARG, __entry->key_index)
+ );
+ 
++TRACE_EVENT(rdev_set_default_beacon_key,
++	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev, u8 key_index),
++	TP_ARGS(wiphy, netdev, key_index),
++	TP_STRUCT__entry(
++		WIPHY_ENTRY
++		NETDEV_ENTRY
++		__field(u8, key_index)
++	),
++	TP_fast_assign(
++		WIPHY_ASSIGN;
++		NETDEV_ASSIGN;
++		__entry->key_index = key_index;
++	),
++	TP_printk(WIPHY_PR_FMT ", " NETDEV_PR_FMT ", key index: %u",
++		  WIPHY_PR_ARG, NETDEV_PR_ARG, __entry->key_index)
++);
++
+ TRACE_EVENT(rdev_start_ap,
+ 	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev,
+ 		 struct cfg80211_ap_settings *settings),
+@@ -3463,6 +3491,43 @@ TRACE_EVENT(rdev_probe_mesh_link,
+ 		  WIPHY_PR_ARG, NETDEV_PR_ARG, MAC_PR_ARG(dest))
+ );
+ 
++TRACE_EVENT(rdev_set_tid_config,
++	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev,
++		 struct cfg80211_tid_config *tid_conf),
++	TP_ARGS(wiphy, netdev, tid_conf),
++	TP_STRUCT__entry(
++		WIPHY_ENTRY
++		NETDEV_ENTRY
++		MAC_ENTRY(peer)
++	),
++	TP_fast_assign(
++		WIPHY_ASSIGN;
++		NETDEV_ASSIGN;
++		MAC_ASSIGN(peer, tid_conf->peer);
++	),
++	TP_printk(WIPHY_PR_FMT ", " NETDEV_PR_FMT ", peer: " MAC_PR_FMT,
++		  WIPHY_PR_ARG, NETDEV_PR_ARG, MAC_PR_ARG(peer))
++);
++
++TRACE_EVENT(rdev_reset_tid_config,
++	TP_PROTO(struct wiphy *wiphy, struct net_device *netdev,
++		 const u8 *peer, u8 tids),
++	TP_ARGS(wiphy, netdev, peer, tids),
++	TP_STRUCT__entry(
++		WIPHY_ENTRY
++		NETDEV_ENTRY
++		MAC_ENTRY(peer)
++		__field(u8, tids)
++	),
++	TP_fast_assign(
++		WIPHY_ASSIGN;
++		NETDEV_ASSIGN;
++		MAC_ASSIGN(peer, peer);
++		__entry->tids = tids;
++	),
++	TP_printk(WIPHY_PR_FMT ", " NETDEV_PR_FMT ", peer: " MAC_PR_FMT ", tids: 0x%x",
++		  WIPHY_PR_ARG, NETDEV_PR_ARG, MAC_PR_ARG(peer), __entry->tids)
++);
+ #endif /* !__RDEV_OPS_TRACE || TRACE_HEADER_MULTI_READ */
+ 
+ #undef TRACE_INCLUDE_PATH
+diff --git a/net/wireless/util.c b/net/wireless/util.c
+index 8481e9ac3..a468e6431 100644
+--- a/net/wireless/util.c
++++ b/net/wireless/util.c
+@@ -72,7 +72,7 @@ u32 ieee80211_mandatory_rates(struct ieee80211_supported_band *sband,
+ }
+ EXPORT_SYMBOL(ieee80211_mandatory_rates);
+ 
+-int ieee80211_channel_to_frequency(int chan, enum nl80211_band band)
++u32 ieee80211_channel_to_freq_khz(int chan, enum nl80211_band band)
+ {
+ 	/* see 802.11 17.3.8.3.2 and Annex J
+ 	 * there are overlapping channel numbers in 5GHz and 2GHz bands */
+@@ -81,34 +81,39 @@ int ieee80211_channel_to_frequency(int chan, enum nl80211_band band)
+ 	switch (band) {
+ 	case NL80211_BAND_2GHZ:
+ 		if (chan == 14)
+-			return 2484;
++			return MHZ_TO_KHZ(2484);
+ 		else if (chan < 14)
+-			return 2407 + chan * 5;
++			return MHZ_TO_KHZ(2407 + chan * 5);
+ 		break;
+ 	case NL80211_BAND_5GHZ:
+ 		if (chan >= 182 && chan <= 196)
+-			return 4000 + chan * 5;
++			return MHZ_TO_KHZ(4000 + chan * 5);
+ 		else
+-			return 5000 + chan * 5;
++			return MHZ_TO_KHZ(5000 + chan * 5);
+ 		break;
+ 	case NL80211_BAND_6GHZ:
+-		/* see 802.11ax D4.1 27.3.22.2 */
+-		if (chan <= 253)
+-			return 5940 + chan * 5;
++		/* see 802.11ax D6.1 27.3.23.2 */
++		if (chan == 2)
++			return MHZ_TO_KHZ(5935);
++		if (chan <= 233)
++			return MHZ_TO_KHZ(5950 + chan * 5);
+ 		break;
+ 	case NL80211_BAND_60GHZ:
+ 		if (chan < 7)
+-			return 56160 + chan * 2160;
++			return MHZ_TO_KHZ(56160 + chan * 2160);
+ 		break;
+ 	default:
+ 		;
+ 	}
+ 	return 0; /* not supported */
+ }
+-EXPORT_SYMBOL(ieee80211_channel_to_frequency);
++EXPORT_SYMBOL(ieee80211_channel_to_freq_khz);
+ 
+-int ieee80211_frequency_to_channel(int freq)
++int ieee80211_freq_khz_to_channel(u32 freq)
+ {
++	/* TODO: just handle MHz for now */
++	freq = KHZ_TO_MHZ(freq);
++
+ 	/* see 802.11 17.3.8.3.2 and Annex J */
+ 	if (freq == 2484)
+ 		return 14;
+@@ -116,19 +121,22 @@ int ieee80211_frequency_to_channel(int freq)
+ 		return (freq - 2407) / 5;
+ 	else if (freq >= 4910 && freq <= 4980)
+ 		return (freq - 4000) / 5;
+-	else if (freq < 5945)
++	else if (freq < 5925)
+ 		return (freq - 5000) / 5;
++	else if (freq == 5935)
++		return 2;
+ 	else if (freq <= 45000) /* DMG band lower limit */
+-		/* see 802.11ax D4.1 27.3.22.2 */
+-		return (freq - 5940) / 5;
++		/* see 802.11ax D6.1 27.3.22.2 */
++		return (freq - 5950) / 5;
+ 	else if (freq >= 58320 && freq <= 70200)
+ 		return (freq - 56160) / 2160;
+ 	else
+ 		return 0;
+ }
+-EXPORT_SYMBOL(ieee80211_frequency_to_channel);
++EXPORT_SYMBOL(ieee80211_freq_khz_to_channel);
+ 
+-struct ieee80211_channel *ieee80211_get_channel(struct wiphy *wiphy, int freq)
++struct ieee80211_channel *ieee80211_get_channel_khz(struct wiphy *wiphy,
++						    u32 freq)
+ {
+ 	enum nl80211_band band;
+ 	struct ieee80211_supported_band *sband;
+@@ -141,14 +149,16 @@ struct ieee80211_channel *ieee80211_get_channel(struct wiphy *wiphy, int freq)
+ 			continue;
+ 
+ 		for (i = 0; i < sband->n_channels; i++) {
+-			if (sband->channels[i].center_freq == freq)
+-				return &sband->channels[i];
++			struct ieee80211_channel *chan = &sband->channels[i];
++
++			if (ieee80211_channel_to_khz(chan) == freq)
++				return chan;
+ 		}
+ 	}
+ 
+ 	return NULL;
+ }
+-EXPORT_SYMBOL(ieee80211_get_channel);
++EXPORT_SYMBOL(ieee80211_get_channel_khz);
+ 
+ static void set_mandatory_flags_band(struct ieee80211_supported_band *sband)
+ {
+@@ -231,7 +241,12 @@ int cfg80211_validate_key_settings(struct cfg80211_registered_device *rdev,
+ 				   struct key_params *params, int key_idx,
+ 				   bool pairwise, const u8 *mac_addr)
+ {
+-	if (key_idx < 0 || key_idx > 5)
++	int max_key_idx = 5;
++
++	if (wiphy_ext_feature_isset(&rdev->wiphy,
++				    NL80211_EXT_FEATURE_BEACON_PROTECTION))
++		max_key_idx = 7;
++	if (key_idx < 0 || key_idx > max_key_idx)
+ 		return -EINVAL;
+ 
+ 	if (!pairwise && mac_addr && !(rdev->wiphy.flags & WIPHY_FLAG_IBSS_RSN))
+diff --git a/net/xfrm/Kconfig b/net/xfrm/Kconfig
+index 51bb6018f..e5815cb2c 100644
+--- a/net/xfrm/Kconfig
++++ b/net/xfrm/Kconfig
+@@ -28,6 +28,17 @@ config XFRM_USER
+ 
+ 	  If unsure, say Y.
+ 
++config XFRM_USER_COMPAT
++	tristate "Compatible ABI support"
++	depends on XFRM_USER && COMPAT_FOR_U64_ALIGNMENT && \
++		HAVE_EFFICIENT_UNALIGNED_ACCESS
++	select WANT_COMPAT_NETLINK_MESSAGES
++	help
++	  Transformation(XFRM) user configuration interface like IPsec
++	  used by compatible Linux applications.
++
++	  If unsure, say N.
++
+ config XFRM_INTERFACE
+ 	tristate "Transformation virtual interface"
+ 	depends on XFRM && IPV6
+diff --git a/net/xfrm/Makefile b/net/xfrm/Makefile
+index fbc4552d1..f32511588 100644
+--- a/net/xfrm/Makefile
++++ b/net/xfrm/Makefile
+@@ -9,5 +9,6 @@ obj-$(CONFIG_XFRM) := xfrm_policy.o xfrm_state.o xfrm_hash.o \
+ obj-$(CONFIG_XFRM_STATISTICS) += xfrm_proc.o
+ obj-$(CONFIG_XFRM_ALGO) += xfrm_algo.o
+ obj-$(CONFIG_XFRM_USER) += xfrm_user.o
++obj-$(CONFIG_XFRM_USER_COMPAT) += xfrm_compat.o
+ obj-$(CONFIG_XFRM_IPCOMP) += xfrm_ipcomp.o
+ obj-$(CONFIG_XFRM_INTERFACE) += xfrm_interface.o
+diff --git a/net/xfrm/xfrm_algo.c b/net/xfrm/xfrm_algo.c
+index 32a378e70..8b06ef53d 100644
+--- a/net/xfrm/xfrm_algo.c
++++ b/net/xfrm/xfrm_algo.c
+@@ -237,7 +237,7 @@ static struct xfrm_algo_desc aalg_list[] = {
+ 
+ 	.uinfo = {
+ 		.auth = {
+-			.icv_truncbits = 96,
++			.icv_truncbits = 128,
+ 			.icv_fullbits = 256,
+ 		}
+ 	},
+diff --git a/net/xfrm/xfrm_compat.c b/net/xfrm/xfrm_compat.c
+new file mode 100644
+index 000000000..c1dee0696
+--- /dev/null
++++ b/net/xfrm/xfrm_compat.c
+@@ -0,0 +1,625 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * XFRM compat layer
++ * Author: Dmitry Safonov <dima@arista.com>
++ * Based on code and translator idea by: Florian Westphal <fw@strlen.de>
++ */
++#include <linux/compat.h>
++#include <linux/xfrm.h>
++#include <net/xfrm.h>
++
++struct compat_xfrm_lifetime_cfg {
++	compat_u64 soft_byte_limit, hard_byte_limit;
++	compat_u64 soft_packet_limit, hard_packet_limit;
++	compat_u64 soft_add_expires_seconds, hard_add_expires_seconds;
++	compat_u64 soft_use_expires_seconds, hard_use_expires_seconds;
++}; /* same size on 32bit, but only 4 byte alignment required */
++
++struct compat_xfrm_lifetime_cur {
++	compat_u64 bytes, packets, add_time, use_time;
++}; /* same size on 32bit, but only 4 byte alignment required */
++
++struct compat_xfrm_userpolicy_info {
++	struct xfrm_selector sel;
++	struct compat_xfrm_lifetime_cfg lft;
++	struct compat_xfrm_lifetime_cur curlft;
++	__u32 priority, index;
++	u8 dir, action, flags, share;
++	/* 4 bytes additional padding on 64bit */
++};
++
++struct compat_xfrm_usersa_info {
++	struct xfrm_selector sel;
++	struct xfrm_id id;
++	xfrm_address_t saddr;
++	struct compat_xfrm_lifetime_cfg lft;
++	struct compat_xfrm_lifetime_cur curlft;
++	struct xfrm_stats stats;
++	__u32 seq, reqid;
++	u16 family;
++	u8 mode, replay_window, flags;
++	/* 4 bytes additional padding on 64bit */
++};
++
++struct compat_xfrm_user_acquire {
++	struct xfrm_id id;
++	xfrm_address_t saddr;
++	struct xfrm_selector sel;
++	struct compat_xfrm_userpolicy_info policy;
++	/* 4 bytes additional padding on 64bit */
++	__u32 aalgos, ealgos, calgos, seq;
++};
++
++struct compat_xfrm_userspi_info {
++	struct compat_xfrm_usersa_info info;
++	/* 4 bytes additional padding on 64bit */
++	__u32 min, max;
++};
++
++struct compat_xfrm_user_expire {
++	struct compat_xfrm_usersa_info state;
++	/* 8 bytes additional padding on 64bit */
++	u8 hard;
++};
++
++struct compat_xfrm_user_polexpire {
++	struct compat_xfrm_userpolicy_info pol;
++	/* 8 bytes additional padding on 64bit */
++	u8 hard;
++};
++
++#define XMSGSIZE(type) sizeof(struct type)
++
++static const int compat_msg_min[XFRM_NR_MSGTYPES] = {
++	[XFRM_MSG_NEWSA       - XFRM_MSG_BASE] = XMSGSIZE(compat_xfrm_usersa_info),
++	[XFRM_MSG_DELSA       - XFRM_MSG_BASE] = XMSGSIZE(xfrm_usersa_id),
++	[XFRM_MSG_GETSA       - XFRM_MSG_BASE] = XMSGSIZE(xfrm_usersa_id),
++	[XFRM_MSG_NEWPOLICY   - XFRM_MSG_BASE] = XMSGSIZE(compat_xfrm_userpolicy_info),
++	[XFRM_MSG_DELPOLICY   - XFRM_MSG_BASE] = XMSGSIZE(xfrm_userpolicy_id),
++	[XFRM_MSG_GETPOLICY   - XFRM_MSG_BASE] = XMSGSIZE(xfrm_userpolicy_id),
++	[XFRM_MSG_ALLOCSPI    - XFRM_MSG_BASE] = XMSGSIZE(compat_xfrm_userspi_info),
++	[XFRM_MSG_ACQUIRE     - XFRM_MSG_BASE] = XMSGSIZE(compat_xfrm_user_acquire),
++	[XFRM_MSG_EXPIRE      - XFRM_MSG_BASE] = XMSGSIZE(compat_xfrm_user_expire),
++	[XFRM_MSG_UPDPOLICY   - XFRM_MSG_BASE] = XMSGSIZE(compat_xfrm_userpolicy_info),
++	[XFRM_MSG_UPDSA       - XFRM_MSG_BASE] = XMSGSIZE(compat_xfrm_usersa_info),
++	[XFRM_MSG_POLEXPIRE   - XFRM_MSG_BASE] = XMSGSIZE(compat_xfrm_user_polexpire),
++	[XFRM_MSG_FLUSHSA     - XFRM_MSG_BASE] = XMSGSIZE(xfrm_usersa_flush),
++	[XFRM_MSG_FLUSHPOLICY - XFRM_MSG_BASE] = 0,
++	[XFRM_MSG_NEWAE       - XFRM_MSG_BASE] = XMSGSIZE(xfrm_aevent_id),
++	[XFRM_MSG_GETAE       - XFRM_MSG_BASE] = XMSGSIZE(xfrm_aevent_id),
++	[XFRM_MSG_REPORT      - XFRM_MSG_BASE] = XMSGSIZE(xfrm_user_report),
++	[XFRM_MSG_MIGRATE     - XFRM_MSG_BASE] = XMSGSIZE(xfrm_userpolicy_id),
++	[XFRM_MSG_NEWSADINFO  - XFRM_MSG_BASE] = sizeof(u32),
++	[XFRM_MSG_GETSADINFO  - XFRM_MSG_BASE] = sizeof(u32),
++	[XFRM_MSG_NEWSPDINFO  - XFRM_MSG_BASE] = sizeof(u32),
++	[XFRM_MSG_GETSPDINFO  - XFRM_MSG_BASE] = sizeof(u32),
++	[XFRM_MSG_MAPPING     - XFRM_MSG_BASE] = XMSGSIZE(xfrm_user_mapping)
++};
++
++static const struct nla_policy compat_policy[XFRMA_MAX+1] = {
++	[XFRMA_SA]		= { .len = XMSGSIZE(compat_xfrm_usersa_info)},
++	[XFRMA_POLICY]		= { .len = XMSGSIZE(compat_xfrm_userpolicy_info)},
++	[XFRMA_LASTUSED]	= { .type = NLA_U64},
++	[XFRMA_ALG_AUTH_TRUNC]	= { .len = sizeof(struct xfrm_algo_auth)},
++	[XFRMA_ALG_AEAD]	= { .len = sizeof(struct xfrm_algo_aead) },
++	[XFRMA_ALG_AUTH]	= { .len = sizeof(struct xfrm_algo) },
++	[XFRMA_ALG_CRYPT]	= { .len = sizeof(struct xfrm_algo) },
++	[XFRMA_ALG_COMP]	= { .len = sizeof(struct xfrm_algo) },
++	[XFRMA_ENCAP]		= { .len = sizeof(struct xfrm_encap_tmpl) },
++	[XFRMA_TMPL]		= { .len = sizeof(struct xfrm_user_tmpl) },
++	[XFRMA_SEC_CTX]		= { .len = sizeof(struct xfrm_sec_ctx) },
++	[XFRMA_LTIME_VAL]	= { .len = sizeof(struct xfrm_lifetime_cur) },
++	[XFRMA_REPLAY_VAL]	= { .len = sizeof(struct xfrm_replay_state) },
++	[XFRMA_REPLAY_THRESH]	= { .type = NLA_U32 },
++	[XFRMA_ETIMER_THRESH]	= { .type = NLA_U32 },
++	[XFRMA_SRCADDR]		= { .len = sizeof(xfrm_address_t) },
++	[XFRMA_COADDR]		= { .len = sizeof(xfrm_address_t) },
++	[XFRMA_POLICY_TYPE]	= { .len = sizeof(struct xfrm_userpolicy_type)},
++	[XFRMA_MIGRATE]		= { .len = sizeof(struct xfrm_user_migrate) },
++	[XFRMA_KMADDRESS]	= { .len = sizeof(struct xfrm_user_kmaddress) },
++	[XFRMA_MARK]		= { .len = sizeof(struct xfrm_mark) },
++	[XFRMA_TFCPAD]		= { .type = NLA_U32 },
++	[XFRMA_REPLAY_ESN_VAL]	= { .len = sizeof(struct xfrm_replay_state_esn) },
++	[XFRMA_SA_EXTRA_FLAGS]	= { .type = NLA_U32 },
++	[XFRMA_PROTO]		= { .type = NLA_U8 },
++	[XFRMA_ADDRESS_FILTER]	= { .len = sizeof(struct xfrm_address_filter) },
++	[XFRMA_OFFLOAD_DEV]	= { .len = sizeof(struct xfrm_user_offload) },
++	[XFRMA_SET_MARK]	= { .type = NLA_U32 },
++	[XFRMA_SET_MARK_MASK]	= { .type = NLA_U32 },
++	[XFRMA_IF_ID]		= { .type = NLA_U32 },
++};
++
++static struct nlmsghdr *xfrm_nlmsg_put_compat(struct sk_buff *skb,
++			const struct nlmsghdr *nlh_src, u16 type)
++{
++	int payload = compat_msg_min[type];
++	int src_len = xfrm_msg_min[type];
++	struct nlmsghdr *nlh_dst;
++
++	/* Compat messages are shorter or equal to native (+padding) */
++	if (WARN_ON_ONCE(src_len < payload))
++		return ERR_PTR(-EMSGSIZE);
++
++	nlh_dst = nlmsg_put(skb, nlh_src->nlmsg_pid, nlh_src->nlmsg_seq,
++			    nlh_src->nlmsg_type, payload, nlh_src->nlmsg_flags);
++	if (!nlh_dst)
++		return ERR_PTR(-EMSGSIZE);
++
++	memset(nlmsg_data(nlh_dst), 0, payload);
++
++	switch (nlh_src->nlmsg_type) {
++	/* Compat message has the same layout as native */
++	case XFRM_MSG_DELSA:
++	case XFRM_MSG_DELPOLICY:
++	case XFRM_MSG_FLUSHSA:
++	case XFRM_MSG_FLUSHPOLICY:
++	case XFRM_MSG_NEWAE:
++	case XFRM_MSG_REPORT:
++	case XFRM_MSG_MIGRATE:
++	case XFRM_MSG_NEWSADINFO:
++	case XFRM_MSG_NEWSPDINFO:
++	case XFRM_MSG_MAPPING:
++		WARN_ON_ONCE(src_len != payload);
++		memcpy(nlmsg_data(nlh_dst), nlmsg_data(nlh_src), src_len);
++		break;
++	/* 4 byte alignment for trailing u64 on native, but not on compat */
++	case XFRM_MSG_NEWSA:
++	case XFRM_MSG_NEWPOLICY:
++	case XFRM_MSG_UPDSA:
++	case XFRM_MSG_UPDPOLICY:
++		WARN_ON_ONCE(src_len != payload + 4);
++		memcpy(nlmsg_data(nlh_dst), nlmsg_data(nlh_src), payload);
++		break;
++	case XFRM_MSG_EXPIRE: {
++		const struct xfrm_user_expire *src_ue  = nlmsg_data(nlh_src);
++		struct compat_xfrm_user_expire *dst_ue = nlmsg_data(nlh_dst);
++
++		/* compat_xfrm_user_expire has 4-byte smaller state */
++		memcpy(dst_ue, src_ue, sizeof(dst_ue->state));
++		dst_ue->hard = src_ue->hard;
++		break;
++	}
++	case XFRM_MSG_ACQUIRE: {
++		const struct xfrm_user_acquire *src_ua  = nlmsg_data(nlh_src);
++		struct compat_xfrm_user_acquire *dst_ua = nlmsg_data(nlh_dst);
++
++		memcpy(dst_ua, src_ua, offsetof(struct compat_xfrm_user_acquire, aalgos));
++		dst_ua->aalgos = src_ua->aalgos;
++		dst_ua->ealgos = src_ua->ealgos;
++		dst_ua->calgos = src_ua->calgos;
++		dst_ua->seq    = src_ua->seq;
++		break;
++	}
++	case XFRM_MSG_POLEXPIRE: {
++		const struct xfrm_user_polexpire *src_upe  = nlmsg_data(nlh_src);
++		struct compat_xfrm_user_polexpire *dst_upe = nlmsg_data(nlh_dst);
++
++		/* compat_xfrm_user_polexpire has 4-byte smaller state */
++		memcpy(dst_upe, src_upe, sizeof(dst_upe->pol));
++		dst_upe->hard = src_upe->hard;
++		break;
++	}
++	case XFRM_MSG_ALLOCSPI: {
++		const struct xfrm_userspi_info *src_usi = nlmsg_data(nlh_src);
++		struct compat_xfrm_userspi_info *dst_usi = nlmsg_data(nlh_dst);
++
++		/* compat_xfrm_user_polexpire has 4-byte smaller state */
++		memcpy(dst_usi, src_usi, sizeof(src_usi->info));
++		dst_usi->min = src_usi->min;
++		dst_usi->max = src_usi->max;
++		break;
++	}
++	/* Not being sent by kernel */
++	case XFRM_MSG_GETSA:
++	case XFRM_MSG_GETPOLICY:
++	case XFRM_MSG_GETAE:
++	case XFRM_MSG_GETSADINFO:
++	case XFRM_MSG_GETSPDINFO:
++	default:
++		WARN_ONCE(1, "unsupported nlmsg_type %d", nlh_src->nlmsg_type);
++		return ERR_PTR(-EOPNOTSUPP);
++	}
++
++	return nlh_dst;
++}
++
++static int xfrm_nla_cpy(struct sk_buff *dst, const struct nlattr *src, int len)
++{
++	return nla_put(dst, src->nla_type, len, nla_data(src));
++}
++
++static int xfrm_xlate64_attr(struct sk_buff *dst, const struct nlattr *src)
++{
++	switch (src->nla_type) {
++	case XFRMA_PAD:
++		/* Ignore */
++		return 0;
++	case XFRMA_ALG_AUTH:
++	case XFRMA_ALG_CRYPT:
++	case XFRMA_ALG_COMP:
++	case XFRMA_ENCAP:
++	case XFRMA_TMPL:
++		return xfrm_nla_cpy(dst, src, nla_len(src));
++	case XFRMA_SA:
++		return xfrm_nla_cpy(dst, src, XMSGSIZE(compat_xfrm_usersa_info));
++	case XFRMA_POLICY:
++		return xfrm_nla_cpy(dst, src, XMSGSIZE(compat_xfrm_userpolicy_info));
++	case XFRMA_SEC_CTX:
++		return xfrm_nla_cpy(dst, src, nla_len(src));
++	case XFRMA_LTIME_VAL:
++		return nla_put_64bit(dst, src->nla_type, nla_len(src),
++			nla_data(src), XFRMA_PAD);
++	case XFRMA_REPLAY_VAL:
++	case XFRMA_REPLAY_THRESH:
++	case XFRMA_ETIMER_THRESH:
++	case XFRMA_SRCADDR:
++	case XFRMA_COADDR:
++		return xfrm_nla_cpy(dst, src, nla_len(src));
++	case XFRMA_LASTUSED:
++		return nla_put_64bit(dst, src->nla_type, nla_len(src),
++			nla_data(src), XFRMA_PAD);
++	case XFRMA_POLICY_TYPE:
++	case XFRMA_MIGRATE:
++	case XFRMA_ALG_AEAD:
++	case XFRMA_KMADDRESS:
++	case XFRMA_ALG_AUTH_TRUNC:
++	case XFRMA_MARK:
++	case XFRMA_TFCPAD:
++	case XFRMA_REPLAY_ESN_VAL:
++	case XFRMA_SA_EXTRA_FLAGS:
++	case XFRMA_PROTO:
++	case XFRMA_ADDRESS_FILTER:
++	case XFRMA_OFFLOAD_DEV:
++	case XFRMA_SET_MARK:
++	case XFRMA_SET_MARK_MASK:
++	case XFRMA_IF_ID:
++		return xfrm_nla_cpy(dst, src, nla_len(src));
++	default:
++		BUILD_BUG_ON(XFRMA_MAX != XFRMA_IF_ID);
++		WARN_ONCE(1, "unsupported nla_type %d", src->nla_type);
++		return -EOPNOTSUPP;
++	}
++}
++
++/* Take kernel-built (64bit layout) and create 32bit layout for userspace */
++static int xfrm_xlate64(struct sk_buff *dst, const struct nlmsghdr *nlh_src)
++{
++	u16 type = nlh_src->nlmsg_type - XFRM_MSG_BASE;
++	const struct nlattr *nla, *attrs;
++	struct nlmsghdr *nlh_dst;
++	int len, remaining;
++
++	nlh_dst = xfrm_nlmsg_put_compat(dst, nlh_src, type);
++	if (IS_ERR(nlh_dst))
++		return PTR_ERR(nlh_dst);
++
++	attrs = nlmsg_attrdata(nlh_src, xfrm_msg_min[type]);
++	len = nlmsg_attrlen(nlh_src, xfrm_msg_min[type]);
++
++	nla_for_each_attr(nla, attrs, len, remaining) {
++		int err = xfrm_xlate64_attr(dst, nla);
++
++		if (err)
++			return err;
++	}
++
++	nlmsg_end(dst, nlh_dst);
++
++	return 0;
++}
++
++static int xfrm_alloc_compat(struct sk_buff *skb, const struct nlmsghdr *nlh_src)
++{
++	u16 type = nlh_src->nlmsg_type - XFRM_MSG_BASE;
++	struct sk_buff *new = NULL;
++	int err;
++
++	if (WARN_ON_ONCE(type >= ARRAY_SIZE(xfrm_msg_min)))
++		return -EOPNOTSUPP;
++
++	if (skb_shinfo(skb)->frag_list == NULL) {
++		new = alloc_skb(skb->len + skb_tailroom(skb), GFP_ATOMIC);
++		if (!new)
++			return -ENOMEM;
++		skb_shinfo(skb)->frag_list = new;
++	}
++
++	err = xfrm_xlate64(skb_shinfo(skb)->frag_list, nlh_src);
++	if (err) {
++		if (new) {
++			kfree_skb(new);
++			skb_shinfo(skb)->frag_list = NULL;
++		}
++		return err;
++	}
++
++	return 0;
++}
++
++/* Calculates len of translated 64-bit message. */
++static size_t xfrm_user_rcv_calculate_len64(const struct nlmsghdr *src,
++					    struct nlattr *attrs[XFRMA_MAX+1])
++{
++	size_t len = nlmsg_len(src);
++
++	switch (src->nlmsg_type) {
++	case XFRM_MSG_NEWSA:
++	case XFRM_MSG_NEWPOLICY:
++	case XFRM_MSG_ALLOCSPI:
++	case XFRM_MSG_ACQUIRE:
++	case XFRM_MSG_UPDPOLICY:
++	case XFRM_MSG_UPDSA:
++		len += 4;
++		break;
++	case XFRM_MSG_EXPIRE:
++	case XFRM_MSG_POLEXPIRE:
++		len += 8;
++		break;
++	default:
++		break;
++	}
++
++	if (attrs[XFRMA_SA])
++		len += 4;
++	if (attrs[XFRMA_POLICY])
++		len += 4;
++
++	/* XXX: some attrs may need to be realigned
++	 * if !CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS
++	 */
++
++	return len;
++}
++
++static int xfrm_attr_cpy32(void *dst, size_t *pos, const struct nlattr *src,
++			   size_t size, int copy_len, int payload)
++{
++	struct nlmsghdr *nlmsg = dst;
++	struct nlattr *nla;
++
++	if (WARN_ON_ONCE(copy_len > payload))
++		copy_len = payload;
++
++	if (size - *pos < nla_attr_size(payload))
++		return -ENOBUFS;
++
++	nla = dst + *pos;
++
++	memcpy(nla, src, nla_attr_size(copy_len));
++	nla->nla_len = nla_attr_size(payload);
++	*pos += nla_attr_size(payload);
++	nlmsg->nlmsg_len += nla->nla_len;
++
++	memset(dst + *pos, 0, payload - copy_len);
++	*pos += payload - copy_len;
++
++	return 0;
++}
++
++static int xfrm_xlate32_attr(void *dst, const struct nlattr *nla,
++			     size_t *pos, size_t size,
++			     struct netlink_ext_ack *extack)
++{
++	int type = nla_type(nla);
++	u16 pol_len32, pol_len64;
++	int err;
++
++	if (type > XFRMA_MAX) {
++		BUILD_BUG_ON(XFRMA_MAX != XFRMA_IF_ID);
++		NL_SET_ERR_MSG(extack, "Bad attribute");
++		return -EOPNOTSUPP;
++	}
++	if (nla_len(nla) < compat_policy[type].len) {
++		NL_SET_ERR_MSG(extack, "Attribute bad length");
++		return -EOPNOTSUPP;
++	}
++
++	pol_len32 = compat_policy[type].len;
++	pol_len64 = xfrma_policy[type].len;
++
++	/* XFRMA_SA and XFRMA_POLICY - need to know how-to translate */
++	if (pol_len32 != pol_len64) {
++		if (nla_len(nla) != compat_policy[type].len) {
++			NL_SET_ERR_MSG(extack, "Attribute bad length");
++			return -EOPNOTSUPP;
++		}
++		err = xfrm_attr_cpy32(dst, pos, nla, size, pol_len32, pol_len64);
++		if (err)
++			return err;
++	}
++
++	return xfrm_attr_cpy32(dst, pos, nla, size, nla_len(nla), nla_len(nla));
++}
++
++static int xfrm_xlate32(struct nlmsghdr *dst, const struct nlmsghdr *src,
++			struct nlattr *attrs[XFRMA_MAX+1],
++			size_t size, u8 type, struct netlink_ext_ack *extack)
++{
++	size_t pos;
++	int i;
++
++	memcpy(dst, src, NLMSG_HDRLEN);
++	dst->nlmsg_len = NLMSG_HDRLEN + xfrm_msg_min[type];
++	memset(nlmsg_data(dst), 0, xfrm_msg_min[type]);
++
++	switch (src->nlmsg_type) {
++	/* Compat message has the same layout as native */
++	case XFRM_MSG_DELSA:
++	case XFRM_MSG_GETSA:
++	case XFRM_MSG_DELPOLICY:
++	case XFRM_MSG_GETPOLICY:
++	case XFRM_MSG_FLUSHSA:
++	case XFRM_MSG_FLUSHPOLICY:
++	case XFRM_MSG_NEWAE:
++	case XFRM_MSG_GETAE:
++	case XFRM_MSG_REPORT:
++	case XFRM_MSG_MIGRATE:
++	case XFRM_MSG_NEWSADINFO:
++	case XFRM_MSG_GETSADINFO:
++	case XFRM_MSG_NEWSPDINFO:
++	case XFRM_MSG_GETSPDINFO:
++	case XFRM_MSG_MAPPING:
++		memcpy(nlmsg_data(dst), nlmsg_data(src), compat_msg_min[type]);
++		break;
++	/* 4 byte alignment for trailing u64 on native, but not on compat */
++	case XFRM_MSG_NEWSA:
++	case XFRM_MSG_NEWPOLICY:
++	case XFRM_MSG_UPDSA:
++	case XFRM_MSG_UPDPOLICY:
++		memcpy(nlmsg_data(dst), nlmsg_data(src), compat_msg_min[type]);
++		break;
++	case XFRM_MSG_EXPIRE: {
++		const struct compat_xfrm_user_expire *src_ue = nlmsg_data(src);
++		struct xfrm_user_expire *dst_ue = nlmsg_data(dst);
++
++		/* compat_xfrm_user_expire has 4-byte smaller state */
++		memcpy(dst_ue, src_ue, sizeof(src_ue->state));
++		dst_ue->hard = src_ue->hard;
++		break;
++	}
++	case XFRM_MSG_ACQUIRE: {
++		const struct compat_xfrm_user_acquire *src_ua = nlmsg_data(src);
++		struct xfrm_user_acquire *dst_ua = nlmsg_data(dst);
++
++		memcpy(dst_ua, src_ua, offsetof(struct compat_xfrm_user_acquire, aalgos));
++		dst_ua->aalgos = src_ua->aalgos;
++		dst_ua->ealgos = src_ua->ealgos;
++		dst_ua->calgos = src_ua->calgos;
++		dst_ua->seq    = src_ua->seq;
++		break;
++	}
++	case XFRM_MSG_POLEXPIRE: {
++		const struct compat_xfrm_user_polexpire *src_upe = nlmsg_data(src);
++		struct xfrm_user_polexpire *dst_upe = nlmsg_data(dst);
++
++		/* compat_xfrm_user_polexpire has 4-byte smaller state */
++		memcpy(dst_upe, src_upe, sizeof(src_upe->pol));
++		dst_upe->hard = src_upe->hard;
++		break;
++	}
++	case XFRM_MSG_ALLOCSPI: {
++		const struct compat_xfrm_userspi_info *src_usi = nlmsg_data(src);
++		struct xfrm_userspi_info *dst_usi = nlmsg_data(dst);
++
++		/* compat_xfrm_user_polexpire has 4-byte smaller state */
++		memcpy(dst_usi, src_usi, sizeof(src_usi->info));
++		dst_usi->min = src_usi->min;
++		dst_usi->max = src_usi->max;
++		break;
++	}
++	default:
++		NL_SET_ERR_MSG(extack, "Unsupported message type");
++		return -EOPNOTSUPP;
++	}
++	pos = dst->nlmsg_len;
++
++	for (i = 1; i < XFRMA_MAX + 1; i++) {
++		int err;
++
++		if (i == XFRMA_PAD)
++			continue;
++
++		if (!attrs[i])
++			continue;
++
++		err = xfrm_xlate32_attr(dst, attrs[i], &pos, size, extack);
++		if (err)
++			return err;
++	}
++
++	return 0;
++}
++
++static struct nlmsghdr *xfrm_user_rcv_msg_compat(const struct nlmsghdr *h32,
++			int maxtype, const struct nla_policy *policy,
++			struct netlink_ext_ack *extack)
++{
++	/* netlink_rcv_skb() checks if a message has full (struct nlmsghdr) */
++	u16 type = h32->nlmsg_type - XFRM_MSG_BASE;
++	struct nlattr *attrs[XFRMA_MAX+1];
++	struct nlmsghdr *h64;
++	size_t len;
++	int err;
++
++	BUILD_BUG_ON(ARRAY_SIZE(xfrm_msg_min) != ARRAY_SIZE(compat_msg_min));
++
++	if (type >= ARRAY_SIZE(xfrm_msg_min))
++		return ERR_PTR(-EINVAL);
++
++	/* Don't call parse: the message might have only nlmsg header */
++	if ((h32->nlmsg_type == XFRM_MSG_GETSA ||
++	     h32->nlmsg_type == XFRM_MSG_GETPOLICY) &&
++	    (h32->nlmsg_flags & NLM_F_DUMP))
++		return NULL;
++
++	err = nlmsg_parse_deprecated(h32, compat_msg_min[type], attrs,
++			maxtype ? : XFRMA_MAX, policy ? : compat_policy, extack);
++	if (err < 0)
++		return ERR_PTR(err);
++
++	len = xfrm_user_rcv_calculate_len64(h32, attrs);
++	/* The message doesn't need translation */
++	if (len == nlmsg_len(h32))
++		return NULL;
++
++	len += NLMSG_HDRLEN;
++	h64 = kvmalloc(len, GFP_KERNEL | __GFP_ZERO);
++	if (!h64)
++		return ERR_PTR(-ENOMEM);
++
++	err = xfrm_xlate32(h64, h32, attrs, len, type, extack);
++	if (err < 0) {
++		kvfree(h64);
++		return ERR_PTR(err);
++	}
++
++	return h64;
++}
++
++static int xfrm_user_policy_compat(u8 **pdata32, int optlen)
++{
++	struct compat_xfrm_userpolicy_info *p = (void *)*pdata32;
++	u8 *src_templates, *dst_templates;
++	u8 *data64;
++
++	if (optlen < sizeof(*p))
++		return -EINVAL;
++
++	data64 = kmalloc(optlen + 4, GFP_USER | __GFP_NOWARN);
++	if (!data64)
++		return -ENOMEM;
++
++	memcpy(data64, *pdata32, sizeof(*p));
++	memset(data64 + sizeof(*p), 0, 4);
++
++	src_templates = *pdata32 + sizeof(*p);
++	dst_templates = data64 + sizeof(*p) + 4;
++	memcpy(dst_templates, src_templates, optlen - sizeof(*p));
++
++	kfree(*pdata32);
++	*pdata32 = data64;
++	return 0;
++}
++
++static struct xfrm_translator xfrm_translator = {
++	.owner				= THIS_MODULE,
++	.alloc_compat			= xfrm_alloc_compat,
++	.rcv_msg_compat			= xfrm_user_rcv_msg_compat,
++	.xlate_user_policy_sockptr	= xfrm_user_policy_compat,
++};
++
++static int __init xfrm_compat_init(void)
++{
++	return xfrm_register_translator(&xfrm_translator);
++}
++
++static void __exit xfrm_compat_exit(void)
++{
++	xfrm_unregister_translator(&xfrm_translator);
++}
++
++module_init(xfrm_compat_init);
++module_exit(xfrm_compat_exit);
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("Dmitry Safonov");
++MODULE_DESCRIPTION("XFRM 32-bit compatibility layer");
+diff --git a/net/xfrm/xfrm_state.c b/net/xfrm/xfrm_state.c
+index f3423562d..d5a730fa7 100644
+--- a/net/xfrm/xfrm_state.c
++++ b/net/xfrm/xfrm_state.c
+@@ -2261,6 +2261,66 @@ static bool km_is_alive(const struct km_event *c)
+ 	return is_alive;
+ }
+ 
++#if IS_ENABLED(CONFIG_XFRM_USER_COMPAT)
++static DEFINE_SPINLOCK(xfrm_translator_lock);
++static struct xfrm_translator __rcu *xfrm_translator;
++
++struct xfrm_translator *xfrm_get_translator(void)
++{
++	struct xfrm_translator *xtr;
++
++	rcu_read_lock();
++	xtr = rcu_dereference(xfrm_translator);
++	if (unlikely(!xtr))
++		goto out;
++	if (!try_module_get(xtr->owner))
++		xtr = NULL;
++out:
++	rcu_read_unlock();
++	return xtr;
++}
++EXPORT_SYMBOL_GPL(xfrm_get_translator);
++
++void xfrm_put_translator(struct xfrm_translator *xtr)
++{
++	module_put(xtr->owner);
++}
++EXPORT_SYMBOL_GPL(xfrm_put_translator);
++
++int xfrm_register_translator(struct xfrm_translator *xtr)
++{
++	int err = 0;
++
++	spin_lock_bh(&xfrm_translator_lock);
++	if (unlikely(xfrm_translator != NULL))
++		err = -EEXIST;
++	else
++		rcu_assign_pointer(xfrm_translator, xtr);
++	spin_unlock_bh(&xfrm_translator_lock);
++
++	return err;
++}
++EXPORT_SYMBOL_GPL(xfrm_register_translator);
++
++int xfrm_unregister_translator(struct xfrm_translator *xtr)
++{
++	int err = 0;
++
++	spin_lock_bh(&xfrm_translator_lock);
++	if (likely(xfrm_translator != NULL)) {
++		if (rcu_access_pointer(xfrm_translator) != xtr)
++			err = -EINVAL;
++		else
++			RCU_INIT_POINTER(xfrm_translator, NULL);
++	}
++	spin_unlock_bh(&xfrm_translator_lock);
++	synchronize_rcu();
++
++	return err;
++}
++EXPORT_SYMBOL_GPL(xfrm_unregister_translator);
++#endif
++
+ int xfrm_user_policy(struct sock *sk, int optname, u8 __user *optval, int optlen)
+ {
+ 	int err;
+@@ -2268,9 +2328,6 @@ int xfrm_user_policy(struct sock *sk, int optname, u8 __user *optval, int optlen
+ 	struct xfrm_mgr *km;
+ 	struct xfrm_policy *pol = NULL;
+ 
+-	if (in_compat_syscall())
+-		return -EOPNOTSUPP;
+-
+ 	if (!optval && !optlen) {
+ 		xfrm_sk_policy_insert(sk, XFRM_POLICY_IN, NULL);
+ 		xfrm_sk_policy_insert(sk, XFRM_POLICY_OUT, NULL);
+@@ -2285,6 +2342,23 @@ int xfrm_user_policy(struct sock *sk, int optname, u8 __user *optval, int optlen
+ 	if (IS_ERR(data))
+ 		return PTR_ERR(data);
+ 
++	/* Use the 64-bit / untranslated format on Android, even for compat */
++	if (!IS_ENABLED(CONFIG_ANDROID) || IS_ENABLED(CONFIG_XFRM_USER_COMPAT)) {
++		if (in_compat_syscall()) {
++			struct xfrm_translator *xtr = xfrm_get_translator();
++
++			if (!xtr)
++				return -EOPNOTSUPP;
++
++			err = xtr->xlate_user_policy_sockptr(&data, optlen);
++			xfrm_put_translator(xtr);
++			if (err) {
++				kfree(data);
++				return err;
++			}
++		}
++	}
++
+ 	err = -EINVAL;
+ 	rcu_read_lock();
+ 	list_for_each_entry_rcu(km, &xfrm_km_list, list) {
+diff --git a/net/xfrm/xfrm_user.c b/net/xfrm/xfrm_user.c
+index fbb7d9d06..49687429a 100644
+--- a/net/xfrm/xfrm_user.c
++++ b/net/xfrm/xfrm_user.c
+@@ -975,6 +975,7 @@ static int dump_one_state(struct xfrm_state *x, int count, void *ptr)
+ 	struct xfrm_dump_info *sp = ptr;
+ 	struct sk_buff *in_skb = sp->in_skb;
+ 	struct sk_buff *skb = sp->out_skb;
++	struct xfrm_translator *xtr;
+ 	struct xfrm_usersa_info *p;
+ 	struct nlmsghdr *nlh;
+ 	int err;
+@@ -992,6 +993,18 @@ static int dump_one_state(struct xfrm_state *x, int count, void *ptr)
+ 		return err;
+ 	}
+ 	nlmsg_end(skb, nlh);
++
++	xtr = xfrm_get_translator();
++	if (xtr) {
++		err = xtr->alloc_compat(skb, nlh);
++
++		xfrm_put_translator(xtr);
++		if (err) {
++			nlmsg_cancel(skb, nlh);
++			return err;
++		}
++	}
++
+ 	return 0;
+ }
+ 
+@@ -1006,7 +1019,6 @@ static int xfrm_dump_sa_done(struct netlink_callback *cb)
+ 	return 0;
+ }
+ 
+-static const struct nla_policy xfrma_policy[XFRMA_MAX+1];
+ static int xfrm_dump_sa(struct sk_buff *skb, struct netlink_callback *cb)
+ {
+ 	struct net *net = sock_net(skb->sk);
+@@ -1083,12 +1095,24 @@ static inline int xfrm_nlmsg_multicast(struct net *net, struct sk_buff *skb,
+ 				       u32 pid, unsigned int group)
+ {
+ 	struct sock *nlsk = rcu_dereference(net->xfrm.nlsk);
++	struct xfrm_translator *xtr;
+ 
+ 	if (!nlsk) {
+ 		kfree_skb(skb);
+ 		return -EPIPE;
+ 	}
+ 
++	xtr = xfrm_get_translator();
++	if (xtr) {
++		int err = xtr->alloc_compat(skb, nlmsg_hdr(skb));
++
++		xfrm_put_translator(xtr);
++		if (err) {
++			kfree_skb(skb);
++			return err;
++		}
++	}
++
+ 	return nlmsg_multicast(nlsk, skb, pid, group, GFP_ATOMIC);
+ }
+ 
+@@ -1308,6 +1332,7 @@ static int xfrm_alloc_userspi(struct sk_buff *skb, struct nlmsghdr *nlh,
+ 	struct net *net = sock_net(skb->sk);
+ 	struct xfrm_state *x;
+ 	struct xfrm_userspi_info *p;
++	struct xfrm_translator *xtr;
+ 	struct sk_buff *resp_skb;
+ 	xfrm_address_t *daddr;
+ 	int family;
+@@ -1358,6 +1383,17 @@ static int xfrm_alloc_userspi(struct sk_buff *skb, struct nlmsghdr *nlh,
+ 		goto out;
+ 	}
+ 
++	xtr = xfrm_get_translator();
++	if (xtr) {
++		err = xtr->alloc_compat(skb, nlmsg_hdr(skb));
++
++		xfrm_put_translator(xtr);
++		if (err) {
++			kfree_skb(resp_skb);
++			goto out;
++		}
++	}
++
+ 	err = nlmsg_unicast(net->xfrm.nlsk, resp_skb, NETLINK_CB(skb).portid);
+ 
+ out:
+@@ -1764,6 +1800,7 @@ static int dump_one_policy(struct xfrm_policy *xp, int dir, int count, void *ptr
+ 	struct xfrm_userpolicy_info *p;
+ 	struct sk_buff *in_skb = sp->in_skb;
+ 	struct sk_buff *skb = sp->out_skb;
++	struct xfrm_translator *xtr;
+ 	struct nlmsghdr *nlh;
+ 	int err;
+ 
+@@ -1788,6 +1825,18 @@ static int dump_one_policy(struct xfrm_policy *xp, int dir, int count, void *ptr
+ 		return err;
+ 	}
+ 	nlmsg_end(skb, nlh);
++
++	xtr = xfrm_get_translator();
++	if (xtr) {
++		err = xtr->alloc_compat(skb, nlh);
++
++		xfrm_put_translator(xtr);
++		if (err) {
++			nlmsg_cancel(skb, nlh);
++			return err;
++		}
++	}
++
+ 	return 0;
+ }
+ 
+@@ -2533,7 +2582,7 @@ static int xfrm_send_migrate(const struct xfrm_selector *sel, u8 dir, u8 type,
+ 
+ #define XMSGSIZE(type) sizeof(struct type)
+ 
+-static const int xfrm_msg_min[XFRM_NR_MSGTYPES] = {
++const int xfrm_msg_min[XFRM_NR_MSGTYPES] = {
+ 	[XFRM_MSG_NEWSA       - XFRM_MSG_BASE] = XMSGSIZE(xfrm_usersa_info),
+ 	[XFRM_MSG_DELSA       - XFRM_MSG_BASE] = XMSGSIZE(xfrm_usersa_id),
+ 	[XFRM_MSG_GETSA       - XFRM_MSG_BASE] = XMSGSIZE(xfrm_usersa_id),
+@@ -2556,10 +2605,11 @@ static const int xfrm_msg_min[XFRM_NR_MSGTYPES] = {
+ 	[XFRM_MSG_NEWSPDINFO  - XFRM_MSG_BASE] = sizeof(u32),
+ 	[XFRM_MSG_GETSPDINFO  - XFRM_MSG_BASE] = sizeof(u32),
+ };
++EXPORT_SYMBOL_GPL(xfrm_msg_min);
+ 
+ #undef XMSGSIZE
+ 
+-static const struct nla_policy xfrma_policy[XFRMA_MAX+1] = {
++const struct nla_policy xfrma_policy[XFRMA_MAX+1] = {
+ 	[XFRMA_SA]		= { .len = sizeof(struct xfrm_usersa_info)},
+ 	[XFRMA_POLICY]		= { .len = sizeof(struct xfrm_userpolicy_info)},
+ 	[XFRMA_LASTUSED]	= { .type = NLA_U64},
+@@ -2591,6 +2641,7 @@ static const struct nla_policy xfrma_policy[XFRMA_MAX+1] = {
+ 	[XFRMA_SET_MARK_MASK]	= { .type = NLA_U32 },
+ 	[XFRMA_IF_ID]		= { .type = NLA_U32 },
+ };
++EXPORT_SYMBOL_GPL(xfrma_policy);
+ 
+ static const struct nla_policy xfrma_spd_policy[XFRMA_SPD_MAX+1] = {
+ 	[XFRMA_SPD_IPV4_HTHRESH] = { .len = sizeof(struct xfrmu_spdhthresh) },
+@@ -2640,11 +2691,9 @@ static int xfrm_user_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh,
+ 	struct net *net = sock_net(skb->sk);
+ 	struct nlattr *attrs[XFRMA_MAX+1];
+ 	const struct xfrm_link *link;
++	struct nlmsghdr *nlh64 = NULL;
+ 	int type, err;
+ 
+-	if (in_compat_syscall())
+-		return -EOPNOTSUPP;
+-
+ 	type = nlh->nlmsg_type;
+ 	if (type > XFRM_MSG_MAX)
+ 		return -EINVAL;
+@@ -2656,32 +2705,58 @@ static int xfrm_user_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh,
+ 	if (!netlink_net_capable(skb, CAP_NET_ADMIN))
+ 		return -EPERM;
+ 
++	/* Use the 64-bit / untranslated format on Android, even for compat */
++	if (!IS_ENABLED(CONFIG_ANDROID) || IS_ENABLED(CONFIG_XFRM_USER_COMPAT)) {
++		if (in_compat_syscall()) {
++			struct xfrm_translator *xtr = xfrm_get_translator();
++
++			if (!xtr)
++				return -EOPNOTSUPP;
++
++			nlh64 = xtr->rcv_msg_compat(nlh, link->nla_max,
++						    link->nla_pol, extack);
++			xfrm_put_translator(xtr);
++			if (IS_ERR(nlh64))
++				return PTR_ERR(nlh64);
++			if (nlh64)
++				nlh = nlh64;
++		}
++	}
++
+ 	if ((type == (XFRM_MSG_GETSA - XFRM_MSG_BASE) ||
+ 	     type == (XFRM_MSG_GETPOLICY - XFRM_MSG_BASE)) &&
+ 	    (nlh->nlmsg_flags & NLM_F_DUMP)) {
+-		if (link->dump == NULL)
+-			return -EINVAL;
++		struct netlink_dump_control c = {
++			.start = link->start,
++			.dump = link->dump,
++			.done = link->done,
++		};
+ 
+-		{
+-			struct netlink_dump_control c = {
+-				.start = link->start,
+-				.dump = link->dump,
+-				.done = link->done,
+-			};
+-			return netlink_dump_start(net->xfrm.nlsk, skb, nlh, &c);
++		if (link->dump == NULL) {
++			err = -EINVAL;
++			goto err;
+ 		}
++
++		err = netlink_dump_start(net->xfrm.nlsk, skb, nlh, &c);
++		goto err;
+ 	}
+ 
+ 	err = nlmsg_parse_deprecated(nlh, xfrm_msg_min[type], attrs,
+ 				     link->nla_max ? : XFRMA_MAX,
+ 				     link->nla_pol ? : xfrma_policy, extack);
+ 	if (err < 0)
+-		return err;
++		goto err;
+ 
+-	if (link->doit == NULL)
+-		return -EINVAL;
++	if (link->doit == NULL) {
++		err = -EINVAL;
++		goto err;
++	}
+ 
+-	return link->doit(skb, nlh, attrs);
++	err = link->doit(skb, nlh, attrs);
++
++err:
++	kvfree(nlh64);
++	return err;
+ }
+ 
+ static void xfrm_netlink_rcv(struct sk_buff *skb)
+-- 
+2.17.1
+
