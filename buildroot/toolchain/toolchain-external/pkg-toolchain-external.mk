@@ -458,12 +458,12 @@ endef
 # (as appropriate)
 #
 # $1: destination directory (TARGET_DIR / STAGING_DIR)
+# Support for T-head RISCV64 toolchains
 create_lib_symlinks = \
 	$(Q)DESTDIR="$(strip $1)" ; \
 	ARCH_LIB_DIR="$(call toolchain_find_libdir,$(TOOLCHAIN_EXTERNAL_CC) $(TOOLCHAIN_EXTERNAL_CFLAGS))" ; \
 	if [ ! -e "$${DESTDIR}/$${ARCH_LIB_DIR}" -a ! -e "$${DESTDIR}/usr/$${ARCH_LIB_DIR}" ]; then \
 		relpath="$(call relpath_prefix,$${ARCH_LIB_DIR})" ; \
-# Support for T-head RISCV64 toolchains
 		mkdir -p `dirname "$${DESTDIR}/$${ARCH_LIB_DIR}"` ; \
 		mkdir -p `dirname "$${DESTDIR}/usr/$${ARCH_LIB_DIR}"` ; \
 		ln -snf $${relpath}lib "$${DESTDIR}/$${ARCH_LIB_DIR}" ; \
