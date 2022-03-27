@@ -4,11 +4,11 @@
 # Support Lists
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
 | -------- | ----------- | ------- | ------- | ------- | --------- |
-| yuzukihd | yuzukiruler | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukiruler_defconfig |
-| yuzukihd | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | yuzukihd_YuzukiCore_F1_defconfig |
-| sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | sipeed_lichee_nano_defconfig |
-| sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | sipeed_lichee_zero_defconfig |
-| awol   | nezha | D1 | smaeul,u-boot | smaeul,linux | aw-ol_nezha_defconfig |
+| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukiruler_defconfig |
+| YuzukiHD | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukicore_f1_defconfig |
+| Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | sipeed_lichee_nano_defconfig |
+| Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | sipeed_lichee_zero_defconfig |
+| awol   | nezha | D1 | tina,uboot 2018 | smaeul,linux | awol_nezha_defconfig |
 
 
 # Install
