@@ -111,9 +111,46 @@ xfel.exe spinor write 0 sysimage-nor.img   # Write System to devices
 
 ### wsl_path
 
+If you are using the `WSL` environment, please run this command to clear the `WSL` environment variables before compiling, otherwise the following error will occur.
+
 ```
 Your PATH contains spaces, TABs, and/or newline (\n) characters.
 This doesn't work. Fix you PATH.
 support/dependencies/dependencies.mk:27: recipe for target 'dependencies' failed
 make: *** [dependencies] Error 1
+```
+
+### board file trees and defconfigs
+
+```tree
+├── Vender
+│   ├── Board1
+│   │   ├── config         # Place Defconfig
+│   │   │   ├── linux      # Place Linux Defconfig
+│   │   │   └── uboot      # Place U-boot Defconfig
+│   │   ├── dts            # Place Device Trees for U-Boot and Linux (dts)
+│   │   ├── patch          # Place Patches
+│   │   └── rootfs         # Rootfs Overlays
+│   └── Board2
+│       ├── config         # Place Defconfig
+│       │   ├── linux      # Place Linux Defconfig
+│       │   └── uboot      # Place U-boot Defconfig
+│       ├── dts            # Place Device Trees for U-Boot and Linux (dts)
+│       ├── patch          # Place Patches
+│       │   ├── linux      # Place Patches for linux
+│       │   └── uboot      # Place Patches for U-boot
+│       └── script         # Place Script for uboot/linux
+└── allwinner-generic      # Allwinner Generic Configs
+    ├── suniv-f1c100s      # Chip Code - Chip Name
+    │   ├── configs        # Place Default Defconfig
+    │   │   ├── linux      # Place Linux Defconfig
+    │   │   └── uboot      #
+    │   ├── dts            # Place Device Trees (dtsi)
+    │   │   ├── linux      # Device Trees For linux
+    │   │   └── uboot      # Device Trees For U-boot
+    │   ├── patch          # Place Patches
+    │   │   ├── linux      # Place Patches for linux
+    │   │   └── uboot      # Place Patches for U-boot
+    │   └── rootfs         # Rootfs Overlays
+    └── suniv-generic      # Chip Line Generic
 ```
