@@ -11,6 +11,8 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
 
 ## Supported Devices
 
+[![Build status](https://ci.appveyor.com/api/projects/status/p0bmv67jy4qon934?svg=true)](https://ci.appveyor.com/project/GloomyGhost-MosquitoCoil/buildroot-yuzukisbc)
+
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
 | -------- | ----------- | ------- | ------- | ------- | --------- |
 | YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | YuzukiHD_YuzukiRuler_defconfig |
