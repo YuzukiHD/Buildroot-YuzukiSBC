@@ -1,0 +1,13 @@
+image:
+- Ubuntu
+
+version: ci.appveyor.0.{build}.ci.{build}
+
+install:
+  - apt-get install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev python3-distutils
+
+build_script:
+  - cd buildroot
+  - make YuzukiHD_YuzukiRuler_defconfig 
+  - make
+  
