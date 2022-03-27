@@ -32,8 +32,8 @@ cd Buildroot-YuzukiSBC
 **Notice: Root permission is not necessery for build firmware.**
 
 ```
-source build/envsetup.sh    # Set the build environment
-lunch                       # Change to Buildroot Directory
+source envsetup.sh    # Set the build environment
+lunch                 # Change to Buildroot Directory
 ```
 
 ### Apply defconfig
