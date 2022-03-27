@@ -5,4 +5,4 @@ environment:
 install:
 - sh: sudo apt-get install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev python3-distutils -y
 build_script:
-- sh: "cd buildroot\nmake YuzukiHD_YuzukiRuler_defconfig \nmake\nmake clean\nmake Sipeed_lichee_zero_defconfig\nmake"
+- sh: "cd buildroot\nmake yuzukihd_yuzukiruler_defconfig \nmake\nmake clean\nmake sipeed_lichee_zero_defconfig\nmake"

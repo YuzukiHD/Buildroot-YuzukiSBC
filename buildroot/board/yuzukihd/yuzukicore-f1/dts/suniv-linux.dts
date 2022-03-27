@@ -1,0 +1,163 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR X11)
+
+/dts-v1/;
+#include "suniv-f1c100s-linux.dtsi"
+
+/ {
+	model = "yuzukihd yuzukiruler";
+	compatible = "allwinner,suniv-f1c200s", "allwinner,suniv-f1c100s";
+
+	chosen {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+		bootargs = "panic=5 console=tty1 fbcon=rotate:90,font:MINI4x6 console=ttyS0,115200 rootwait root=/dev/mtdblock2 rw rootfstype=squashfs overlayfsdev=/dev/mtdblock3"; 
+	};
+};
+
+&spi0 {
+	status = "okay";
+	
+	spi-nor@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "winbond,w25q128jv", "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <50000000>;
+		status = "okay";
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "u-boot";
+				reg = <0x000000 0x70000>;
+				read-only;
+			};
+
+			partition@1 {
+				label = "kernel";
+				reg = <0x70000 0x590000>;
+				read-only;
+			};
+
+			partition@2 {
+				label = "rootfs";
+				reg = <0x600000 0x700000>;
+				// read-only;
+			};
+
+			partition@3 {
+				label = "overlay";
+				reg = <0xd00000 0x300000>;
+			};
+		};
+	};
+
+	spi-nand@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "spi-nand";
+		reg = <0>;
+		spi-max-frequency = <50000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "u-boot";
+				reg = <0x000000 0x100000>;
+				read-only;
+			};
+
+			partition@1 {
+				label = "kernel";
+				reg = <0x100000 0x500000>;
+				read-only;
+			};
+
+			partition@2 {
+				label = "rom";
+				reg = <0x600000 0x2a00000>;
+				read-only;
+			};
+
+			partition@3 {
+				label = "vendor";
+				reg = <0x3000000 0x1000000>;
+			};
+
+			partition@4 {
+				label = "overlay";
+				reg = <0x4000000 0x3000000>;
+			};
+		};
+	};
+};
+
+&spi1 {
+	status = "okay";
+	pinctrl-0 = <&spi1_pins>;
+	st7789v@0 {
+        status = "okay";
+        compatible = "sitronix,st7789v";
+        reg = <0>;
+        spi-max-frequency = <50000000>;
+        rotate = <90>;
+        spi-cpol;
+        spi-cpha;
+        rgb;
+        fps = <60>;
+        buswidth = <8>;
+        reset = <&pio 4 7 GPIO_ACTIVE_LOW>;
+        dc = <&pio 4 10 GPIO_ACTIVE_LOW>;
+        debug = <0>;
+    };
+};
+
+&uart0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart0_pe_pins>;
+	status = "okay";
+};
+
+&mmc0 {
+	status = "okay";
+	broken-cd;
+};
+
+&otg_sram {
+	status = "okay";
+};
+
+&usb_otg {
+	dr_mode = "otg";
+	status = "okay";
+};
+
+&usbphy {
+	status = "okay";
+};
+
+&cedar_ve {
+	status = "okay";
+};
+
+&ion {
+	status = "okay";
+};
+
+&codec {
+	allwinner,audio-routing =
+		"Headphone", "HP",
+		"Headphone", "HPCOM",
+		"LINEIN", "Line In",
+		"FMINL", "Left FM In",
+		"FMINR", "Right FM In",
+		"MIC", "Mic";
+	status = "okay";
+};

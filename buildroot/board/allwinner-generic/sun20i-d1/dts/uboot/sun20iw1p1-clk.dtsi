@@ -1,0 +1,179 @@
+/{
+clocks {
+	compatible = "allwinner,clk-init";
+	device_type = "clocks";
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+	reg = <0x0 0x03001000 0x0 0x1000>,	/*cpux space*/
+	      <0x0 0x07010000 0x0 0x400>,	/*cpus space*/
+	      <0x0 0x07000000 0x0 0x4>;
+
+		clk_hosc: hosc {
+			#clock-cells = <0>;
+			compatible = "allwinner,fixed-clock";
+			clock-frequency = <24000000>;
+			clock-output-names = "hosc";
+		};
+		clk_pll_periph0: pll_periph0 {
+			#clock-cells = <0>;
+			compatible = "allwinner,pll-clock";
+			assigned-clock-rates = <600000000>;
+			lock-mode = "new";
+			clock-output-names = "pll_periph0";
+		};
+		clk_pll_periph1: pll_periph1 {
+			#clock-cells = <0>;
+			compatible = "allwinner,pll-clock";
+			assigned-clock-rates = <600000000>;
+			lock-mode = "new";
+			clock-output-names = "pll_periph1";
+		};
+		clk_pll_gpu: pll_gpu {
+			#clock-cells = <0>;
+			compatible = "allwinner,pll-clock";
+			lock-mode = "new";
+			clock-output-names = "pll_gpu";
+		};
+		clk_pll_video0x4: pll_video0x4 {
+			#clock-cells = <0>;
+			compatible = "allwinner,pll-clock";
+			lock-mode = "new";
+			clock-output-names = "pll_video0x4";
+		};
+		clk_pll_video1x4: pll_video1x4 {
+			#clock-cells = <0>;
+			compatible = "allwinner,pll-clock";
+			lock-mode = "new";
+			clock-output-names = "pll_video1x4";
+		};
+		clk_pll_video2: pll_video2 {
+			#clock-cells = <0>;
+			compatible = "allwinner,pll-clock";
+			lock-mode = "new";
+			assigned-clocks = <&clk_pll_video2>;
+			assigned-clock-rates = <336000000>;
+			clock-output-names = "pll_video2";
+		};
+		clk_pll_de: pll_de {
+			#clock-cells = <0>;
+			compatible = "allwinner,pll-clock";
+			lock-mode = "new";
+			clock-output-names = "pll_de";
+		};
+		clk_pll_periph0x2: pll_periph0x2 {
+			#clock-cells = <0>;
+			compatible = "allwinner,fixed-factor-clock";
+			clocks = <&clk_pll_periph0>;
+			clock-mult = <2>;
+			clock-div = <1>;
+			clock-output-names = "pll_periph0x2";
+		};
+		clk_periph32k: periph32k {
+			#clock-cells = <0>;
+			compatible = "allwinner,fixed-factor-clock";
+			clocks = <&clk_pll_periph0>;
+			clock-mult = <2>;
+			clock-div = <36621>;
+			clock-output-names = "periph32k";
+		};
+		clk_pll_video0: pll_video0 {
+			#clock-cells = <0>;
+			compatible = "allwinner,fixed-factor-clock";
+			clocks = <&clk_pll_video0x4>;
+			clock-mult = <1>;
+			clock-div = <4>;
+			clock-output-names = "pll_video0";
+		};
+		clk_de: de {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			assigned-clocks = <&clk_de>;
+			assigned-clock-parents = <&clk_pll_periph0x2>;
+			assigned-clock-rates = <300000000>;
+			clock-output-names = "de";
+		};
+		clk_ee: ee {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			assigned-clock-parents = <&clk_pll_periph0x2>;
+			assigned-clock-rates = <300000000>;
+			assigned-clocks = <&clk_ee>;
+			clock-output-names = "ee";
+		};
+		clk_panel: panel {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			assigned-clock-parents = <&clk_pll_video2>;
+			assigned-clock-rates = <30000000>;
+			assigned-clocks = <&clk_panel>;
+			clock-output-names = "panel";
+		};
+		clk_dpss_top: dpss_top {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			clock-output-names = "dpss_top";
+		};
+		clk_tcon_lcd: tcon_lcd {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			clock-output-names = "tcon_lcd";
+			assigned-clocks = <&clk_tcon_lcd>;
+			assigned-clock-parents = <&clk_pll_video0x4>;
+		};
+		clk_tcon_tv: tcon_tv {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			clock-output-names = "tcon_tv";
+			assigned-clocks = <&clk_tcon_tv>;
+			assigned-clock-parents = <&clk_pll_video1x4>;
+		};
+		clk_hdmi: hdmi {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			assigned-clock-parents = <&clk_pll_video0>;
+			assigned-clocks = <&clk_hdmi>;
+			clock-output-names = "hdmi";
+		};
+		clk_hdmi_slow: hdmi_slow {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			assigned-clock-parents = <&clk_hosc>;
+			assigned-clocks = <&clk_hdmi_slow>;
+			clock-output-names = "hdmi_slow";
+		};
+		clk_hdmi_cec: hdmi_cec {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			assigned-clock-parents = <&clk_periph32k>;
+			assigned-clocks = <&clk_hdmi_cec>;
+			clock-output-names = "hdmi_cec";
+		};
+
+		clk_lvds: lvds {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			clock-output-names = "lvds";
+		};
+		clk_lvds1: lvds1 {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			clock-output-names = "lvds1";
+		};
+
+		clk_mipi_host0: mipi_host0 {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			assigned-clocks = <&clk_mipi_host0>;
+			assigned-clock-parents = <&clk_pll_periph0>;
+			assigned-clock-rates = <150000000>;
+			clock-output-names = "mipi_host0";
+		};
+
+		clk_csi_top: csi_top {
+			#clock-cells = <0>;
+			compatible = "allwinner,periph-clock";
+			clock-output-names = "csi_top";
+		};
+	};
+};

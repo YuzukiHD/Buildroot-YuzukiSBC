@@ -1,8 +1,8 @@
-# Buildroot Package for YuzukiHD Devices and More Devices
+# Buildroot Package for yuzukihd Devices and More Devices
 
 [Documentation](https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/) &mdash;
-[Releases](https://github.com/YuzukiHD/Buildroot-YuzukiSBC/releases) &mdash;
-[License](https://github.com/YuzukiHD/Buildroot-YuzukiSBC/blob/master/LICENSE)
+[Releases](https://github.com/yuzukihd/Buildroot-YuzukiSBC/releases) &mdash;
+[License](https://github.com/yuzukihd/Buildroot-YuzukiSBC/blob/master/LICENSE)
 
 Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC 
 
@@ -15,11 +15,11 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
 
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
 | -------- | ----------- | ------- | ------- | ------- | --------- |
-| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | YuzukiHD_YuzukiRuler_defconfig |
-| YuzukiHD | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | YuzukiHD_YuzukiCore_F1_defconfig |
-| Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | Sipeed_lichee_nano_defconfig |
-| Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | Sipeed_lichee_zero_defconfig |
-| AWOL   | nezha | D1 | smaeul,u-boot | smaeul,linux | aw-ol_nezha_defconfig |
+| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukiruler_defconfig |
+| YuzukiHD | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukicore_f1_defconfig |
+| Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | sipeed_lichee_nano_defconfig |
+| Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | sipeed_lichee_zero_defconfig |
+| awol   | nezha | D1 | tina,uboot 2018 | smaeul,linux | awol_nezha_defconfig |
 
 ## Documents
 

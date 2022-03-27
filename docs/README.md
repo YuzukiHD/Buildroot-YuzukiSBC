@@ -1,14 +1,14 @@
 <h1 align="center">Buildroot for YuzukiSBC</h1>
-<p align="center">Open Source development package for for YuzukiHD Boards and more boards</p>
+<p align="center">Open Source development package for for yuzukihd Boards and more boards</p>
 
 # Support Lists
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
 | -------- | ----------- | ------- | ------- | ------- | --------- |
-| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | YuzukiHD_YuzukiRuler_defconfig |
-| YuzukiHD | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | YuzukiHD_YuzukiCore_F1_defconfig |
-| Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | Sipeed_lichee_nano_defconfig |
-| Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | Sipeed_lichee_zero_defconfig |
-| AWOL   | nezha | D1 | smaeul,u-boot | smaeul,linux | aw-ol_nezha_defconfig |
+| yuzukihd | yuzukiruler | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukiruler_defconfig |
+| yuzukihd | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | yuzukihd_YuzukiCore_F1_defconfig |
+| sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | sipeed_lichee_nano_defconfig |
+| sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | sipeed_lichee_zero_defconfig |
+| awol   | nezha | D1 | smaeul,u-boot | smaeul,linux | aw-ol_nezha_defconfig |
 
 
 # Install
@@ -24,7 +24,7 @@ sudo apt install python3-distutils
 ## Download Buildroot BSP
 **Notice: Root permission is not necessery for download or extract.**
 ```shell
-git clone https://github.com/YuzukiHD/Buildroot-YuzukiSBC
+git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC
 cd Buildroot-YuzukiSBC
 ```
 
@@ -45,7 +45,7 @@ make *Defconfig Name*
 
 eg.
 
-make YuzukiHD_YuzukiRuler_defconfig
+make yuzukihd_yuzukiruler_defconfig
 ```
 
 ### Regular build

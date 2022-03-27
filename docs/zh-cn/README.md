@@ -17,7 +17,7 @@ sudo apt install python3-distutils
 ### Download BSP
 **Notice: Root permission is not necessery for download or extract.**
 ```shell
-git clone https://github.com/YuzukiHD/Buildroot-YuzukiSBC
+git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC
 ```
 
 ## Make the first build
@@ -30,7 +30,7 @@ Do not use `sudo`
 
 **Generally, you only need to apply it once.**
 ```shell
-make YuzukiHD_YuzukiRuler_defconfig
+make yuzukihd_yuzukiruler_defconfig
 ```
 
 ### Regular build
