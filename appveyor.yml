@@ -1,13 +1,8 @@
-image:
-- Ubuntu
-
-version: ci.appveyor.0.{build}.ci.{build}
-
+version: 1.0.{build}
+image: Ubuntu1804
+environment:
+  LD_LIBRARY_PATH: '""'
 install:
-  - apt-get install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev python3-distutils
-
+- sh: sudo apt-get install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev python3-distutils -y
 build_script:
-  - cd buildroot
-  - make YuzukiHD_YuzukiRuler_defconfig 
-  - make
-  
+- sh: "cd buildroot\nmake YuzukiHD_YuzukiRuler_defconfig \nmake\nmake clean\nmake Sipeed_lichee_zero_defconfig\nmake"
