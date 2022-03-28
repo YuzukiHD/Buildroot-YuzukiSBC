@@ -19,9 +19,9 @@ BR2_TARGET_OPTIMIZATION="-Os -pipe -mcmodel=medany -mabi=lp64d -march=rv64gcxthe
 BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
 BR2_TARGET_GENERIC_GETTY_PORT="ttyS0"
 BR2_SYSTEM_DHCP="eth0"
-BR2_ROOTFS_POST_BUILD_SCRIPT="board/aw-ol/d1/post-build.sh"
+BR2_ROOTFS_POST_BUILD_SCRIPT="board/allwinner-generic/sun20i-generic/post-build.sh sun20i-d1"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="support/scripts/genimage.sh"
-BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/aw-ol/d1/genimage.cfg"
+BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/allwinner-generic/sun20i-generic/genimage.cfg"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_GIT=y
 BR2_LINUX_KERNEL_CUSTOM_REPO_URL="https://github.com/Tina-Linux/tina-d1x-linux-5.4.git"
