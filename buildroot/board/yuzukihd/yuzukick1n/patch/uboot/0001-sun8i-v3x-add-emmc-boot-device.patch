@@ -1,0 +1,40 @@
+From 574c1082be8f02c673eb930b3e49644274d68a65 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Wed, 30 Mar 2022 14:38:40 +0800
+Subject: [PATCH 1/2] sun8i v3x add emmc boot device
+
+---
+ board/sunxi/board.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index 21651a1b..548a37ac 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -897,16 +897,23 @@ int misc_init_r(void)
+ 	env_set("fel_scriptaddr", NULL);
+ 	env_set("mmc_bootdev", NULL);
+ 
++	env_set("boot_device", NULL);
++
+ 	boot = sunxi_get_boot_device();
+ 	/* determine if we are running in FEL mode */
+ 	if (boot == BOOT_DEVICE_BOARD) {
+ 		env_set("fel_booted", "1");
++		env_set("boot_device", "fel");
+ 		parse_spl_header(SPL_ADDR);
+ 	/* or if we booted from MMC, and which one */
+ 	} else if (boot == BOOT_DEVICE_MMC1) {
+ 		env_set("mmc_bootdev", "0");
++		env_set("boot_device", "mmc0");
+ 	} else if (boot == BOOT_DEVICE_MMC2) {
+ 		env_set("mmc_bootdev", "1");
++		env_set("boot_device", "mmc1");
++	} else if (boot == BOOT_DEVICE_SPI) {
++		env_set("boot_device", "spi");
+ 	}
+ 
+ 	/* Set fdtfile to match the FIT configuration chosen in SPL. */
+-- 
+2.35.1
+

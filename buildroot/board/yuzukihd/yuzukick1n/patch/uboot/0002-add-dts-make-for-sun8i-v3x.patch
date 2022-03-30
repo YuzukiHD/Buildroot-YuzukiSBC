@@ -1,0 +1,25 @@
+From 1eb2663e0ddd204f199d5e6c14bc7bdef8c43de3 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Wed, 30 Mar 2022 14:40:10 +0800
+Subject: [PATCH 2/2] add dts make for sun8i v3x
+
+---
+ arch/arm/dts/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 9fb38682..308ebe1f 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -614,7 +614,7 @@ dtb-$(CONFIG_MACH_SUN8I_R40) += \
+ 	sun8i-v40-bananapi-m2-berry.dtb
+ dtb-$(CONFIG_MACH_SUN8I_V3S) += \
+ 	sun8i-s3-pinecube.dtb \
+-	sun8i-v3s-licheepi-zero.dtb
++	sun8i-v3x-yuzukick1n-uboot.dtb
+ dtb-$(CONFIG_MACH_SUN50I_H5) += \
+ 	sun50i-h5-bananapi-m2-plus.dtb \
+ 	sun50i-h5-emlid-neutis-n5-devboard.dtb \
+-- 
+2.35.1
+

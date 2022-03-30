@@ -1,0 +1,119 @@
+/dts-v1/;
+#include "sun8i-v3s-linux.dtsi"
+#include "sunxi-common-regulators.dtsi"
+
+/ {
+	model = "Lichee Pi Zero";
+	compatible = "licheepi,licheepi-zero", "allwinner,sun8i-v3s";
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		blue_led {
+			label = "blue";
+			gpios = <&pio 6 1 GPIO_ACTIVE_LOW>; /* PG1 */
+		};
+
+		green_led {
+			label = "green";
+			gpios = <&pio 6 0 GPIO_ACTIVE_LOW>; /* PG0 */
+			default-state = "on";
+		};
+
+		red_led {
+			label = "red";
+			gpios = <&pio 6 2 GPIO_ACTIVE_LOW>; /* PG2 */
+		};
+	};
+};
+
+&ehci0 {
+	status = "okay";
+};
+
+&ohci0 {
+	status = "okay";
+};
+
+&mmc0 {
+	broken-cd;
+	bus-width = <4>;
+	vmmc-supply = <&reg_vcc3v3>;
+	status = "okay";
+};
+
+&uart0 {
+	pinctrl-0 = <&uart0_pb_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&usb_otg {
+	dr_mode = "host";
+	status = "okay";
+};
+
+&usbphy {
+	usb0_id_det-gpios = <&pio 5 6 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+};
+
+&i2c0 {
+	pinctrl-0 = <&i2c0_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&csi1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&csi1_8bit_pins>;
+	status = "okay";
+
+	port {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		csi1_ep: endpoint {
+			remote-endpoint = <&ov5640_ep>;
+			bus-width = <8>;
+			hsync-active = <1>;
+			vsync-active = <0>;
+			data-active = <1>;
+			pclk-sample = <1>;
+		};
+	};
+};
+
+&i2c1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c1_pe_pins>;
+	status = "okay";
+
+	ov5640: camera@3c {
+		compatible = "ovti,ov5640";
+		reg = <0x3c>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&csi1_mclk_pin>;
+		clocks = <&ccu CLK_CSI1_MCLK>;
+		clock-names = "xclk";
+
+		port {
+			ov5640_ep: endpoint {
+				remote-endpoint = <&csi1_ep>;
+				bus-width = <8>;
+				hsync-active = <1>;
+				vsync-active = <0>;
+				data-active = <1>;
+				pclk-sample = <1>;
+			};
+		};
+	};
+};
