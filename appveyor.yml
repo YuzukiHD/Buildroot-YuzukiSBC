@@ -1,8 +1,10 @@
 version: 1.0.{build}
 image: Ubuntu1804
+init:
+- sh: >-
+    sudo apt-get update
+    sudo apt-get install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev python3-distutils -y
 environment:
   LD_LIBRARY_PATH: '""'
-install:
-- sh: sudo apt-get install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev python3-distutils -y
 build_script:
-- sh: "cd buildroot\nmake yuzukihd_yuzukiruler_defconfig \nmake\nmake clean\nmake sipeed_lichee_zero_defconfig\nmake"
+- sh: "cd buildroot\nmake yuzukihd_yuzukiruler_defconfig \nmake linux"
