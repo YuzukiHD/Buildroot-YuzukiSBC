@@ -3,9 +3,12 @@ image: Ubuntu1804
 init:
 - sh: >-
     sudo apt-get update
-    
+
     sudo apt-get install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev python3-distutils -y
 environment:
   LD_LIBRARY_PATH: '""'
 build_script:
-- sh: "cd buildroot\nmake yuzukihd_yuzukiruler_defconfig \nmake linux"
+- sh: >-
+    cd buildroot
+
+    make yuzukihd_yuzukiruler_defconfig
