@@ -1,0 +1,25 @@
+From cf9ce58f17f294fd2746969950f1533de68da4a1 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Wed, 30 Mar 2022 16:03:42 +0800
+Subject: [PATCH] rename v3s to v3x
+
+---
+ arch/arm/mach-sunxi/cpu_info.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm/mach-sunxi/cpu_info.c b/arch/arm/mach-sunxi/cpu_info.c
+index ba33ef24..56f545f7 100644
+--- a/arch/arm/mach-sunxi/cpu_info.c
++++ b/arch/arm/mach-sunxi/cpu_info.c
+@@ -90,7 +90,7 @@ int print_cpuinfo(void)
+ #elif defined CONFIG_MACH_SUN8I_R40
+ 	printf("CPU:   Allwinner R40 (SUN8I %04x)\n", sunxi_get_sram_id());
+ #elif defined CONFIG_MACH_SUN8I_V3S
+-	printf("CPU:   Allwinner V3s (SUN8I %04x)\n", sunxi_get_sram_id());
++	printf("CPU:   Allwinner V3x (SUN8I %04x)\n", sunxi_get_sram_id());
+ #elif defined CONFIG_MACH_SUN9I
+ 	puts("CPU:   Allwinner A80 (SUN9I)\n");
+ #elif defined CONFIG_MACH_SUN50I
+-- 
+2.35.1
+

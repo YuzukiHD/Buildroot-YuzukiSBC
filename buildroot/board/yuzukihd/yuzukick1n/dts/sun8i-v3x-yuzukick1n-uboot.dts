@@ -3,8 +3,8 @@
 #include "sunxi-common-regulators.dtsi"
 
 / {
-	model = "Smallwit Pi Lite";
-	compatible = "smallwit,smallwitpi-lite", "allwinner,sun8i-v3x";
+	model = "YuzukiCK1N";
+	compatible = "YuzukiHD,YuzukiCK1N", "allwinner,sun8i-v3x";
 
 	aliases {
 		serial0 = &uart0;
