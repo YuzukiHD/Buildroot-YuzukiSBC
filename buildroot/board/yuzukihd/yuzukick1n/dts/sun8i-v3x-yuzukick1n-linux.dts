@@ -1,10 +1,10 @@
 /dts-v1/;
-#include "sun8i-v3s-linux.dtsi"
+#include "sun8i-v3x-linux.dtsi"
 #include "sunxi-common-regulators.dtsi"
 
 / {
-	model = "Lichee Pi Zero";
-	compatible = "licheepi,licheepi-zero", "allwinner,sun8i-v3s";
+	model = "YuzukiCK1N";
+	compatible = "yuzukihd,yuzukick1n", "allwinner,sun8i-v3s";
 
 	aliases {
 		serial0 = &uart0;
