@@ -11,7 +11,7 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
 
 ## Supported Devices
 
-[![Build status](https://ci.appveyor.com/api/projects/status/p0bmv67jy4qon934?svg=true)](https://ci.appveyor.com/project/GloomyGhost-MosquitoCoil/buildroot-yuzukisbc)
+[![Build status](https://ci.appveyor.com/api/projects/status/qa7iq9ip0g3nh96c?svg=true)](https://ci.appveyor.com/project/GloomyGhost-MosquitoCoil/buildroot-yuzukisbc)
 
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
 | -------- | ----------- | ------- | ------- | ------- | --------- |
