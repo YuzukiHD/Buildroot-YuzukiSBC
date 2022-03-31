@@ -363,6 +363,14 @@
 				pins = "PC0", "PC1", "PC2", "PC3";
 				function = "spi0";
 			};
+
+			emac_rmii_pins: emac_rgmii_pins {
+				allwinner,pins = "PD0", "PD1", "PD2", "PD3",
+								"PD4", "PD5", "PD7",
+								"PD8", "PD9", "PD10";
+				function = "emac";
+				drive-strength = <40>;
+			};
 		};
 
 		timer@1c20c00 {
@@ -447,8 +455,8 @@
 			#size-cells = <0>;
 		};
 
-		emac: ethernet@1c30000 {
-			compatible = "allwinner,sun8i-v3s-emac";
+        emac: ethernet@1c30000 {
+			compatible = "allwinner,sun8i-h3-emac";
 			syscon = <&syscon>;
 			reg = <0x01c30000 0x10000>;
 			interrupts = <GIC_SPI 82 IRQ_TYPE_LEVEL_HIGH>;

@@ -1,0 +1,26 @@
+From 0c350ff753097719062a64fb42f1b932621bd7f0 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Thu, 31 Mar 2022 23:58:45 +0800
+Subject: [PATCH 1/2] add support for v3x eth
+
+Signed-off-by: YuzukiTsuru <gloomyghost@gloomyghost.com>
+---
+ drivers/net/sun8i_emac.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/net/sun8i_emac.c b/drivers/net/sun8i_emac.c
+index 2e24d122..aafaaa9b 100644
+--- a/drivers/net/sun8i_emac.c
++++ b/drivers/net/sun8i_emac.c
+@@ -567,6 +567,8 @@ static int parse_phy_pins(struct udevice *dev)
+ 		iomux = SUN8I_IOMUX;
+ 	else if (IS_ENABLED(CONFIG_MACH_SUN50I))
+ 		iomux = SUN8I_IOMUX;
++	else if (IS_ENABLED(CONFIG_MACH_SUN8I_V3S))
++        iomux = SUN8I_IOMUX;
+ 	else
+ 		BUILD_BUG_ON_MSG(1, "missing pinmux value for Ethernet pins");
+ 
+-- 
+2.17.1
+

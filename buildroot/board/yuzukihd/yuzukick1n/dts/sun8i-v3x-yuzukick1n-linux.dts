@@ -33,6 +33,73 @@
 			gpios = <&pio 6 2 GPIO_ACTIVE_LOW>; /* PG2 */
 		};
 	};
+
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm 0 1000000 0>;
+		brightness-levels = <0 30 40 50 60 70 100>;
+		default-brightness-level = <6>;
+	};
+
+	panel: panel {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			reg = <0>;
+			backlight = <&backlight>;
+
+			panel_input: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&tcon0_out_lcd>;
+			};
+		};
+	};
+};
+
+&pio {
+	pwm0_pins: pwm0_pins {
+		pins = "PD21";
+		function = "bl_en";
+	};
+
+	lcd_rgb666_pins_a: lcd-rgb666-pe {
+		pins = "PE0", "PE1", "PE2", "PE3", "PE4", "PE5",
+				"PE6", "PE7", "PE8", "PE9", "PE10", "PE11",
+				"PE12", "PE13", "PE14", "PE15", "PE16", "PE17",
+				"PE18", "PE19", "PE23", "PE24";
+		function = "lcd";
+	};
+};
+
+&de {
+	status = "okay";
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm0_pins>;
+	status = "okay";
+};
+
+&tcon0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd_rgb666_pins_a>;
+	status = "okay";
+};
+
+&tcon0_out {
+	tcon0_out_lcd: endpoint@0 {
+		reg = <0>;
+		remote-endpoint = <&panel_input>;
+	};
+};
+
+&panel {
+	compatible = "urt,umsh-8596md-t", "simple-panel";
 };
 
 &ehci0 {
@@ -116,4 +183,11 @@
 			};
 		};
 	};
+};
+
+&emac {
+    phy-handle = <&int_mii_phy>;
+    phy-mode = "mii";
+    allwinner,leds-active-low;
+    status = "okay";
 };
