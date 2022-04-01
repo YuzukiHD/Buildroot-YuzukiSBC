@@ -130,7 +130,11 @@ support/dependencies/dependencies.mk:27: recipe for target 'dependencies' failed
 make: *** [dependencies] Error 1
 ```
 
-### board file trees and defconfigs
+# Appendix
+
+## board file trees and file path definition
+
+Buildroot-YuzukiSBC uses a custom directory structure, and the following descriptions need to be met when submitting code.
 
 ```tree
 ├── Vender
