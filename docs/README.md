@@ -62,6 +62,8 @@ make yuzukihd_yuzukiruler_defconfig
 make
 ```
 
+<script id="asciicast-tfNdVjs1lM36OQk74qO6FAyve" src="https://asciinema.org/a/tfNdVjs1lM36OQk74qO6FAyve.js" async></script>
+
 ### If changed DTS or kernel build
 ```shell
 rebuild-kernel
