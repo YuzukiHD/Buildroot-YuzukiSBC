@@ -30,6 +30,8 @@ git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC
 cd Buildroot-YuzukiSBC
 ```
 
+<script id="asciicast-3MEG180VlNrbn8omy9kXnUAq1" src="https://asciinema.org/a/3MEG180VlNrbn8omy9kXnUAq1.js" async></script>
+
 ## Make the first build
 **Notice: Root permission is not necessery for build firmware.**
 
@@ -37,6 +39,8 @@ cd Buildroot-YuzukiSBC
 source envsetup.sh    # Set the build environment
 lunch                 # Change to Buildroot Directory
 ```
+
+<script id="asciicast-DGoDTEy5g9ForXGItWTRZj6or" src="https://asciinema.org/a/DGoDTEy5g9ForXGItWTRZj6or.js" async></script>
 
 ### Apply defconfig
 **Caution: Apply defconfig will reset all buildroot configurations to default values.**
