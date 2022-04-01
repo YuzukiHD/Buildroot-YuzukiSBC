@@ -27,7 +27,7 @@ sudo apt install python3-distutils
 
 !> **Notice: Root permission is not necessery for download or extract.**
 
-!> **Notice: Please don't put this SDK in Windows partition, please put it under Linux partition, `mnt` must not appear in the path**
+!> **For WSL2 Users: Please don't put this SDK in Windows partition, please put it under Linux partition, `/mnt/` must not appear in the path.**
 
 ```shell
 git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC
