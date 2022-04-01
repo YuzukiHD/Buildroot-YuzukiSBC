@@ -47,8 +47,7 @@ lunch                 # Change to Buildroot Directory
 <script id="asciicast-DGoDTEy5g9ForXGItWTRZj6or" src="https://asciinema.org/a/DGoDTEy5g9ForXGItWTRZj6or.js" async></script>
 
 ### Apply defconfig
-!> **Caution: Apply defconfig will reset all buildroot configurations to default values.**
-!> **Generally, you only need to apply it once.**
+!> **Caution: Apply defconfig will reset all buildroot configurations to default values. Generally, you only need to apply it once.**
 
 ```shell
 make *Defconfig Name*
