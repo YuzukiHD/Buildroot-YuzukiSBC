@@ -24,24 +24,31 @@ sudo apt install python3-distutils
 ```
 
 ## Download Buildroot BSP
-**Notice: Root permission is not necessery for download or extract.**
+
+!> **Notice: Root permission is not necessery for download or extract.**
+
+!> **For WSL2 Users: Please don't put this SDK in Windows partition, please put it under Linux partition, `/mnt/` must not appear in the path.**
+
 ```shell
 git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC
 cd Buildroot-YuzukiSBC
 ```
 
+<script id="asciicast-3MEG180VlNrbn8omy9kXnUAq1" src="https://asciinema.org/a/3MEG180VlNrbn8omy9kXnUAq1.js" async></script>
+
 ## Make the first build
-**Notice: Root permission is not necessery for build firmware.**
+!> **Notice: Root permission is not necessery for build firmware.**
 
 ```
 source envsetup.sh    # Set the build environment
 lunch                 # Change to Buildroot Directory
 ```
 
-### Apply defconfig
-**Caution: Apply defconfig will reset all buildroot configurations to default values.**
+<script id="asciicast-DGoDTEy5g9ForXGItWTRZj6or" src="https://asciinema.org/a/DGoDTEy5g9ForXGItWTRZj6or.js" async></script>
 
-**Generally, you only need to apply it once.**
+### Apply defconfig
+!> **Caution: Apply defconfig will reset all buildroot configurations to default values. Generally, you only need to apply it once.**
+
 ```shell
 make *Defconfig Name*
 
@@ -54,6 +61,8 @@ make yuzukihd_yuzukiruler_defconfig
 ```shell
 make
 ```
+
+<script id="asciicast-tfNdVjs1lM36OQk74qO6FAyve" src="https://asciinema.org/a/tfNdVjs1lM36OQk74qO6FAyve.js" async></script>
 
 ### If changed DTS or kernel build
 ```shell
@@ -122,7 +131,11 @@ support/dependencies/dependencies.mk:27: recipe for target 'dependencies' failed
 make: *** [dependencies] Error 1
 ```
 
-### board file trees and defconfigs
+# Appendix
+
+## board file trees and file path definition
+
+Buildroot-YuzukiSBC uses a custom directory structure, and the following descriptions need to be met when submitting code.
 
 ```tree
 ├── Vender
