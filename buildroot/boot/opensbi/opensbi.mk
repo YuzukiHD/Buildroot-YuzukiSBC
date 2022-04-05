@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-OPENSBI_VERSION = 666fa35305c44340e793a21f7bbfac4528756a5f
+OPENSBI_VERSION = f45d5b8b9c06281a64a1d0dc86cdb0d3b286e9da
 OPENSBI_SITE = https://github.com/Tina-Linux/OpenSBI-C906.git
 OPENSBI_SITE_METHOD = git
 OPENSBI_LICENSE = BSD-2-Clause
