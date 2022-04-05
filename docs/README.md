@@ -86,6 +86,8 @@ sync_kernel
 
 Download balenaEtcher at [https://www.balena.io/etcher/](https://www.balena.io/etcher/)
 
+![xfel_driver_1](https://raw.githubusercontent.com/YuzukiHD/Buildroot-YuzukiSBC/master/docs/assets/img/balenaEtcher.png)
+
 #### Using dd
 ```
 cd buildroot/output/images/              # To System img dir
@@ -101,11 +103,28 @@ Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
 
 ```shell
 cd buildroot/output/images/                 # To System img dir
-xfel.exe spinand                            # Checkout device connection
-xfel.exe spinand write 0 sysimage-nand.img  # Write System to devices
+xfel spinand                            # Checkout device connection
+xfel spinand write 0 sysimage-nand.img  # Write System to devices
+```
+
+#### Using sunxi-fel
+
+Get sunxi-fel at [github.com/linux-sunxi/sunxi-tools](https://github.com/linux-sunxi/sunxi-tools/releases)
+
+```shell
+sunxi-fel -p spiflash-write 0 sysimage-nand.img
 ```
 
 ### Flashing to SPI-NOR
+
+#### Using sunxi-fel
+
+Get sunxi-fel at [github.com/linux-sunxi/sunxi-tools](https://github.com/linux-sunxi/sunxi-tools/releases)
+
+```shell
+sunxi-fel -p spiflash-write 0 sysimage-nor.img
+```
+
 #### Using XFEL
 
 Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
@@ -114,8 +133,8 @@ Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
 
 ```shell
 cd buildroot/output/images/                # To System img dir
-xfel.exe spinor                            # Checkout device connection
-xfel.exe spinor write 0 sysimage-nor.img   # Write System to devices
+xfel spinor                            # Checkout device connection
+xfel spinor write 0 sysimage-nor.img   # Write System to devices
 ```
 
 <script id="asciicast-470363" src="https://asciinema.org/a/470363.js" async></script>
