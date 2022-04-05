@@ -120,11 +120,11 @@ xfel.exe spinor write 0 sysimage-nor.img   # Write System to devices
 
 <script id="asciicast-470363" src="https://asciinema.org/a/470363.js" async></script>
 
-# Script
+# Built-in Script
 
-## env
+## For Environment
 
-### wsl_path
+`wsl_path`
 
 If you are using the `WSL` environment, please run this command to clear the `WSL` environment variables before compiling, otherwise the following error will occur.
 
@@ -134,6 +134,24 @@ This doesn't work. Fix you PATH.
 support/dependencies/dependencies.mk:27: recipe for target 'dependencies' failed
 make: *** [dependencies] Error 1
 ```
+
+## For Build
+
+`lunch`
+
+Lunch 🚀 to buildroot.
+
+`rebuild_kernel`
+
+Delete the generated dtb and rebuild the kernel
+
+`rebuild_uboot`
+
+Rebuild the U-Boot
+
+`sync_kernel`
+
+Modify the kernel-related patch or need to restore the original kernel
 
 # Appendix
 
