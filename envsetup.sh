@@ -1,9 +1,11 @@
 #!/bin/bash
 
-# WSL SUpport
+# WSL SUpport 
 if [ $(uname -r | grep -c "WSL1") -eq 1 ]
 then 
-    echo "Buildroot-YuzukiSBC Not Support WSL 1"
+    # Not support WSL 1
+    echo "####Buildroot-YuzukiSBC Not Support WSL 1####"
+    exit 1
 elif [ $(uname -r | grep -c "WSL2") -eq 1 ]
 then 
     echo "Buildroot-YuzukiSBC Now running on WSL2, setting PATH..."
