@@ -15,14 +15,13 @@
 | awol   | nezha | D1 | tina,uboot 2018 | tina,linux 2018 | awol_nezha_defconfig | ❌ | ❌ | ✅ | ❌ |
 
 
-# Install
+# Install BSP
 
 The recommended operating system is `Ubuntu 18.04 WSL` and `Ubuntu 20.04 WSL`. If you want to use a virtual machine or a physical machine running linux, please troubleshoot the problem by yourself. There is no solution here.
 
 ## Install necessary packages
 ``` shell
-sudo apt install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev
-sudo apt install python3-distutils
+sudo apt install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev python3-distutils
 ```
 
 ## Download Buildroot BSP
@@ -37,6 +36,8 @@ cd Buildroot-YuzukiSBC
 ```
 
 <script id="asciicast-3MEG180VlNrbn8omy9kXnUAq1" src="https://asciinema.org/a/3MEG180VlNrbn8omy9kXnUAq1.js" async></script>
+
+# Build firmware
 
 ## Make the first build
 !> **Notice: Root permission is not necessery for build firmware.**
@@ -81,60 +82,62 @@ rebuild-uboot
 sync_kernel
 ```
 
-## Flashing firmware to target
+# Flashing Firmware
 
-### Flashing to SD Card
-#### Using balenaEtcher
+## Flashing to SD Card
+### Using balenaEtcher
 
 Download balenaEtcher at [https://www.balena.io/etcher/](https://www.balena.io/etcher/)
 
 ![xfel_driver_1](https://raw.githubusercontent.com/YuzukiHD/Buildroot-YuzukiSBC/master/docs/assets/img/balenaEtcher.png)
 
-#### Using dd
+### Using dd
 ```
 cd buildroot/output/images/              # To System img dir
 sudo dd if=sdcard.img of=/dev/sdX bs=4M  # dd it
 ```
 
-### Flashing to SPI-NAND
-#### Using XFEL
+## Flashing to SPI-NAND
+### Using XFEL
 
 Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
 
 !> XFEL Driver install [Instructions](/?id=xfel-driver-install)
 
 ```shell
-cd buildroot/output/images/                 # To System img dir
+cd buildroot/output/images/             # To System img dir
 xfel spinand                            # Checkout device connection
 xfel spinand write 0 sysimage-nand.img  # Write System to devices
 ```
 
-#### Using sunxi-fel
+### Using sunxi-fel
 
 Get sunxi-fel at [github.com/linux-sunxi/sunxi-tools](https://github.com/linux-sunxi/sunxi-tools/releases)
 
 ```shell
-sunxi-fel -p spiflash-write 0 sysimage-nand.img
+cd buildroot/output/images/                            # To System img dir
+sunxi-fel -p spiflash-write 0 sysimage-nand.img        # Write System to devices
 ```
 
-### Flashing to SPI-NOR
+## Flashing to SPI-NOR
 
-#### Using sunxi-fel
+### Using sunxi-fel
 
 Get sunxi-fel at [github.com/linux-sunxi/sunxi-tools](https://github.com/linux-sunxi/sunxi-tools/releases)
 
 ```shell
-sunxi-fel -p spiflash-write 0 sysimage-nor.img
+cd buildroot/output/images/                            # To System img dir
+sunxi-fel -p spiflash-write 0 sysimage-nor.img         # Write System to devices
 ```
 
-#### Using XFEL
+### Using XFEL
 
 Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
 
 !> XFEL Driver install [Instructions](/?id=xfel-driver-install)
 
 ```shell
-cd buildroot/output/images/                # To System img dir
+cd buildroot/output/images/            # To System img dir
 xfel spinor                            # Checkout device connection
 xfel spinor write 0 sysimage-nor.img   # Write System to devices
 ```
