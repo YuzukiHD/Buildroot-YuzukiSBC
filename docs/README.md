@@ -97,10 +97,12 @@ sudo dd if=sdcard.img of=/dev/sdX bs=4M  # dd it
 
 Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
 
+!> XFEL [Instructions]()
+
 ```shell
-cd buildroot/output/images/                # To System img dir
+cd buildroot/output/images/                 # To System img dir
 xfel.exe spinand                            # Checkout device connection
-xfel.exe spinand write 0 sysimage-nand.img   # Write System to devices
+xfel.exe spinand write 0 sysimage-nand.img  # Write System to devices
 ```
 
 ### Flashing to SPI-NOR
@@ -194,3 +196,13 @@ In config
 ```
 BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/awol/nezha-d1s/script/genimage.cfg sun20i-d1s sun20i-d1s-nezha-linux.dtb"
 ```
+
+## XFEL Driver install
+
+First, open zadig under the XFEL driver folder and select `List All Devices`
+
+![xfel_driver_1](docs/assets/img/xfel_driver_1.png)
+
+Then select Allwinner USB Device `VID_1f3a_PID_efe8`, and replace the driver with WinUSB
+
+![xfel_driver_2](docs/assets/img/xfel_driver_2.png)
