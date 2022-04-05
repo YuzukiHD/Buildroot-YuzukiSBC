@@ -20,6 +20,7 @@ BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
 BR2_TARGET_GENERIC_GETTY_PORT="ttyS0"
 BR2_SYSTEM_DHCP="eth0"
 BR2_ROOTFS_POST_BUILD_SCRIPT="board/aw-ol/d1/post-build.sh"
+BR2_ROOTFS_POST_SCRIPT_ARGS="sun20i-d1s"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="board/allwinner-generic/sun20i-generic/script/post-build.sh"
 BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/awol/nezha-d1s/script/genimage.cfg"
 BR2_LINUX_KERNEL=y
