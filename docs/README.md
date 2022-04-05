@@ -169,3 +169,28 @@ Buildroot-YuzukiSBC uses a custom directory structure, and the following descrip
     │   └── rootfs         # Rootfs Overlays
     └── suniv-generic      # Chip Line Generic
 ```
+
+## For Allwinner SUN20IW1P1 Platform
+
+### OpenSBI-D1
+
+For the sun20iw1p1(D1-H, D1s) platform, we introduced its stable version of OpenSBI as Supervisor Binary Interface. Which is not compatible with the upstream mainline OpenSBI. 
+
+### post-build.sh
+
+Since the main line currently lacks support for chips and has fewer drivers, the BSP kernel and U-boot are used here. The compilation method and startup method are quite different from the mainline. This script is used here as the connection.
+
+Since Buildroot does not provide dedicated ARGS for Post Script, it is shared with `BR2_ROOTFS_POST_SCRIPT_ARGS`, so it needs to be written together with the packaging script here. 
+
+#### Usage
+
+```
+post-build.sh -c xxxx.cfg      <platform> <target dtb>
+              ^for pack image  ^for post-build.sh
+```
+
+In config
+
+```
+BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/awol/nezha-d1s/script/genimage.cfg sun20i-d1s sun20i-d1s-nezha-linux.dtb"
+```
