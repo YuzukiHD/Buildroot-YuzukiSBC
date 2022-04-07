@@ -143,14 +143,14 @@
 	};
 
     uart0_pins_a: uart0_pins@0 {  /* For EVB1 board */
-        pins = "PF2", "PF4";
+        pins = "PE2", "PE3";
         function = "uart0";
         drive-strength = <10>;
         bias-pull-up;
     };
 
     uart0_pins_b: uart0_pins@1 {  /* For EVB1 board */
-        pins = "PF2", "PF4";
+        pins = "PE2", "PE3";
         function = "gpio_in";
     };
 
@@ -213,16 +213,16 @@
 		function = "gpio_in";
 	};
 
-        twi2_pins_a: twi2@0 {
-                pins = "PE12", "PE13";
-                function = "twi2";
-                drive-strength = <10>;
-        };
+    twi2_pins_a: twi2@0 {
+            pins = "PE12", "PE13";
+            function = "twi2";
+            drive-strength = <10>;
+    };
 
-        twi2_pins_b: twi2@1 {
-                pins = "PE12", "PE13";
-                function = "gpio_in";
-        };
+    twi2_pins_b: twi2@1 {
+            pins = "PE12", "PE13";
+            function = "gpio_in";
+    };
 
 	twi3_pins_a: twi3@0 {
 		pins = "PE6", "PE7";
@@ -484,14 +484,14 @@
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&uart0_pins_a>;
 	pinctrl-1 = <&uart0_pins_b>;
-	status = "disabled";
+	status = "okay";
 };
 
 &uart1 {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&uart1_pins_a>;
 	pinctrl-1 = <&uart1_pins_b>;
-	status = "okay";
+	status = "disabled";
 };
 
 &uart2 {
@@ -505,7 +505,7 @@
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&uart3_pins_a>;
 	pinctrl-1 = <&uart3_pins_b>;
-	status = "okay";
+	status = "disabled";
 };
 
 &soc {
@@ -617,17 +617,18 @@
 
 &sdc0 {
 	bus-width = <4>;
-	cd-gpios = <&pio PF 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+	/*cd-gpios = <&pio PF 6 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;*/
 	/*non-removable;*/
 	/*broken-cd;*/
 	/*cd-inverted;*/
 	/*data3-detect;*/
 	/*card-pwr-gpios = <&pio PH 14 1 1 2 0xffffffff>;*/
-	cd-used-24M;
+	/*cd-used-24M;*/
 	cap-sd-highspeed;
 	/*sd-uhs-sdr50;*/
 	/*sd-uhs-ddr50;*/
 	/*sd-uhs-sdr104;*/
+	broken-cd;
 	no-sdio;
 	no-mmc;
 	sunxi-power-save-mode;
@@ -639,7 +640,7 @@
 	/*vdmmc33sw-supply = <&reg_dcdc1>;*/
 	/*vqmmc18sw-supply = <&reg_eldo1>;*/
 	/*vdmmc18sw-supply = <&reg_eldo1>;*/
-	status = "disabled";
+	status = "okay";
 };
 
 &sdc1 {
@@ -661,7 +662,6 @@
 	ctl-spec-caps = <0x8>;
 	status = "okay";
 };
-
 
 /*
 tvd configuration

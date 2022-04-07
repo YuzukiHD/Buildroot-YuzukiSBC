@@ -99,12 +99,10 @@
 };
 
 &sdc0_pins_c {
-		pins = "PF0", "PF1", "PF2",
+	pins = "PF0", "PF1", "PF2",
 			"PF3", "PF4", "PF5";
-		function = "gpio_in";
-
+	function = "gpio_in";
 };
-
 
 &sdc2_pins_a {
 	allwinner,pins = "PC2", "PC3", "PC4",
@@ -118,7 +116,6 @@
 	function = "sdc2";
 	drive-strength = <30>;
 	bias-pull-up;
-
 };
 
 &sdc2_pins_b {
@@ -126,8 +123,6 @@
 	       "PC5", "PC6", "PC7";
 	function = "gpio_in";
 };
-
-
 
 &nand0_pins_a {
 	allwinner,pins = "PC0", "PC1", "PC2", "PC5",
@@ -185,6 +180,7 @@
 	sdc_tm4_hs200_max_freq = <150>;
 	sdc_tm4_hs400_max_freq = <100>;
 };
+
 &gpio_bias {  /* Avoid dtc compiling warnings. @TODO: Developer should modify this to the actual value */
 	device_type = "gpio_bias";
 };
