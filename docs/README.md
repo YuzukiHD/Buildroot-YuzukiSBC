@@ -191,6 +191,8 @@ Buildroot-YuzukiSBC uses a custom directory structure, and the following descrip
 │   │   │   ├── linux      # Place Linux Defconfig
 │   │   │   └── uboot      # Place U-boot Defconfig
 │   │   ├── dts            # Place Device Trees for U-Boot and Linux (dts)
+│   │   │   ├── linux      # Place Linux Device Trees (Mutifiles)
+│   │   │   └── uboot      # Place U-boot Device Trees (Mutifiles)
 │   │   ├── patch          # Place Patches
 │   │   └── rootfs         # Rootfs Overlays
 │   └── Board2
