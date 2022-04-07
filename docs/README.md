@@ -64,12 +64,12 @@ eg.
 make yuzukihd_yuzukiruler_defconfig
 ```
 
+<script id="asciicast-BWL8PDRgC9BwydeD9vj0pamIu" src="https://asciinema.org/a/BWL8PDRgC9BwydeD9vj0pamIu.js" async></script>
+
 ### Regular build
 ```shell
 make
 ```
-
-<script id="asciicast-tfNdVjs1lM36OQk74qO6FAyve" src="https://asciinema.org/a/tfNdVjs1lM36OQk74qO6FAyve.js" async></script>
 
 ### If changed DTS or kernel build
 ```shell
