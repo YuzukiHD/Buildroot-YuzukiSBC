@@ -169,15 +169,15 @@ make: *** [dependencies] Error 1
 
 Lunch 🚀 to buildroot.
 
-`rebuild_kernel`
+`rebuild_kernel` = `mkernel` = `rkernel`
 
 Delete the generated dtb and rebuild the kernel
 
-`rebuild_uboot`
+`rebuild_uboot` = `mboot` = `rboot`
 
 Rebuild the U-Boot
 
-`sync_kernel`
+`sync_kernel` 
 
 Modify the kernel-related patch or need to restore the original kernel
 

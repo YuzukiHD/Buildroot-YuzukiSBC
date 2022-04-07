@@ -51,4 +51,7 @@ alias m="make"
 alias mkernel="rebuild_kernel"
 alias rkernel="rebuild_kernel"
 
+alias mboot="rebuild_uboot"
+alias rboot="rebuild_uboot"
+
 echo "Setup env done! Please run lunch next."
