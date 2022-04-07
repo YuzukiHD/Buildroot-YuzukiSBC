@@ -49,5 +49,6 @@ alias sync_kernel="rm -rf output/build/linux* && rm -rf output/build/.linux* && 
 alias mm="make"
 alias m="make"
 alias mkernel="rebuild_kernel"
+alias rkernel="rebuild_kernel"
 
 echo "Setup env done! Please run lunch next."
