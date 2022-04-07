@@ -5,15 +5,15 @@
 
 ✅: Supported — ❌: Not Supported Yet — ⚠️: Not Fully Supported Yet
 
-|  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig | SPI NOR | SPI NAND | SD CARD | EMMC |
-| -------- | ----------- | ------- | ------- | ------- | --------- | --------- | --------- | --------- | --------- |
-| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukiruler_defconfig | ✅ | ✅ | ✅ | ✅ |
-| YuzukiHD | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukicore_f1_defconfig | ✅ | ✅ | ✅ | ✅ |
-| YuzukiHD | YuzukiCK1N | V3x | 2022.01 | 5.4.180 | yuzukihd_yuzukick1n_defconfig | ❌ | ❌ | ✅ | ⚠️ |
-| Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | sipeed_lichee_nano_defconfig | ✅ | ✅ | ✅ | ✅ |
-| Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | sipeed_lichee_zero_defconfig | ❌ | ❌ | ✅ | ⚠️ |
-| awol   | nezha | D1-H | tina,uboot 2018 | tina,linux 2018 | awol_nezha_defconfig | ❌ | ❌ | ✅ | ❌ |
-| awol   | nezha-d1s | D1s | tina,uboot 2018 | tina,linux 2018 | awol_nezha_d1s_defconfig | ❌ | ❌ | ✅ | ❌ |
+|  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig | SPI NOR | SPI NAND | SD CARD | EMMC | Support |
+| -------- | ----------- | ------- | ------- | ------- | --------- | --------- | --------- | --------- | --------- | --------- |
+| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukiruler_defconfig | ✅ | ✅ | ✅ | ✅ | ✅ |
+| YuzukiHD | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukicore_f1_defconfig | ✅ | ✅ | ✅ | ✅ | ✅ |
+| YuzukiHD | YuzukiCK1N | V3x | 2022.01 | 5.4.180 | yuzukihd_yuzukick1n_defconfig | ❌ | ❌ | ✅ | ⚠️ | ⚠️ |
+| Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | sipeed_lichee_nano_defconfig | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | sipeed_lichee_zero_defconfig | ❌ | ❌ | ✅ | ⚠️ | ✅ |
+| awol   | nezha | D1-H | tina,uboot 2018 | tina,linux 2018 | awol_nezha_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
+| awol   | nezha-d1s | D1s | tina,uboot 2018 | tina,linux 2018 | awol_nezha_d1s_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
 
 
 # Install BSP
