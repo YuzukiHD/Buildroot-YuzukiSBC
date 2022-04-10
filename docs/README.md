@@ -14,6 +14,7 @@
 | Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | sipeed_lichee_zero_defconfig | ❌ | ❌ | ✅ | ⚠️ | ✅ |
 | awol   | nezha | D1-H | tina,uboot 2018 | tina,linux 2018 | awol_nezha_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
 | awol   | nezha-d1s | D1s | tina,uboot 2018 | tina,linux 2018 | awol_nezha_d1s_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
+| mangopi   | mq | D1s | tina,uboot 2018 | tina,linux 2018 | mangopi_mq_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
 
 
 # Install BSP

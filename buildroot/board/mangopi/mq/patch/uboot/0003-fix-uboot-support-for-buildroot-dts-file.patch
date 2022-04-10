@@ -1,0 +1,192 @@
+From 53cf6809ff8bc28f09a7c55041752a7238928c67 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 27 Mar 2022 23:08:29 +0800
+Subject: [PATCH 1/2] fix uboot support for buildroot dts file
+
+---
+ Makefile | 109 ++++---------------------------------------------------
+ 1 file changed, 8 insertions(+), 101 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index f628988..f036d42 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,5 +1,5 @@
+ # SPDX-License-Identifier: GPL-2.0+
+-SHELL:=/bin/bash
++
+ VERSION = 2018
+ PATCHLEVEL = 05
+ SUBLEVEL =
+@@ -83,18 +83,7 @@ else
+   Q = @
+ endif
+ 
+-buildconfig = ../../../.buildconfig
+-ifeq ($(buildconfig), $(wildcard $(buildconfig)))
+-	LICHEE_BUSSINESS=$(shell cat $(buildconfig) | grep -w "LICHEE_BUSSINESS" | awk -F= '{printf $$2}')
+-	LICHEE_CHIP_CONFIG_DIR=$(shell cat $(buildconfig) | grep -w "LICHEE_CHIP_CONFIG_DIR" | awk -F= '{printf $$2}')
+-	LICHEE_ARCH=$(shell cat $(buildconfig) | grep -w "LICHEE_ARCH" | awk -F= '{printf $$2}')
+-	LICHEE_IC=$(shell cat $(buildconfig) | grep -w "LICHEE_IC" | awk -F= '{printf $$2}')
+-	LICHEE_CHIP=$(shell cat $(buildconfig) | grep -w "LICHEE_CHIP" | awk -F= '{printf $$2}')
+-	LICHEE_BOARD=$(shell cat $(buildconfig) | grep -w "LICHEE_BOARD" | awk -F= '{printf $$2}')
+-	LICHEE_PLAT_OUT=$(shell cat $(buildconfig) | grep -w "LICHEE_PLAT_OUT" | awk -F= '{printf $$2}')
+-	LICHEE_BOARD_CONFIG_DIR=$(shell cat $(buildconfig) | grep -w "LICHEE_BOARD_CONFIG_DIR" | awk -F= '{printf $$2}')
+-	export LICHEE_BUSSINESS LICHEE_CHIP_CONFIG_DIR LICHEE_IC LICHEE_ARCH LICHEE_CHIP LICHEE_BOARD LICHEE_PLAT_OUT LICHEE_BOARD_CONFIG_DIR
+-endif
++LICHEE_BOARD_CONFIG_DIR=$(objtree)
+ 
+ # If the user is running make -s (silent mode), suppress echoing of
+ # commands
+@@ -265,34 +254,14 @@ ifeq (x$(config_check), xyes)
+ endif
+ endif
+ 
+-#########################################################################
+-RISCV_PATH=riscv64-linux-x86_64-20200528
+-riscv_toolchain_check=$(shell if [ ! -d ../tools/toolchain/$(RISCV_PATH) ]; then echo yes; else echo no; fi;)
+-ifeq (x$(riscv_toolchain_check), xyes)
+-$(info Prepare riscv toolchain ...);
+-$(shell mkdir -p ../tools/toolchain/$(RISCV_PATH) || exit 1)
+-$(shell tar --strip-components=1 -xf ../tools/toolchain/$(RISCV_PATH).tar.xz -C ../tools/toolchain/$(RISCV_PATH) || exit 1)
+-endif
+-arm_toolchain_check=$(shell if [ ! -d ../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi ]; then echo yes; else echo no; fi;)
+-ifeq (x$(arm_toolchain_check), xyes)
+-$(info Prepare arm toolchain ...);
+-$(shell mkdir -p ../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi || exit 1)
+-$(shell tar --strip-components=1 -xf ../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz -C ../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi || exit 1)
+-endif
+-
+-
+ ifeq (x$(CONFIG_RISCV), xy)
+-CROSS_COMPILE := $(srctree)/../tools/toolchain/$(RISCV_PATH)/bin/riscv64-unknown-linux-gnu-
+-DTS_PATH := $(PWD)/arch/riscv/dts
++DTS_PATH := $(objtree)/arch/riscv/dts
+ endif
+ 
+ ifeq (x$(CONFIG_ARM), xy)
+-CROSS_COMPILE := $(srctree)/../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-
+-DTS_PATH := $(PWD)/arch/arm/dts
++DTS_PATH := $(objtree)/arch/arm/dts
+ endif
+ 
+-CROSS_COMPILE ?= $(srctree)/../tools/toolchain/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi/bin/arm-linux-gnueabi-
+-DTS_PATH ?= $(PWD)/arch/arm/dts
+ 
+ #######################################################################
+ # set default to nothing for native builds
+@@ -809,10 +778,6 @@ PLATFORM_LIBS += drivers/sunxi_flash/nand/$(CONFIG_SYS_CONFIG_NAME)/libnand-$(CO
+ endif
+ endif
+ 
+-ifeq ($(CONFIG_SUNXI_ARM_SOFT_FP),y)
+-PLATFORM_LIBS+=arch/arm/lib/soft_fp_from_gcc/soft_fp_from_gcc
+-endif
+-
+ ifdef CONFIG_CC_COVERAGE
+ KBUILD_CFLAGS += --coverage
+ PLATFORM_LIBGCC += -lgcov
+@@ -968,28 +933,12 @@ quiet_cmd_cfgcheck = CFGCHK  $2
+ cmd_cfgcheck = $(srctree)/scripts/check-config.sh $2 \
+ 		$(srctree)/scripts/config_whitelist.txt $(srctree)
+ 
+-BOARD_DTS_NAME = $(LICHEE_IC)-$(LICHEE_BOARD)-board
+-
+-ifneq (x$(TARGET_BOARD), x)
+-BOARD_DTS_NAME := $(TARGET_BOARD)
+-LICHEE_TARGET_BOARD_EXIT=$(shell if [[ "$(TARGET_BOARD)" == *-board* ]]; then echo yes; else echo no; fi;)
+-ifeq (x$(LICHEE_TARGET_BOARD_EXIT), xno)
+-BOARD_DTS_NAME := $(BOARD_DTS_NAME)-board
+-endif
+-endif
+-
+-BOARD_DTS_EXIST = $(shell if [ -f $(DTS_PATH)/$(BOARD_DTS_NAME).dts ]; then echo yes; else echo no; fi;)
+-
+-DEVICE_BOARD_DTS_EXIST = $(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/sun20i-mangopi-mq-uboot.dts ]; then echo yes; else echo no; fi;)
+-
++BOARD_DTS_EXIST=$(shell if [ -f $(DTS_PATH)/$(LICHEE_IC)-$(LICHEE_BOARD)-board.dts ]; then echo yes; else echo no; fi;)
++DEVICE_BOARD_DTS_EXIST=$(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/uboot-board.dts ]; then echo yes; else echo no; fi;)
+ DTS_WARNNING_SKIP :=	-W no-unit_address_vs_reg \
+ 			-W no-unit_address_format \
+ 			-W no-simple_bus_reg \
+ 			-W no-pwms_property
+-ifeq (x$(DEVICE_BOARD_DTS_EXIST), xyes)
+-# add depend on external dts, make sure dts in uboot up to date
+-dts/dt.dtb: $(LICHEE_BOARD_CONFIG_DIR)/sun20i-mangopi-mq-uboot.dts
+-endif
+ 
+ all:		$(ALL-y) cfg
+ ifeq ($(CONFIG_DM_I2C_COMPAT)$(CONFIG_SANDBOX),y)
+@@ -1008,20 +957,10 @@ PHONY += dtbs
+ dtbs: dts/dt.dtb
+ 	@:
+ dts/dt.dtb: u-boot
+-
+-ifeq (x$(DEVICE_BOARD_DTS_EXIST), xyes)
+-	@-cp -v $(LICHEE_BOARD_CONFIG_DIR)/sun20i-mangopi-mq-uboot.dts $(DTS_PATH)/.board-uboot.dts
+-else
+-ifeq (x$(BOARD_DTS_EXIST),xyes)
+-	@-cp -v $(DTS_PATH)/$(BOARD_DTS_NAME).dts $(DTS_PATH)/.board-uboot.dts
+-else
+-	@-cp -v $(DTS_PATH)/$(CONFIG_SYS_CONFIG_NAME)-common-board.dts $(DTS_PATH)/.board-uboot.dts
+-endif
+-endif
++	@-cp -v $(DTS_PATH)/sun20i-mangopi-mq-uboot.dts $(DTS_PATH)/.board-uboot.dts
+ 	$(Q)$(MAKE) $(build)=dts dtbs
+ 	$(DTC) $(DTS_WARNNING_SKIP) -I dtb -O dts  $(DTS_PATH)/$(CONFIG_DEFAULT_DEVICE_TREE).dtb > u-boot-dtb.dts
+ 
+-
+ quiet_cmd_copy = COPY    $@
+       cmd_copy = cp $< $@
+ 
+@@ -1054,29 +993,6 @@ TARGET_BIN_DIR ?= device/config/chips/$(TARGET_PLATFORM)/bin
+ 
+ u-boot-$(CONFIG_SYS_CONFIG_NAME).bin:   u-boot.bin
+ 	@cp -v $<    $@
+-ifeq ($(CONFIG_SUNXI_NOR_IMG),y)
+-ifeq ($(TARGET_BUILD_VARIANT),tina)
+-	@cp -v $@ $(objtree)/../../../$(TARGET_BIN_DIR)/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin;
+-else
+-	@-if [ "x$(LICHEE_BUSSINESS)" != "x" ];then \
+-		cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/$(LICHEE_BUSSINESS)/bin/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin; \
+-	else \
+-		cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/bin/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin;\
+-	fi
+-	@-cp -v $@ $(LICHEE_PLAT_OUT)/u-boot-spinor-$(CONFIG_SYS_CONFIG_NAME).bin;
+-endif
+-else
+-ifeq ($(TARGET_BUILD_VARIANT),tina)
+-	@cp -v $@ $(objtree)/../../../$(TARGET_BIN_DIR)/$@
+-else
+-	@-if [ "x$(LICHEE_BUSSINESS)" != "x" ];then\
+-		cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/$(LICHEE_BUSSINESS)/bin/$@; \
+-	else \
+-		cp -v $@ $(LICHEE_CHIP_CONFIG_DIR)/bin/$@; \
+-	fi
+-	@-cp -v $@ $(LICHEE_PLAT_OUT)/$@;
+-endif
+-endif
+ 
+ %.imx: %.bin
+ 	$(Q)$(MAKE) $(build)=arch/arm/mach-imx $@
+@@ -1529,16 +1445,7 @@ include/config/uboot.release: include/config/auto.conf FORCE
+ # version.h and scripts_basic is processed / created.
+ 
+ # Listed in dependency order
+-PHONY += prepare archprepare prepare0 prepare1 prepare2 prepare3 cfg
+-
+-CLEAN_FILES += board/sunxi/sunxi_challenge.c
+-board/sunxi/sunxi_challenge.c:
+-	@echo "  prepare sunxi_challenge..."
+-	@dd if=/dev/urandom of=sunxi_challenge bs=128 count=1 > /dev/null 2>&1
+-	@xxd -c 8 -i sunxi_challenge > board/sunxi/sunxi_challenge.c
+-	@sed -i '/^unsigned/i __attribute__((__used__))' board/sunxi/sunxi_challenge.c
+-	@rm sunxi_challenge
+-prepare: board/sunxi/sunxi_challenge.c
++PHONY += prepare archprepare prepare0 prepare1 prepare2 prepare3
+ 
+ # prepare3 is used to check if we are building in a separate output directory,
+ # and if so do:
+-- 
+2.17.1
+
