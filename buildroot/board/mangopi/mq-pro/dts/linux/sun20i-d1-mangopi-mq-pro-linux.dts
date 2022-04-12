@@ -9,11 +9,12 @@
 #include "sun20iw1p1-linux.dtsi"
 
 /{
-	compatible = "allwinner,d1", "arm,sun20iw1p1", "allwinner,sun20iw1p1";
+	compatible = "allwinner,d1-h", "arm,sun20iw1p1", "allwinner,sun20iw1p1";
 
 	aliases {
 		dsp0 = &dsp0;
 		dsp0_gpio_int= &dsp0_gpio_int;
+		gmac0 = &gmac0;
 	};
 
 	dsp0: dsp0 {
@@ -29,7 +30,7 @@
 
 	reg_vdd_cpu: vdd-cpu {
 		compatible = "sunxi-pwm-regulator";
-		pwms = <&pwm 0 5000 0>;
+		pwms = <&pwm 0 5000 1>;
 		regulator-name = "vdd_cpu";
 		regulator-min-microvolt = <810000>;
 		regulator-max-microvolt = <1160000>;
@@ -236,6 +237,7 @@
 		       "PE8", "PE9", "PE10", "PE11",
 		       "PE12", "PE13", "PE14", "PE15";
 		function = "gmac0";
+		muxsel = <8>; /* for uboot driver */
 		drive-strength = <10>;
 	};
 
@@ -263,13 +265,30 @@
 	};
 
 	daudio0_pins_a: daudio0@0 {
-		pins = "PE17", "PE16", "PE15", "PE14", "PE13";
+		/* MCLK, BCLK, LRCK */
+		pins = "PE17", "PE16", "PE15";
 		function = "i2s0";
 		drive-strength = <20>;
 		bias-disable;
 	};
 
-	daudio0_pins_b: daudio0_sleep@0 {
+	daudio0_pins_b: daudio0@1 {
+		/* DIN0 */
+		pins = "PE14";
+		function = "i2s0_din";
+		drive-strength = <20>;
+		bias-disable;
+	};
+
+	daudio0_pins_c: daudio0@2 {
+		/* DOUT0 */
+		pins = "PE13";
+		function = "i2s0_dout";
+		drive-strength = <20>;
+		bias-disable;
+	};
+
+	daudio0_pins_d: daudio0_sleep@0 {
 		pins = "PE17", "PE16", "PE15", "PE14", "PE13";
 		function = "io_disabled";
 		drive-strength = <20>;
@@ -277,13 +296,30 @@
 	};
 
 	daudio1_pins_a: daudio1@0 {
-		pins = "PG11", "PG12", "PG13", "PG14", "PG15";
+		/* MCLK, LRCK, BCLK */
+		pins = "PG11", "PG12", "PG13";
 		function = "i2s1";
 		drive-strength = <20>;
 		bias-disable;
 	};
 
-	daudio1_pins_b: daudio1_sleep@0 {
+	daudio1_pins_b: daudio1@1 {
+		/* DIN0 */
+		pins = "PG14";
+		function = "i2s1_din";
+		drive-strength = <20>;
+		bias-disable;
+	};
+
+	daudio1_pins_c: daudio1@2 {
+		/* DOUT0 */
+		pins = "PG15";
+		function = "i2s1_dout";
+		drive-strength = <20>;
+		bias-disable;
+	};
+
+	daudio1_pins_d: daudio1_sleep@0 {
 		pins = "PG11", "PG12", "PG13", "PG14", "PG15";
 		function = "io_disabled";
 		drive-strength = <20>;
@@ -337,7 +373,7 @@
 	};
 
 	spi0_pins_a: spi0@0 {
-		pins = "PC2", "PC4", "PC5","PC7", "PC6"; /*clk mosi miso hold wp*/
+		pins = "PC2", "PC4", "PC5"; /* clk, mosi, miso */
 		function = "spi0";
 		muxsel = <2>;
 		drive-strength = <10>;
@@ -348,7 +384,7 @@
 		function = "spi0";
 		muxsel = <2>;
 		drive-strength = <10>;
-		bias-pull-up;   /* only CS should be pulled up */
+		bias-pull-up;   /* cs, hold, wp should be pulled up */
 	};
 
 	spi0_pins_c: spi0@2 {
@@ -359,16 +395,16 @@
 	};
 
 	spi1_pins_a: spi1@0 {
-		pins = "PD11", "PD12", "PD13","PD14", "PD15"; /*clk mosi miso hold wp*/
+		pins = "PD11", "PD12", "PD13"; /* clk, mosi, miso */
 		function = "spi1";
 		drive-strength = <10>;
 	};
 
 	spi1_pins_b: spi1@1 {
-		pins = "PD10";
+		pins = "PD10", "PD14", "PD15";
 		function = "spi1";
 		drive-strength = <10>;
-		bias-pull-up;   // only CS should be pulled up
+		bias-pull-up;   /* cs, hold, wp should be pulled up */
 	};
 
 	spi1_pins_c: spi1@2 {
@@ -410,9 +446,8 @@
 
 	pwm2_pin_b: pwm2@1 {
 		pins = "PD18";
-		function = "gpio_in";
+		function = "gpio_out";
 	};
-
 /*
 	pwm7_pin_a: pwm7@0 {
 		pins = "PD22";
@@ -474,11 +509,11 @@
 };
 
 &uart3 {
-	/*compatible = "allwinner,sun20iw1-dsp-uart";*/
+	compatible = "allwinner,sun20iw1-dsp-uart";
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&uart3_pins_a>;
 	pinctrl-1 = <&uart3_pins_a>;
-	status = "disabled";
+	status = "okay";
 };
 
 &soc {
@@ -521,12 +556,12 @@
 		compatible    = "allwinner,sunxi-rfkill";
 		chip_en;
 		power_en;
+		pinctrl-0 = <&wlan_pins_a>;
+		pinctrl-names = "default";
 		status        = "okay";
 
 		wlan: wlan@0 {
 			compatible    = "allwinner,sunxi-wlan";
-			pinctrl-0 = <&wlan_pins_a>;
-			pinctrl-names = "default";
 			clock-names = "32k-fanout1";
 			clocks = <&ccu CLK_FANOUT1_OUT>;
 			wlan_busnum    = <0x1>;
@@ -542,8 +577,6 @@
 
 		bt: bt@0 {
 			compatible    = "allwinner,sunxi-bt";
-			pinctrl-0 = <&wlan_pins_a>;
-			pinctrl-names = "default";
 			clock-names = "32k-fanout1";
 			clocks = <&ccu CLK_FANOUT1_OUT>;
 			/*bt_power_num = <0x01>;*/
@@ -792,8 +825,8 @@ tvd_row*tvd_column is the total tvd channel number to be used in multichannel mo
 	pcm_lrck_period = <0x80>;
 	slot_width_select = <0x20>;
 	pinctrl-names   = "default", "sleep";
-	pinctrl-0       = <&daudio0_pins_a>;
-	pinctrl-1       = <&daudio0_pins_b>;
+	pinctrl-0       = <&daudio0_pins_a &daudio0_pins_b &daudio0_pins_c>;
+	pinctrl-1       = <&daudio0_pins_d>;
 	pinctrl_used	= <0x0>;
 	status = "disabled";
 };
@@ -827,8 +860,8 @@ tvd_row*tvd_column is the total tvd channel number to be used in multichannel mo
 	pcm_lrck_period = <0x80>;
 	slot_width_select = <0x20>;
 	pinctrl-names   = "default", "sleep";
-	pinctrl-0       = <&daudio1_pins_a>;
-	pinctrl-1       = <&daudio1_pins_b>;
+	pinctrl-0       = <&daudio1_pins_a &daudio1_pins_b &daudio1_pins_c>;
+	pinctrl-1       = <&daudio1_pins_d>;
 	pinctrl_used	= <0x0>;
 	status = "disabled";
 };
@@ -995,7 +1028,7 @@ tvd_row*tvd_column is the total tvd channel number to be used in multichannel mo
 		ctp_screen_max_x = <0x320>;
 		ctp_screen_max_y = <0x500>;
 		ctp_revert_x_flag = <0x0>;
-		ctp_revert_y_flag = <0x0>;
+		ctp_revert_y_flag = <0x1>;
 		ctp_exchange_x_y_flag = <0x0>;
 		ctp_int_port = <&pio PG 14 GPIO_ACTIVE_HIGH>;
 		ctp_wakeup = <&pio PG 15 GPIO_ACTIVE_HIGH>;
@@ -1049,9 +1082,21 @@ tvd_row*tvd_column is the total tvd channel number to be used in multichannel mo
 	pinctrl-1 = <&spi1_pins_c>;
 	pinctrl-names = "default", "sleep";
 	spi_slave_mode = <0>;
+	spi1_cs_number = <1>;
+	spi1_cs_bitmap = <1>;
+	spi_dbi_enable = <1>;
 	status = "disabled";
 
 	spi_board1@0 {
+		device_type = "spi-dbi";
+		compatible = "sunxi,spidbi";
+		spi-max-frequency = <0x5f5e100>;
+		reg = <0x0>;
+		spi-rx-bus-width = <0x4>;
+		spi-tx-bus-width = <0x4>;
+		status = "okay";
+	};
+	/* spi_board1@0 {
 		device_type = "spi_board1";
 		compatible = "rohm,dh2228fv";
 		spi-max-frequency = <0x5f5e100>;
@@ -1059,7 +1104,7 @@ tvd_row*tvd_column is the total tvd channel number to be used in multichannel mo
 		spi-rx-bus-width = <0x4>;
 		spi-tx-bus-width = <0x4>;
 		status = "disabled";
-	};
+	}; */
 };
 
 &ledc {
@@ -1310,14 +1355,6 @@ pull up or pull down(default 0), driver level(default 1), data>
 	pinctrl-1 = <&pwm2_pin_b>;
 	status = "okay";
 };
-/*
-&pwm7 {
-	pinctrl-names = "active", "sleep";
-	pinctrl-0 = <&pwm7_pin_a>;
-	pinctrl-1 = <&pwm7_pin_b>;
-	status = "okay";
-};
-*/
 
 &rtp {
 	allwinner,tp-sensitive-adjust = <0xf>;
@@ -1353,3 +1390,4 @@ pull up or pull down(default 0), driver level(default 1), data>
 	pinctrl-1 = <&ir1_pins_b>;
 	status = "disabled";
 };
+
