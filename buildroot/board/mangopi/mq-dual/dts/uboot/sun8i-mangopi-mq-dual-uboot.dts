@@ -3,10 +3,9 @@
  *
  * soc board support.
  */
-
 /dts-v1/;
 
-#include "sun8iw20p1-soc-system.dts"
+#include "sun8iw20p1-soc-system.dtsi"
 
 &platform {
 	eraseflag   = <1>;
@@ -21,11 +20,9 @@
 	dragonboard_test = <0>;	/*1:support card boot dragonboard; 0:not support card boot dragonboard*/
 };
 
-
 &charger0 {
 	pmu_safe_vol = <3500>;
 };
-
 
 &twi6 {
 	clock-frequency = <200000>;
@@ -106,8 +103,6 @@
 	       "PC5", "PC6", "PC7";
 	function = "gpio_in";
 };
-
-
 
 &nand0_pins_a {
 	allwinner,pins = "PC0", "PC1", "PC2", "PC5",
@@ -290,53 +285,6 @@
 	/*VCC-PD*/
 /*	dcdc1-supply = <&reg_dcdc1>;*/
 };
-
-/*
-&lcd0 {
-	lcd_used            = <1>;
-
-	lcd_driver_name     = "default_lcd";
-	lcd_backlight       = <50>;
-	lcd_if              = <3>;
-
-	lcd_x               = <1280>;
-	lcd_y               = <800>;
-	lcd_width           = <150>;
-	lcd_height          = <94>;
-	lcd_dclk_freq       = <71>;
-
-	lcd_pwm_used        = <1>;
-	lcd_pwm_ch          = <7>;
-	lcd_pwm_freq        = <50000>;
-	lcd_pwm_pol         = <1>;
-	lcd_pwm_max_limit   = <255>;
-	lcd_bl_en           = <&pio PD 20 GPIO_ACTIVE_HIGH>;
-
-	lcd_hbp             = <20>;
-	lcd_ht              = <1418>;
-	lcd_hspw            = <10>;
-	lcd_vbp             = <10>;
-	lcd_vt              = <814>;
-	lcd_vspw            = <5>;
-
-	lcd_lvds_if         = <0>;
-	lcd_lvds_colordepth = <1>;
-	lcd_lvds_mode       = <0>;
-	lcd_frm             = <1>;
-	lcd_hv_clk_phase    = <0>;
-	lcd_hv_sync_polarity= <0>;
-	lcd_gamma_en        = <0>;
-	lcd_bright_curve_en = <0>;
-	lcd_cmap_en         = <0>;
-
-	deu_mode            = <0>;
-	lcdgamma4iep        = <22>;
-	smart_color         = <90>;
-
-	pinctrl-0 = <&lvds0_pins_a>;
-	pinctrl-1 = <&lvds0_pins_b>;
-};
-*/
 
 &lcd0 {
 	lcd_used            = <1>;

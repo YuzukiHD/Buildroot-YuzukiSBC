@@ -1,9 +1,10 @@
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/gpio/gpio.h>
-#include "sun8iw20p1-clk.dtsi"
 #include <dt-bindings/thermal/thermal.h>
 
-/ {
+#include "sun8iw20p1-clk.dtsi"
+
+/{
 	model = "sun8iw20";
 	compatible = "allwinner,r528", "arm,sun8iw20p1";
 	#address-cells = <2>;
@@ -13,7 +14,6 @@
 		#size-cells = <2>;
 		power_sply:power_sply@4500000c {
 			device_type = "power_sply";
-
 		};
 
 		power_delay:power_delay@4500024 {
@@ -352,7 +352,8 @@
 			fb_base = <0>;
 /*			iommus = <&mmu_aw 2 0>;*/
 			status = "okay";
-};
+		};
+
 		lcd0: lcd0@5461000 {
 			#address-cells = <2>;
 			#size-cells = <2>;
@@ -399,7 +400,8 @@
 		interrupts = <GIC_PPI 9 0xf04>;  /* GIC Maintenence IRQ */
 		interrupt-parent = <&gic>;
 	};
-	aliases:aliases@45100000 {
-	};
 
+	aliases:aliases@45100000 {
+
+	};
 };

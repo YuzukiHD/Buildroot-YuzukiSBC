@@ -1,7 +1,7 @@
-From cf43277db894443dcf49314e24f4b6ddb4132333 Mon Sep 17 00:00:00 2001
+From 89c9611d90183b41243c2444a264cd75ddb534e0 Mon Sep 17 00:00:00 2001
 From: YuzukiTsuru <gloomyghost@gloomyghost.com>
-Date: Sun, 27 Mar 2022 23:09:00 +0800
-Subject: [PATCH 2/2] fix uboot disable dtc selfbuilt
+Date: Tue, 12 Apr 2022 10:12:59 +0800
+Subject: [PATCH 2/3] add uboot dtc build
 
 ---
  scripts/Makefile | 2 +-

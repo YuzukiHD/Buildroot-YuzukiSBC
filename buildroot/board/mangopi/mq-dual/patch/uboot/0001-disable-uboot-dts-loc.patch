@@ -1,26 +1,25 @@
-From 132c4ad2bbd95cd2138465ea7f3fbb53bad141bb Mon Sep 17 00:00:00 2001
+From 9299b8fa3d120a52f5468705c20ee7042693d0b9 Mon Sep 17 00:00:00 2001
 From: YuzukiTsuru <gloomyghost@gloomyghost.com>
-Date: Sun, 27 Mar 2022 22:38:47 +0800
-Subject: [PATCH] add support for buildroot
+Date: Tue, 12 Apr 2022 10:12:26 +0800
+Subject: [PATCH 1/3] disable uboot dts loc
 
 ---
  Makefile | 6 +++---
  1 file changed, 3 insertions(+), 3 deletions(-)
 
 diff --git a/Makefile b/Makefile
-index 4647e1a..f628988 100644
+index 88c9e65..1216e1e 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -980,7 +980,7 @@ endif
+@@ -969,14 +969,14 @@ cmd_cfgcheck = $(srctree)/scripts/check-config.sh $2 \
+ 		$(srctree)/scripts/config_whitelist.txt $(srctree)
  
- BOARD_DTS_EXIST = $(shell if [ -f $(DTS_PATH)/$(BOARD_DTS_NAME).dts ]; then echo yes; else echo no; fi;)
- 
--DEVICE_BOARD_DTS_EXIST = $(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/uboot-board.dts ]; then echo yes; else echo no; fi;)
-+DEVICE_BOARD_DTS_EXIST = $(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/sun8i-mangopi-mq-dual-uboot.dts ]; then echo yes; else echo no; fi;)
- 
+ BOARD_DTS_EXIST=$(shell if [ -f $(DTS_PATH)/$(LICHEE_IC)-$(LICHEE_BOARD)-board.dts ]; then echo yes; else echo no; fi;)
+-DEVICE_BOARD_DTS_EXIST=$(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/uboot-board.dts ]; then echo yes; else echo no; fi;)
++DEVICE_BOARD_DTS_EXIST=$(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/sun8i-mangopi-mq-dual-uboot.dts ]; then echo yes; else echo no; fi;)
  DTS_WARNNING_SKIP :=	-W no-unit_address_vs_reg \
  			-W no-unit_address_format \
-@@ -988,7 +988,7 @@ DTS_WARNNING_SKIP :=	-W no-unit_address_vs_reg \
+ 			-W no-simple_bus_reg \
  			-W no-pwms_property
  ifeq (x$(DEVICE_BOARD_DTS_EXIST), xyes)
  # add depend on external dts, make sure dts in uboot up to date
@@ -29,15 +28,15 @@ index 4647e1a..f628988 100644
  endif
  
  all:		$(ALL-y) cfg
-@@ -1010,7 +1010,7 @@ dtbs: dts/dt.dtb
+@@ -997,7 +997,7 @@ dtbs: dts/dt.dtb
+ 	@:
  dts/dt.dtb: u-boot
- 
  ifeq (x$(DEVICE_BOARD_DTS_EXIST), xyes)
 -	@-cp -v $(LICHEE_BOARD_CONFIG_DIR)/uboot-board.dts $(DTS_PATH)/.board-uboot.dts
 +	@-cp -v $(LICHEE_BOARD_CONFIG_DIR)/sun8i-mangopi-mq-dual-uboot.dts $(DTS_PATH)/.board-uboot.dts
  else
  ifeq (x$(BOARD_DTS_EXIST),xyes)
- 	@-cp -v $(DTS_PATH)/$(BOARD_DTS_NAME).dts $(DTS_PATH)/.board-uboot.dts
+ 	@-cp -v $(DTS_PATH)/$(LICHEE_IC)-$(LICHEE_BOARD)-board.dts $(DTS_PATH)/.board-uboot.dts
 -- 
 2.17.1
 
