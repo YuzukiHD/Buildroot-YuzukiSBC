@@ -94,7 +94,7 @@ sync_kernel
 
 Download balenaEtcher at [https://www.balena.io/etcher/](https://www.balena.io/etcher/)
 
-![xfel_driver_1](https://raw.githubusercontent.com/YuzukiHD/Buildroot-YuzukiSBC/master/docs/assets/img/balenaEtcher.png)
+![balenaEtcher](assets/img/balenaEtcher.png)
 
 ### Using dd
 ```
@@ -252,8 +252,8 @@ BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/awol/nezha-d1s/script/genimage.cfg sun20i-
 
 First, open zadig under the XFEL driver folder and select `List All Devices`
 
-![xfel_driver_1](https://raw.githubusercontent.com/YuzukiHD/Buildroot-YuzukiSBC/master/docs/assets/img/xfel_driver_1.png)
+![xfel_driver_1](assets/img/xfel_driver_1.png)
 
 Then select Allwinner USB Device `VID_1f3a_PID_efe8`, and replace the driver with WinUSB
 
-![xfel_driver_2](https://raw.githubusercontent.com/YuzukiHD/Buildroot-YuzukiSBC/master/docs/assets/img/xfel_driver_2.png)
+![xfel_driver_2](assets/img/xfel_driver_2.png)
