@@ -22,7 +22,7 @@
 The recommended operating system is `Ubuntu 18.04 WSL` and `Ubuntu 20.04 WSL`. If you want to use a virtual machine or a physical machine running linux, please troubleshoot the problem by yourself. There is no solution here.
 
 ## Install necessary packages
-``` shell
+```bash
 sudo apt install rsync wget unzip build-essential git bc swig libncurses-dev libpython3-dev libssl-dev python3-distutils
 ```
 
@@ -32,7 +32,7 @@ sudo apt install rsync wget unzip build-essential git bc swig libncurses-dev lib
 
 !> **For WSL2 Users: Please don't put this SDK in Windows partition, please put it under Linux partition, `/mnt/` must not appear in the path.**
 
-```shell
+```bash
 git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC
 cd Buildroot-YuzukiSBC
 ```
@@ -57,7 +57,7 @@ lunch                 # Change to Buildroot Directory
 ### Apply defconfig
 !> **Caution: Apply defconfig will reset all buildroot configurations to default values. Generally, you only need to apply it once.**
 
-```shell
+```bash
 make *Defconfig Name*
 
 eg.
@@ -68,22 +68,22 @@ make yuzukihd_yuzukiruler_defconfig
 <script id="asciicast-BWL8PDRgC9BwydeD9vj0pamIu" src="https://asciinema.org/a/BWL8PDRgC9BwydeD9vj0pamIu.js" async></script>
 
 ### Regular build
-```shell
+```bash
 make
 ```
 
 ### If changed DTS or kernel build
-```shell
+```bash
 rebuild-kernel
 ```
 
 ### If changed Uboot, build
-```shell
+```bash
 rebuild-uboot
 ```
 
 ### If added linux patches, build
-```shell
+```bash
 sync_kernel
 ```
 
@@ -109,7 +109,7 @@ sudo dd if=sdcard.img of=/dev/sdX bs=4M  # dd it
 
 Get sunxi-fel at [github.com/linux-sunxi/sunxi-tools](https://github.com/linux-sunxi/sunxi-tools/releases)
 
-```shell
+```bash
 cd buildroot/output/images/                            # To System img dir
 sunxi-fel -p spiflash-write 0 sysimage-nand.img        # Write System to devices
 ```
@@ -118,7 +118,7 @@ Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
 
 !> XFEL Driver install [Instructions](/?id=xfel-driver-install)
 
-```shell
+```bash
 cd buildroot/output/images/             # To System img dir
 xfel spinand                            # Checkout device connection
 xfel spinand write 0 sysimage-nand.img  # Write System to devices
@@ -130,7 +130,7 @@ xfel spinand write 0 sysimage-nand.img  # Write System to devices
 
 Get sunxi-fel at [github.com/linux-sunxi/sunxi-tools](https://github.com/linux-sunxi/sunxi-tools/releases)
 
-```shell
+```bash
 cd buildroot/output/images/                            # To System img dir
 sunxi-fel -p spiflash-write 0 sysimage-nor.img         # Write System to devices
 ```
@@ -141,7 +141,7 @@ Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
 
 !> XFEL Driver install [Instructions](/?id=xfel-driver-install)
 
-```shell
+```bash
 cd buildroot/output/images/            # To System img dir
 xfel spinor                            # Checkout device connection
 xfel spinor write 0 sysimage-nor.img   # Write System to devices
