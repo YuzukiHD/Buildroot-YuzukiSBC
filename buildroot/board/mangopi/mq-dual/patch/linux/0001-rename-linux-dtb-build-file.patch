@@ -1,20 +1,24 @@
-From 12a0850cae90d18ddc36b15f0f63031f0e9de8b3 Mon Sep 17 00:00:00 2001
+From 9b04b4304777bf55c627fd34aa2d4dd65d16e905 Mon Sep 17 00:00:00 2001
 From: YuzukiTsuru <gloomyghost@gloomyghost.com>
-Date: Mon, 28 Mar 2022 00:14:09 +0800
-Subject: [PATCH] rename linux dtb build file
+Date: Tue, 12 Apr 2022 11:28:04 +0800
+Subject: [PATCH] add dts support for sun8i
 
 ---
- arch/riscv/boot/dts/sunxi/Makefile | 2 +-
+ arch/arm/boot/dts/Makefile | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
-diff --git a/arch/riscv/boot/dts/sunxi/Makefile b/arch/riscv/boot/dts/sunxi/Makefile
-index 7a7c38bb7..96061de15 100644
---- a/arch/riscv/boot/dts/sunxi/Makefile
-+++ b/arch/riscv/boot/dts/sunxi/Makefile
-@@ -1,2 +1,2 @@
- # SPDX-License-Identifier: GPL-2.0
--dtb-$(CONFIG_ARCH_SUNXI) += board.dtb
-+dtb-$(CONFIG_ARCH_SUNXI) += ../sun8i-mangopi-mq-dual-linux.dtb
+diff --git a/arch/arm/boot/dts/Makefile b/arch/arm/boot/dts/Makefile
+index 7014caa17..781c5bb89 100644
+--- a/arch/arm/boot/dts/Makefile
++++ b/arch/arm/boot/dts/Makefile
+@@ -1136,7 +1136,7 @@ dtb-$(CONFIG_MACH_SUNIV) += \
+ dtb-$(CONFIG_ARCH_SUN8IW15P1) += \
+ 	board.dtb
+ dtb-$(CONFIG_ARCH_SUN8IW20) += \
+-	board.dtb
++	sun8i-mangopi-mq-dual-linux.dtb
+ dtb-$(CONFIG_ARCH_TANGO) += \
+ 	tango4-vantage-1172.dtb
+ dtb-$(CONFIG_ARCH_TEGRA_2x_SOC) += \
 -- 
 2.17.1
-
