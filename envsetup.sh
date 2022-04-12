@@ -40,7 +40,7 @@ fi
 # Add alias 
 
 # Alias
-alias lunch="cd buildroot && echo -e \"You're building on Linux\n\nLunch menu... \npick a combo by 'make xxx_defconfig':\" \nScaning combo...  && make list-defconfigs"
+alias lunch="cd buildroot && echo -e \"You're building on Linux\n\nLunch menu... \npick a combo by 'make xxx_defconfig':\nScaning combo...\" && make list-defconfigs"
 alias rebuild_kernel="touch ./output/images/a.dtb && rm ./output/images/*.dtb && make linux-rebuild -j8 && make"
 alias rebuild_uboot="make uboot-rebuild -j8 && make"
 alias wsl_path="export PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib\""
