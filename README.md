@@ -24,7 +24,7 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
 | awol   | nezha-d1s | D1s | tina,uboot 2018 | tina,linux 2018 | awol_nezha_d1s_defconfig |
 | mangopi   | MQ | D1s | tina,uboot 2018 | tina,linux 2018 | mangopi_mq_defconfig |
 | mangopi   | MQ Dual | T113 | longan,uboot 2018 | longan,linux 2018 | mangopi_mq_dual_defconfig |
-| mangopi   | MQ Pro | D1 | tina,uboot 2018 | tina,linux 2018 | mangopi_mq_pro_defconfig |
+| mangopi   | MQ Pro | D1-H | tina,uboot 2018 | tina,linux 2018 | mangopi_mq_pro_defconfig |
 
 ## Documents
 
