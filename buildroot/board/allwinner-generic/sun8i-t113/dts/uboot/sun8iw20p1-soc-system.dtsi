@@ -350,7 +350,6 @@
 			boot_disp1 = <0>;
 			boot_disp2 = <0>;
 			fb_base = <0>;
-/*			iommus = <&mmu_aw 2 0>;*/
 			status = "okay";
 		};
 

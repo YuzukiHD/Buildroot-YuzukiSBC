@@ -612,7 +612,6 @@
 	status = "okay";
 };
 
-
 &twi0 {
 	clock-frequency = <400000>;
 	pinctrl-0 = <&twi0_pins_a>;
@@ -1143,44 +1142,40 @@ pull up or pull down(default 0), driver level(default 1), data>
 	lcd_used            = <1>;
 
 	lcd_driver_name     = "default_lcd";
-	lcd_backlight       = <50>;
-	lcd_if              = <3>;
+	lcd_backlight       = <100>;
+	lcd_if              = <0>;
 
-	lcd_x               = <1024>;
-	lcd_y               = <600>;
+	lcd_x               = <480>;
+	lcd_y               = <272>;
 	lcd_width           = <150>;
 	lcd_height          = <94>;
-	lcd_dclk_freq       = <52>;
+	lcd_dclk_freq       = <24>;
+	lcd_hv_clk_phase    = <0>;
+	lcd_hv_sync_polarity= <3>;
 
 	lcd_pwm_used        = <1>;
 	lcd_pwm_ch          = <7>;
-	lcd_pwm_freq        = <50000>;
-	lcd_pwm_pol         = <1>;
-	lcd_pwm_max_limit   = <255>;
+	lcd_pwm_freq        = <500>;
+	lcd_pwm_pol         = <0>;
 
-	lcd_hbp             = <160>;
-	lcd_ht              = <1344>;
-	lcd_hspw            = <60>;
+	lcd_hbp             = <46>;
+	lcd_ht              = <1055>;
+	lcd_hspw            = <0>;
 	lcd_vbp             = <23>;
-	lcd_vt              = <638>;
-	lcd_vspw            = <10>;
+	lcd_vt              = <525>;
+	lcd_vspw            = <0>;
 
 	lcd_lvds_if         = <0>;
-	lcd_lvds_colordepth = <0>;
+	lcd_lvds_colordepth = <1>;
 	lcd_lvds_mode       = <0>;
 	lcd_frm             = <1>;
-	lcd_hv_clk_phase    = <0>;
-	lcd_hv_sync_polarity= <0>;
+	lcd_io_phase        = <0x0000>;
 	lcd_gamma_en        = <0>;
 	lcd_bright_curve_en = <0>;
 	lcd_cmap_en         = <0>;
 
-	deu_mode            = <0>;
-	lcdgamma4iep        = <22>;
-	smart_color         = <90>;
-
-	pinctrl-0 = <&lvds0_pins_a>;
-	pinctrl-1 = <&lvds0_pins_b>;
+	pinctrl-0 = <&rgb18_pins_a>;
+	pinctrl-1 = <&rgb18_pins_b>;
 };
 /*
 &lcd0 {
