@@ -15,7 +15,7 @@
 | awol   | nezha | D1-H | tina,uboot 2018 | tina,linux 2018 | awol_nezha_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
 | awol   | nezha-d1s | D1s | tina,uboot 2018 | tina,linux 2018 | awol_nezha_d1s_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
 | mangopi   | mq | D1s | tina,uboot 2018 | tina,linux 2018 | mangopi_mq_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
-
+| mangopi   | mq dual | T113 | longan,uboot 2018 | longan,linux 2018 | mangopi_mq_dual_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
 
 # Install BSP
 
