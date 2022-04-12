@@ -23,13 +23,8 @@
       repo: 'yuzukihd/Buildroot-YuzukiSBC',
       loadSidebar: false,
       subMaxLevel: 2,
-      //relativePath: true,
+      relativePath: true,
     };
-    hook.afterEach(function (html, next) {
-      let reg = new RegExp(vm.config.basePath + ".*/images", 'ig');
-      html = html.replace(reg, vm.config.basePath + "images");
-      next(html);
-    });
   </script>
   <!-- Docsify v4 -->
   <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
