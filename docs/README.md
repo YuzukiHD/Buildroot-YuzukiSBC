@@ -191,6 +191,10 @@ Modify the kernel-related patch or need to restore the original kernel
 
 Buildroot-YuzukiSBC uses a custom directory structure, and the following descriptions need to be met when submitting code.
 
+1. Do not use custom kernel, uboot and other repo, use patch to modify.
+2. All configuration files and device trees are external and handed over to buildroot.
+3. Common files, drivers, packaging scripts, etc. are placed in the `xxx-generic` folder.
+
 ```tree
 ├── Vender
 │   ├── Board1
