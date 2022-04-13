@@ -184,7 +184,11 @@ Rebuild the U-Boot
 
 `sync_kernel` 
 
-Modify the kernel-related patch or need to restore the original kernel
+Modify the kernel-related patch or need to restore the original kernel, sync to original
+
+`sync_uboot` 
+
+Modify the uboot-related patch or need to restore the original uboot, sync to original
 
 # Appendix
 
