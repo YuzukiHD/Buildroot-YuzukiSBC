@@ -106,7 +106,6 @@ sudo dd if=sdcard.img of=/dev/sdX bs=4M  # dd it
 ```
 
 ## Flashing to SPI-NAND
-### Using XFEL
 
 ### Using sunxi-fel
 
@@ -116,6 +115,8 @@ Get sunxi-fel at [github.com/linux-sunxi/sunxi-tools](https://github.com/linux-s
 cd buildroot/output/images/                            # To System img dir
 sunxi-fel -p spiflash-write 0 sysimage-nand.img        # Write System to devices
 ```
+
+### Using XFEL
 
 Get XFEL at [github.com/xboot/xfel](https://github.com/xboot/xfel/releases/)
 
