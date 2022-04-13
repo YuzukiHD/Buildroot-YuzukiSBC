@@ -1,8 +1,18 @@
 #!/bin/bash
 
 #
-# envsetup.sh
+# envsetup.sh for buildroot YuzukiSBC
 # Copyright (C) 2022 YuzukiTsuru <gloomyghost@gloomyghost.com>. All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
 #
 
 # WSL SUpport 
@@ -17,11 +27,49 @@ then
     export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib"
 fi
 
-LOCAL_GIT_HEAD=$(git rev-parse HEAD)
-REMOTE_GIT=$(git log --pretty=format:"%H" -1)
+FetchUpdate(){
+    git fetch origin master:tmp
+    if [ $(git diff tmp | grep -c "-") -gt 1 ];
+    then
+        read -r -p "Update found, Update to Remote? [y/N] " input
+        
+        case $input in
+            [yY][eE][sS]|[yY])
+                echo "Now try to merge upstream..."
+                git merge tmp
+                ;;
+        
+            [nN][oO]|[nN])
+                echo "Cancel update..."         
+                ;;
+        
+            *)
+                echo "Invalid input..."
+                ;;
+        esac
+    fi
+    # delete the commit
+    git branch -d tmp
+}
 
-echo $LOCAL_GIT_HEAD
-echo $REMOTE_GIT
+# Fetch latest commit.
+
+read -r -p "Check for repository updates？[y/N] " input
+case $input in
+    [yY][eE][sS]|[yY])
+        echo "Fetching remote repo data..."
+        FetchUpdate
+        ;;
+    
+    [nN][oO]|[nN])
+        echo "Cancel update check..."        
+        ;;
+    *)
+        echo "Cancel update check..."
+        ;;
+esac
+
+
 
 # configure C compiler
 export compiler=$(which gcc)
