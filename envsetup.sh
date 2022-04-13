@@ -17,6 +17,12 @@ then
     export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib"
 fi
 
+LOCAL_GIT_HEAD=$(git rev-parse HEAD)
+REMOTE_GIT=$(git log --pretty=format:"%H" -1)
+
+echo $LOCAL_GIT_HEAD
+echo $REMOTE_GIT
+
 # configure C compiler
 export compiler=$(which gcc)
  

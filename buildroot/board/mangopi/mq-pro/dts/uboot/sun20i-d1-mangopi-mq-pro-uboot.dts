@@ -20,11 +20,9 @@
 	dragonboard_test = <0>;	/*1:support card boot dragonboard; 0:not support card boot dragonboard*/
 };
 
-
 &charger0 {
 	pmu_safe_vol = <3500>;
 };
-
 
 &twi6 {
 	clock-frequency = <200000>;
