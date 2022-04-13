@@ -16,11 +16,14 @@
 #
 
 # Logo
-                                                              
+
+LOCAL_COMMIT_ID=$(git rev-parse --short HEAD)                
+
 echo " _____ _____ ___    __ __             _   _ _____ _____ _____ "
 echo "| __  | __  |_  |  |  |  |_ _ ___ _ _| |_|_|   __| __  |     |"
 echo "| __ -|    -|  _|  |_   _| | |- _| | | '_| |__   | __ -|   --|"
 echo "|_____|__|__|___|    |_| |___|___|___|_,_|_|_____|_____|_____|"
+echo -e "Commit:      $LOCAL_COMMIT_ID\n"
                                                               
 # WSL SUpport 
 if [ $(uname -r | grep -c "WSL1") -eq 1 ];
@@ -116,4 +119,9 @@ alias rkernel="rebuild_kernel"
 alias mboot="rebuild_uboot"
 alias rboot="rebuild_uboot"
 
-echo "Setup env done! Please run lunch next."
+LOCAL_COMMIT_ID=$(git rev-parse --short HEAD)
+
+echo -e "\n"
+echo "******************************************"
+echo "* Setup env done! Please run lunch next. *"
+echo "******************************************"
