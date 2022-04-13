@@ -32,7 +32,6 @@ FetchUpdate(){
     if [ $(git diff tmp | grep -c "-") -gt 1 ];
     then
         read -r -p "Update found, Update to Remote? [y/N] " input
-        
         case $input in
             [yY][eE][sS]|[yY])
                 echo "Now try to merge upstream..."
@@ -47,6 +46,9 @@ FetchUpdate(){
                 echo "Invalid input..."
                 ;;
         esac
+    else
+        echo "Local code all up to date! commit id:" 
+        git rev-parse HEAD
     fi
     # delete the commit
     git branch -d tmp
@@ -68,8 +70,6 @@ case $input in
         echo "Cancel update check..."
         ;;
 esac
-
-
 
 # configure C compiler
 export compiler=$(which gcc)
