@@ -157,7 +157,7 @@ xfel spinor write 0 sysimage-nor.img   # Write System to devices
 
 ## Buildroot built-in Scripts
 
-```bash
+```
 Cleaning:
   clean                  - delete all files created by build
   distclean              - delete all non-source files (including .config)
