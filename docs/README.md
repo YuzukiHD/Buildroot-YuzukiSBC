@@ -45,6 +45,8 @@ cd Buildroot-YuzukiSBC
 ## Setting up the build environment
 !> **Notice: Root permission is not necessery for build firmware.**
 
+!> Every time you set up, you will be prompted whether to check for updates, you can choose whether to check for updates
+
 ```
 source envsetup.sh    # Set the build environment
 lunch                 # Change to Buildroot Directory
