@@ -52,7 +52,7 @@ source envsetup.sh    # Set the build environment
 lunch                 # Change to Buildroot Directory
 ```
 
-<script id="asciicast-5QC9rDd3B2BFgTZNecQx4f9UR" src="https://asciinema.org/a/5QC9rDd3B2BFgTZNecQx4f9UR.js" async></script>
+<script id="asciicast-KhlmJTeKQXuOCc62I2MWKHjer" src="https://asciinema.org/a/KhlmJTeKQXuOCc62I2MWKHjer.js" async></script>
 
 ## Make the first build
 !> **Notice: Root permission is not necessery for build firmware.**
