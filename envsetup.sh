@@ -92,11 +92,9 @@ PATCHLEVEL=$(echo __GNUC_PATCHLEVEL__ | $compiler -E -xc - | tail -n 1)
 if [ $MAJOR -lt 7 ];
 then 
     echo "#### Buildroot-YuzukiSBC Not Support GCC Version less than 7 ####"
-    exit 1
 elif [ $MAJOR -gt 12 ];
 then
     echo "#### Buildroot-YuzukiSBC Not Support GCC Version more than 12 ####"
-    exit 1
 else
     echo "Your Host GCC Version is $MAJOR.$MINOR.$PATCHLEVEL"
 fi
