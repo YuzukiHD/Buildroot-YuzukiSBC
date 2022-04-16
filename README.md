@@ -1,40 +1,71 @@
-# Buildroot Package for yuzukihd Devices and More Devices
 
-[Documentation](https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/) &mdash;
-[Releases](https://github.com/yuzukihd/Buildroot-YuzukiSBC/releases) &mdash;
-[License](https://github.com/yuzukihd/Buildroot-YuzukiSBC/blob/master/LICENSE)
+<div align = center>
 
-Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC 
+# Buildroot YuzukiSBC
+*BuildRoot Package for YuzukiHD Devices and Others*
 
-[![forthebadge](https://forthebadge.com/images/badges/contains-cat-gifs.svg)](https://forthebadge.com)
-[![forthebadge](https://forthebadge.com/images/badges/compatibility-betamax.svg)](https://forthebadge.com)
+<br>
 
-## Supported Devices
+[Documentation] &mdash;
+[Releases] &mdash;
+[License] &mdash;
+[Mirror]
 
-[![Build status](https://ci.appveyor.com/api/projects/status/qa7iq9ip0g3nh96c?svg=true)](https://ci.appveyor.com/project/GloomyGhost-MosquitoCoil/buildroot-yuzukisbc)
+<br>
 
-|  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
-| -------- | ----------- | ------- | ------- | ------- | --------- |
-| YuzukiHD | YuzukiRuler | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukiruler_defconfig |
-| YuzukiHD | YuzukiCore F1 | F1C200s | 2020.07 | 5.4.180 | yuzukihd_yuzukicore_f1_defconfig |
-| YuzukiHD | YuzukiCK1N | V3x | 2022.01 | 5.4.180 | yuzukihd_yuzukick1n_defconfig |
-| Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | sipeed_lichee_nano_defconfig |
-| Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | sipeed_lichee_zero_defconfig |
-| awol   | nezha | D1-H | tina,uboot 2018 | tina,linux 2018 | awol_nezha_defconfig |
-| awol   | nezha-d1s | D1s | tina,uboot 2018 | tina,linux 2018 | awol_nezha_d1s_defconfig |
-| mangopi   | MQ | D1s | tina,uboot 2018 | tina,linux 2018 | mangopi_mq_defconfig |
-| mangopi   | MQ Dual | T113 | longan,uboot 2018 | longan,linux 2018 | mangopi_mq_dual_defconfig |
-| mangopi   | MQ Pro | D1-H | tina,uboot 2018 | tina,linux 2018 | mangopi_mq_pro_defconfig |
+![Badge Cats]
+![Badge Betamax]
+[![Badge Build]][CI]
 
-## Documents
+<br>
 
-[Documentation](https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/)
+---
 
-## Notice
+<br>
 
-This Buildroot development package is a fork of https://github.com/mangopi-sbc/buildroot-mangopi-r which is a fork of https://github.com/aodzip/buildroot-tiny200
+ Vendor  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
+:------: | :---------: | :-----: | :-----: | :-----: | :-------: |
+*YuzukiHD* | *YuzukiRuler* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukiruler_defconfig`
+*YuzukiHD* | *YuzukiCore F1* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukicore_f1_defconfig` |
+*YuzukiHD* | *YuzukiCK1N* | `V3x` | `2022.01` | `5.4.180` | `yuzukihd_yuzukick1n_defconfig` |
+*Sipeed*   | *Lichee Nano* | `F1C100s` | `2020.07` | `5.4.180` | `sipeed_lichee_nano_defconfig` |
+*Sipeed*   | *Lichee Zero* | `V3s` | `2020.07` | `5.4.180` | `sipeed_lichee_zero_defconfig` |
+*Awol*     | *Nezha* | `D1-H` | `Tina` `UBoot 2018` | `Tina` `Linux 2018` | `awol_nezha_defconfig` |
+*Awol*     | *Nezha-D1s* | `D1s` | `Tina` `UBoot 2018` | `Tina` `Linux 2018` | `awol_nezha_d1s_defconfig` |
+*MangoPi*  | *MQ* | `D1s` | `Tina` `UBoot 2018` | `Tina` `Linux 2018` | `mangopi_mq_defconfig` |
+*MangoPi*  | *MQ Dual* | `T113` | `longan` `UBoot 2018` | `longan` `Linux 2018` | `mangopi_mq_dual_defconfig` |
+*MangoPi*  | *MQ Pro* | `D1-H` | `Tina` `UBoot 2018` | `Tina` `Linux 2018` | `mangopi_mq_pro_defconfig` |
 
-## About buildroot
+<br>
+
+---
+
+<br>
+
+
+## Fork Tree
+
+<kbd align = left>
+<br>
+<br>
+  
+   **[Tiny200]**   <br><br>
+   ⤷ **[MangoPi-R]**   <br><br>
+    ⤷ **YuzukiSBC**   
+
+<br>
+</kbd>
+
+<br>
+
+---
+
+<br>
+
+## About
+
+</div>
+
 
 ```
 Buildroot is a simple, efficient and easy-to-use tool to generate embedded
@@ -66,3 +97,20 @@ https://buildroot.org/manual.html#submitting-patches
 ```
 
 
+<!----------------------------------------------------------------------------->
+
+[Badge Betamax]: https://forthebadge.com/images/badges/compatibility-betamax.svg
+[Badge Build]: https://ci.appveyor.com/api/projects/status/qa7iq9ip0g3nh96c?retina=true
+[Badge Cats]: https://forthebadge.com/images/badges/contains-cat-gifs.svg
+
+[Documentation]: https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/
+[Releases]: https://github.com/yuzukihd/Buildroot-YuzukiSBC/releases
+
+[License]: LICENSE
+
+[Mirror]: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC 
+[CI]: https://ci.appveyor.com/project/GloomyGhost-MosquitoCoil/buildroot-yuzukisbc
+
+
+[MangoPi-R]: https://github.com/mangopi-sbc/buildroot-mangopi-r
+[Tiny200]: https://github.com/aodzip/buildroot-tiny200
