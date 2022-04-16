@@ -1,7 +1,7 @@
 
 <div align = center>
 
-# Buildroot YuzukiHD 
+# Buildroot YuzukiSBC
 *BuildRoot Package for YuzukiHD Devices and Others*
 
 <br>
@@ -44,12 +44,21 @@
 
 </div>
 
+## Fork Tree
 
-## Notice
+This package is a fork of:
 
-This Buildroot development package is a fork of  which is a fork **[MangoPi-R]** of **[Tiny200]**
+**[Tiny200]** <br>
+⤷ **[MangoPi-R]** <br>
+ ⤷ **YuzukiSBC**
 
-## About buildroot
+<br>
+
+---
+
+<br>
+
+## About
 
 ```
 Buildroot is a simple, efficient and easy-to-use tool to generate embedded
