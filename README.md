@@ -25,16 +25,16 @@
 
  Vendor  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
 :------: | :---------: | :-----: | :-----: | :-----: | :-------: |
-YuzukiHD | YuzukiRuler | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukiruler_defconfig`
-YuzukiHD | YuzukiCore F1 | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukicore_f1_defconfig` |
-YuzukiHD | YuzukiCK1N | `V3x` | `2022.01` | `5.4.180` | `yuzukihd_yuzukick1n_defconfig` |
-Sipeed   | lichee nano | `F1C100s` | `2020.07` | `5.4.180` | `sipeed_lichee_nano_defconfig` |
-Sipeed   | lichee zero | `V3s` | `2020.07` | `5.4.180` | `sipeed_lichee_zero_defconfig` |
-awol     | nezha | `D1-H` | `tina` `uboot 2018` | `tina` `linux 2018` | `awol_nezha_defconfig` |
-awol     | nezha-d1s | `D1s` | `tina` `uboot 2018` | `tina` `linux 2018` | `awol_nezha_d1s_defconfig` |
-mangopi  | MQ | `D1s` | `tina` `uboot 2018` | `tina` `linux 2018` | `mangopi_mq_defconfig` |
-mangopi  | MQ Dual | `T113` | `longan` `uboot 2018` | `longan` `linux 2018` | `mangopi_mq_dual_defconfig` |
-mangopi  | MQ Pro | `D1-H` | `tina` `uboot 2018` | `tina` `linux 2018` | `mangopi_mq_pro_defconfig` |
+*YuzukiHD* | *YuzukiRuler* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukiruler_defconfig`
+*YuzukiHD* | *YuzukiCore F1* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukicore_f1_defconfig` |
+*YuzukiHD* | *YuzukiCK1N* | `V3x` | `2022.01` | `5.4.180` | `yuzukihd_yuzukick1n_defconfig` |
+*Sipeed*   | *Lichee Nano* | `F1C100s` | `2020.07` | `5.4.180` | `sipeed_lichee_nano_defconfig` |
+*Sipeed*   | *Lichee Zero* | `V3s` | `2020.07` | `5.4.180` | `sipeed_lichee_zero_defconfig` |
+*Awol*     | *Nezha* | `D1-H` | `Tina` `UBoot 2018` | `Tina` `Linux 2018` | `awol_nezha_defconfig` |
+*Awol*     | *Nezha-D1s* | `D1s` | `Tina` `UBoot 2018` | `Tina` `Linux 2018` | `awol_nezha_d1s_defconfig` |
+*MangoPi*  | *MQ* | `D1s` | `Tina` `UBoot 2018` | `Tina` `Linux 2018` | `mangopi_mq_defconfig` |
+*MangoPi*  | *MQ Dual* | `T113` | `longan` `UBoot 2018` | `longan` `Linux 2018` | `mangopi_mq_dual_defconfig` |
+*MangoPi*  | *MQ Pro* | `D1-H` | `Tina` `UBoot 2018` | `Tina` `Linux 2018` | `mangopi_mq_pro_defconfig` |
 
 <br>
 
