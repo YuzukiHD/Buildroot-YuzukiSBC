@@ -1,17 +1,16 @@
 # Buildroot Package for yuzukihd Devices and More Devices
 
-[Documentation](https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/) &mdash;
-[Releases](https://github.com/yuzukihd/Buildroot-YuzukiSBC/releases) &mdash;
-[License](https://github.com/yuzukihd/Buildroot-YuzukiSBC/blob/master/LICENSE)
+[Documentation] &mdash;
+[Releases] &mdash;
+[License] &mdash;
+[Mirror]
 
-Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC 
-
-[![forthebadge](https://forthebadge.com/images/badges/contains-cat-gifs.svg)](https://forthebadge.com)
-[![forthebadge](https://forthebadge.com/images/badges/compatibility-betamax.svg)](https://forthebadge.com)
+![Badge Cats]
+![Badge Betamax]
 
 ## Supported Devices
 
-[![Build status](https://ci.appveyor.com/api/projects/status/qa7iq9ip0g3nh96c?svg=true)](https://ci.appveyor.com/project/GloomyGhost-MosquitoCoil/buildroot-yuzukisbc)
+[![Badge Build]][CI]
 
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
 | -------- | ----------- | ------- | ------- | ------- | --------- |
@@ -28,11 +27,11 @@ Mirror: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC
 
 ## Documents
 
-[Documentation](https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/)
+[Documentation]
 
 ## Notice
 
-This Buildroot development package is a fork of https://github.com/mangopi-sbc/buildroot-mangopi-r which is a fork of https://github.com/aodzip/buildroot-tiny200
+This Buildroot development package is a fork of  which is a fork **[MangoPi-R]** of **[Tiny200]**
 
 ## About buildroot
 
@@ -66,3 +65,21 @@ https://buildroot.org/manual.html#submitting-patches
 ```
 
 
+
+<!----------------------------------------------------------------------------->
+
+[Badge Betamax]: https://forthebadge.com/images/badges/compatibility-betamax.svg
+[Badge Build]: https://ci.appveyor.com/api/projects/status/qa7iq9ip0g3nh96c?retina=true
+[Badge Cats]: https://forthebadge.com/images/badges/contains-cat-gifs.svg
+
+[Documentation]: https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/
+[Releases]: https://github.com/yuzukihd/Buildroot-YuzukiSBC/releases
+
+[License]: LICENSE
+
+[Mirror]: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC 
+[CI]: https://ci.appveyor.com/project/GloomyGhost-MosquitoCoil/buildroot-yuzukisbc
+
+
+[MangoPi-R]: https://github.com/mangopi-sbc/buildroot-mangopi-r
+[Tiny200]: https://github.com/aodzip/buildroot-tiny200
