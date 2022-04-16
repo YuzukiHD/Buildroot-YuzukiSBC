@@ -1,16 +1,27 @@
-# Buildroot Package for yuzukihd Devices and More Devices
+
+<div align = center>
+
+# Buildroot YuzukiHD 
+*BuildRoot Package for YuzukiHD Devices and Others*
+
+<br>
 
 [Documentation] &mdash;
 [Releases] &mdash;
 [License] &mdash;
 [Mirror]
 
+<br>
+
 ![Badge Cats]
 ![Badge Betamax]
-
-## Supported Devices
-
 [![Badge Build]][CI]
+
+<br>
+
+---
+
+<br>
 
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
 | -------- | ----------- | ------- | ------- | ------- | --------- |
@@ -24,6 +35,16 @@
 | mangopi   | MQ | D1s | tina,uboot 2018 | tina,linux 2018 | mangopi_mq_defconfig |
 | mangopi   | MQ Dual | T113 | longan,uboot 2018 | longan,linux 2018 | mangopi_mq_dual_defconfig |
 | mangopi   | MQ Pro | D1-H | tina,uboot 2018 | tina,linux 2018 | mangopi_mq_pro_defconfig |
+
+<br>
+
+---
+
+<br>
+
+</div>
+
+
 
 ## Documents
 
