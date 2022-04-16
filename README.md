@@ -42,15 +42,19 @@
 
 <br>
 
-</div>
 
 ## Fork Tree
 
-This package is a fork of:
+<kbd align = left>
+<br>
+<br>
+  
+   **[Tiny200]**   <br><br>
+   ⤷ **[MangoPi-R]**   <br><br>
+    ⤷ **YuzukiSBC**   
 
-**[Tiny200]** <br>
-⤷ **[MangoPi-R]** <br>
- ⤷ **YuzukiSBC**
+<br>
+</kbd>
 
 <br>
 
@@ -59,6 +63,9 @@ This package is a fork of:
 <br>
 
 ## About
+
+</div>
+
 
 ```
 Buildroot is a simple, efficient and easy-to-use tool to generate embedded
@@ -88,7 +95,6 @@ You can also find us on #buildroot on Freenode IRC.
 If you would like to contribute patches, please read
 https://buildroot.org/manual.html#submitting-patches
 ```
-
 
 
 <!----------------------------------------------------------------------------->
