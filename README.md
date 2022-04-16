@@ -45,11 +45,6 @@
 </div>
 
 
-
-## Documents
-
-[Documentation]
-
 ## Notice
 
 This Buildroot development package is a fork of  which is a fork **[MangoPi-R]** of **[Tiny200]**
