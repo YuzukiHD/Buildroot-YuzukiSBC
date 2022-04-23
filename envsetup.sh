@@ -114,6 +114,10 @@ alias m="make"
 alias mkernel="rebuild_kernel"
 alias rkernel="rebuild_kernel"
 
+alias sm = "make savedefconfig"
+alias skernel="make linux-update-menuconfig"
+alias suboot="make uboot-update-menuconfig"
+
 alias mboot="rebuild_uboot"
 alias rboot="rebuild_uboot"
 
