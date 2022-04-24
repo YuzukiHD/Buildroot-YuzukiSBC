@@ -6,14 +6,6 @@ Subject: [PATCH] add boot up logo
 After looking around, I didn't seem to find any way to drive the spi screen before uboot, so I made a driver myself
 I also accidentally formatted it...
 
----
- board/sunxi/board.c    | 138 +++++++---------
- board/sunxi/logo.h     | 366 +++++++++++++++++++++++++++++++++++++++++
- board/sunxi/spi_logo.h | 309 ++++++++++++++++++++++++++++++++++
- image.map              |   4 +-
- 4 files changed, 736 insertions(+), 81 deletions(-)
- create mode 100644 board/sunxi/logo.h
- create mode 100644 board/sunxi/spi_logo.h
 
 diff --git a/board/sunxi/board.c b/board/sunxi/board.c
 index e389e4df..dea719b4 100644
@@ -1071,17 +1063,6 @@ index 00000000..2fb3c9ca
 +
 +#endif //_SPI_LOGO_H_
 \ No newline at end of file
-diff --git a/image.map b/image.map
-index c7f0c62d..49edcf90 100644
---- a/image.map
-+++ b/image.map
-@@ -1,4 +1,4 @@
- ImagePos    Offset      Size  Name
--00000000  00000000  0006b326  main-section
-+00000000  00000000  0006d626  main-section
- 00000000   00000000  00006000  blob
--00008000   00008000  00063326  u-boot-img
-+00008000   00008000  00065626  u-boot-img
 -- 
 2.17.1
 
