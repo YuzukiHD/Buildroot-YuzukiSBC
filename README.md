@@ -62,7 +62,7 @@
 
 <br>
 
-## About
+## About Buildroot
 
 </div>
 
