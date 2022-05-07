@@ -1,18 +1,18 @@
-From e03c9c1898eb382147847b9758d14df9a4215393 Mon Sep 17 00:00:00 2001
+From 2f00bac7eecf1abe13c36d3e2a89149e71758947 Mon Sep 17 00:00:00 2001
 From: YuzukiTsuru <gloomyghost@gloomyghost.com>
-Date: Sat, 7 May 2022 17:28:00 +0800
-Subject: [PATCH] add support for st7701s rgb panel spi init
+Date: Sun, 8 May 2022 01:53:23 +0800
+Subject: [PATCH] add st7701s init code to uboot
 
 ---
- uboot-2022.01/board/sunxi/board.c          |   3 +
- uboot-2022.01/board/sunxi/lcd_panel_init.h | 373 +++++++++++++++++++++
- 2 files changed, 376 insertions(+)
- create mode 100644 uboot-2022.01/board/sunxi/lcd_panel_init.h
+ board/sunxi/board.c          |   3 +
+ board/sunxi/lcd_panel_init.h | 389 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 392 insertions(+)
+ create mode 100644 board/sunxi/lcd_panel_init.h
 
-diff --git a/uboot-2022.01/board/sunxi/board.c b/uboot-2022.01/board/sunxi/board.c
-index fa87556..f16a8f6 100644
---- a/uboot-2022.01/board/sunxi/board.c
-+++ b/uboot-2022.01/board/sunxi/board.c
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index fa87556a..f16a8f6f 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
 @@ -46,6 +46,7 @@
  #include <sy8106a.h>
  #include <asm/setup.h>
@@ -30,12 +30,12 @@ index fa87556..f16a8f6 100644
  	return 0;
  }
  
-diff --git a/uboot-2022.01/board/sunxi/lcd_panel_init.h b/uboot-2022.01/board/sunxi/lcd_panel_init.h
+diff --git a/board/sunxi/lcd_panel_init.h b/board/sunxi/lcd_panel_init.h
 new file mode 100644
-index 0000000..0130d40
+index 00000000..32d2dc2d
 --- /dev/null
-+++ b/uboot-2022.01/board/sunxi/lcd_panel_init.h
-@@ -0,0 +1,373 @@
++++ b/board/sunxi/lcd_panel_init.h
+@@ -0,0 +1,389 @@
 +#ifndef _LCD_PANEL_INIT_H_
 +#define _LCD_PANEL_INIT_H_
 +
@@ -54,6 +54,7 @@ index 0000000..0130d40
 +int LCD_RST; // PG10
 +int LCD_MOSI; // PG11
 +int LCD_CLK; // PG12
++int LCD_BL; // PG12
 +
 +void lcd_delay_ms(int ms)
 +{
@@ -100,13 +101,24 @@ index 0000000..0130d40
 +		YS_DBG("Error invalid LCD_CLK pin: PG, err %d\n", LCD_CLK);
 +		return ret;
 +	}
-+	YS_DBG("PG12 --> LCD_RST request OK\n");
++	YS_DBG("PG12 --> LCD_CLK request OK\n");
++
++	LCD_BL = sunxi_name_to_gpio("PB4");
++	if (LCD_BL < 0) {
++		YS_DBG("Error invalid LCD_CLK pin: PG, err %d\n", LCD_BL);
++		return LCD_BL;
++	}
++	ret = gpio_request(LCD_BL, "LCD_BL");
++	if (ret) {
++		YS_DBG("Error invalid LCD_BL pin: PG, err %d\n", LCD_BL);
++		return ret;
++	}
++	YS_DBG("PB4 --> LCD_BL request OK\n");
 +	return 0;
 +}
 +
 +void LCD_WRITE_COMMAND(unsigned int cmd)
 +{
-+    YS_DBG("LCD_WRITE_COMMAND -> %d\n", cmd);
 +	int i, cnt, delay;
 +	int par = (cmd >> 0x08) & 0xff;
 +	par |= 0x2000; //H/L
@@ -147,7 +159,6 @@ index 0000000..0130d40
 +
 +void LCD_WRITE_DATA(unsigned int dat)
 +{
-+    YS_DBG("LCD_WRITE_DATA -> %d\n", dat);
 +	int i, cnt, delay;
 +	int par = dat & 0xff;
 +
@@ -173,6 +184,11 @@ index 0000000..0130d40
 +{
 +	YS_DBG("LCD Panel ST7701s init\n");
 +    SPI_Init();
++
++	gpio_direction_output(LCD_RST, 0);
++	lcd_delay_ms(120);
++	gpio_direction_output(LCD_RST, 1);
++	lcd_delay_ms(120);
 +
 +	LCD_WRITE_COMMAND(0xFF);
 +	LCD_WRITE_DATA(0x77);

@@ -296,7 +296,7 @@ Lunch 🚀 to buildroot.
 
 Delete the generated dtb and rebuild the kernel
 
-`rebuild_uboot` = `mboot` = `rboot`
+`rebuild_uboot` = `muboot` = `ruboot`
 
 Rebuild the U-Boot
 
