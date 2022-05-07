@@ -61,6 +61,31 @@
         pins = "PE21", "PE22";
         function = "i2c1";
     };
+                        
+    lcd_rgb666_pins: lcd-rgb666-pd {
+        pins = "PD0", "PD1", "PD2", "PD3", "PD4", "PD5",
+                "PD6", "PD7", "PD8", "PD9", "PD10", "PD11",
+                "PD12", "PD13", "PD14", "PD15", "PD16", "PD17",
+                "PD18", "PD19", "PD20", "PD21";
+        function = "lcd";
+    };
+};
+
+&tcon0 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&lcd_rgb666_pins>;
+    status = "okay";
+};
+
+&tcon0_out {
+    tcon0_out_panel: endpoint@0 {
+        reg = <0>;
+        remote-endpoint = <&panel_input>;
+    };
+};
+
+&de {
+    status = "okay";
 };
 
 &rtc {
@@ -328,21 +353,4 @@
             };
         };
     };
-};
-
-&tcon0 {
-    pinctrl-names = "default";
-    pinctrl-0 = <&lcd_rgb666_pins_b>;
-    status = "okay";
-};
-
-&tcon0_out {
-    tcon0_out_panel: endpoint@0 {
-        reg = <0>;
-        remote-endpoint = <&panel_input>;
-    };
-};
-
-&de {
-    status = "okay";
 };
