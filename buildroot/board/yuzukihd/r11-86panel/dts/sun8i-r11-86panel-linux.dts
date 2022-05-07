@@ -134,7 +134,7 @@
 };
 
 &csi1 {
-    status = "okay";
+    status = "disabled";
     pinctrl-names = "default";
     pinctrl-0 = <&csi1_clk &csi1_8bit>;
 
@@ -150,7 +150,7 @@
 };
 
 &i2c0 {
-    status = "okay";
+    status = "disabled";
 
     rtp@48 {
     	compatible = "ti,tsc2007";
@@ -207,7 +207,7 @@
 &i2c1 {
     pinctrl-0 = <&i2c1_pins>;
     pinctrl-names = "default";
-    status = "okay";
+    status = "disabled";
 
 	ov2640: camera@30 {
         compatible = "ovti,ov2640";
