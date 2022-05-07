@@ -1,0 +1,75 @@
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index 21651a1bfc..548a37ac1b 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -897,16 +897,23 @@ int misc_init_r(void)
+ 	env_set("fel_scriptaddr", NULL);
+ 	env_set("mmc_bootdev", NULL);
+ 
++	env_set("boot_device", NULL);
++
+ 	boot = sunxi_get_boot_device();
+ 	/* determine if we are running in FEL mode */
+ 	if (boot == BOOT_DEVICE_BOARD) {
+ 		env_set("fel_booted", "1");
++		env_set("boot_device", "fel");
+ 		parse_spl_header(SPL_ADDR);
+ 	/* or if we booted from MMC, and which one */
+ 	} else if (boot == BOOT_DEVICE_MMC1) {
+ 		env_set("mmc_bootdev", "0");
++		env_set("boot_device", "mmc0");
+ 	} else if (boot == BOOT_DEVICE_MMC2) {
+ 		env_set("mmc_bootdev", "1");
++		env_set("boot_device", "mmc1");
++	} else if (boot == BOOT_DEVICE_SPI) {
++		env_set("boot_device", "spi");
+ 	}
+ 
+ 	/* Set fdtfile to match the FIT configuration chosen in SPL. */
+
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index bc8509b72a..6a457bcd98 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -628,6 +628,12 @@ config UART0_PORT_F
+ 	at the same time, the system can be only booted in the FEL mode.
+ 	Only enable this if you really know what you are doing.
+ 
++config UART1_PORT_E
++        bool "UART1 on PE21/PE22"
++        default n
++        ---help---
++	uart1 on PE21/PE22
++
+ config OLD_SUNXI_KERNEL_COMPAT
+ 	bool "Enable workarounds for booting old kernels"
+ 	default n
+@@ -1054,7 +1060,7 @@ config SPL_STACK_R_ADDR
+ 
+ config SPL_SPI_SUNXI
+ 	bool "Support for SPI Flash on Allwinner SoCs in SPL"
+-	depends on MACH_SUN4I || MACH_SUN5I || MACH_SUN7I || MACH_SUNXI_H3_H5 || MACH_SUN50I || MACH_SUN8I_R40 || MACH_SUN50I_H6
++	depends on MACH_SUN4I || MACH_SUN5I || MACH_SUN7I || MACH_SUNXI_H3_H5 || MACH_SUN50I || MACH_SUN8I_R40 || MACH_SUN50I_H6 || MACH_SUN8I_V3S
+ 	help
+ 	  Enable support for SPI Flash. This option allows SPL to read from
+ 	  sunxi SPI Flash. It uses the same method as the boot ROM, so does
+diff --git a/arch/arm/mach-sunxi/board.c b/arch/arm/mach-sunxi/board.c
+index 9b84132eda..5d2b47e3d1 100644
+--- a/arch/arm/mach-sunxi/board.c
++++ b/arch/arm/mach-sunxi/board.c
+@@ -146,9 +146,15 @@ static int gpio_init(void)
+ 	sunxi_gpio_set_pull(SUNXI_GPL(3), SUNXI_GPIO_PULL_UP);
+ #elif CONFIG_CONS_INDEX == 2 && defined(CONFIG_MACH_SUN8I) && \
+ 				!defined(CONFIG_MACH_SUN8I_R40)
++#if defined(CONFIG_UART1_PORT_E)
++	sunxi_gpio_set_cfgpin(SUNXI_GPE(21), SUN8I_GPG_UART1);
++	sunxi_gpio_set_cfgpin(SUNXI_GPE(22), SUN8I_GPG_UART1);
++	sunxi_gpio_set_pull(SUNXI_GPE(22), SUNXI_GPIO_PULL_UP);
++#else
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPG(6), SUN8I_GPG_UART1);
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPG(7), SUN8I_GPG_UART1);
+ 	sunxi_gpio_set_pull(SUNXI_GPG(7), SUNXI_GPIO_PULL_UP);
++#endif
+ #else
+ #error Unsupported console port number. Please fix pin mux settings in board.c
+ #endif

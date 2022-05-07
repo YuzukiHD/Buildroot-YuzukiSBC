@@ -230,11 +230,6 @@
 	};
 };
 
-&emac {
-	allwinner,leds-active-high;
-	status = "okay";
-};
-
 &ehci0 {              
     status = "okay";
 };

@@ -118,8 +118,8 @@ alias sm="make savedefconfig"
 alias skernel="make linux-update-defconfig"
 alias suboot="make uboot-update-defconfig"
 
-alias mboot="rebuild_uboot"
-alias rboot="rebuild_uboot"
+alias muboot="rebuild_uboot"
+alias ruboot="rebuild_uboot"
 
 LOCAL_COMMIT_ID=$(git rev-parse --short HEAD)
 
