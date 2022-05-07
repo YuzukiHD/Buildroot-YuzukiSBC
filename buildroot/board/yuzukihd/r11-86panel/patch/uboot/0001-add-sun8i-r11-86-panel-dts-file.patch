@@ -1,0 +1,26 @@
+From 16791d93dfd564660bd2ca924002135408489e3a Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sat, 7 May 2022 14:53:30 +0800
+Subject: [PATCH] add sun8i r11 86 panel dts file
+
+---
+ arch/arm/dts/Makefile | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 9fb38682..9aae62bc 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -614,7 +614,8 @@ dtb-$(CONFIG_MACH_SUN8I_R40) += \
+ 	sun8i-v40-bananapi-m2-berry.dtb
+ dtb-$(CONFIG_MACH_SUN8I_V3S) += \
+ 	sun8i-s3-pinecube.dtb \
+-	sun8i-v3s-licheepi-zero.dtb
++	sun8i-v3s-licheepi-zero.dtb \
++	sun8i-r11-86panel-uboot.dtb
+ dtb-$(CONFIG_MACH_SUN50I_H5) += \
+ 	sun50i-h5-bananapi-m2-plus.dtb \
+ 	sun50i-h5-emlid-neutis-n5-devboard.dtb \
+-- 
+2.17.1
+

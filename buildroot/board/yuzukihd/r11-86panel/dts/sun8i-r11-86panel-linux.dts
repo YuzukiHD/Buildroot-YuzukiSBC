@@ -12,9 +12,6 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		ranges;
 	};
 
 	panel {
@@ -209,7 +206,6 @@
             };
         };
     };
-
 
     ov5640: camera@30 {
         compatible = "ovti,ov5640";
