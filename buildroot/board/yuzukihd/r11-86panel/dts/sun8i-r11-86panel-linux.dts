@@ -15,7 +15,7 @@
 	};
 
 	panel {
-		compatible = "bananapi,s070wv20-ct16", "simple-panel";
+		compatible = "qiaodian,qd43003c0-40", "simple-panel";
 		#address-cells = <1>;
 		#size-cells = <0>;
 		port {
@@ -307,7 +307,7 @@
             	reg = <0x580000 0x980000>;
             	read-only;
             };
-
+            
             partition@4 {
                 label = "overlay";
                 reg = <0xF00000 0x200000>;

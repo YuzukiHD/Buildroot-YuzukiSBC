@@ -1,0 +1,178 @@
+From e9273ccec6504b929a622d84f94ceede98c03e7d Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Tue, 10 May 2022 12:52:15 +0800
+Subject: [PATCH] update initcode and sSPI interface for ST7701s
+
+---
+ board/sunxi/lcd_panel_init.h | 113 +++++++++++++++++------------------
+ 1 file changed, 56 insertions(+), 57 deletions(-)
+
+diff --git a/board/sunxi/lcd_panel_init.h b/board/sunxi/lcd_panel_init.h
+index 32d2dc2d..6efdfd14 100644
+--- a/board/sunxi/lcd_panel_init.h
++++ b/board/sunxi/lcd_panel_init.h
+@@ -13,6 +13,11 @@
+ 
+ #define YS_DBG(fmt, arg...) YS_LOG("[Yuzuki LCD sSPI] " fmt, ##arg)
+ 
++#define st7701s_spi_sdi_0 gpio_direction_output(LCD_MOSI, 0)
++#define st7701s_spi_sdi_1 gpio_direction_output(LCD_MOSI, 1)
++#define st7701s_spi_scl_0 gpio_direction_output(LCD_CLK, 0)
++#define st7701s_spi_scl_1 gpio_direction_output(LCD_CLK, 1)
++
+ int LCD_RST; // PG10
+ int LCD_MOSI; // PG11
+ int LCD_CLK; // PG12
+@@ -20,9 +25,16 @@ int LCD_BL; // PG12
+ 
+ void lcd_delay_ms(int ms)
+ {
+-	int delay = ms * 1000 * 20;
++	unsigned long long delay = ms * 1000 * 20;
++	while (delay--)
++		asm volatile("nop");
++}
++
++void sunxi_lcd_delay_us(int us)
++{
++	unsigned long long delay = 100 * us;
+ 	while (delay--)
+-		;
++		asm volatile("nop");
+ }
+ 
+ int SPI_Init(void)
+@@ -76,79 +88,66 @@ int SPI_Init(void)
+ 		return ret;
+ 	}
+ 	YS_DBG("PB4 --> LCD_BL request OK\n");
++
++	gpio_direction_output(LCD_RST, 1);
++	gpio_direction_output(LCD_MOSI, 1);
++	gpio_direction_output(LCD_CLK, 1);
++
+ 	return 0;
+ }
+ 
+-void LCD_WRITE_COMMAND(unsigned int cmd)
++void LCD_WRITE_DATA(unsigned int value)
+ {
+-	int i, cnt, delay;
+-	int par = (cmd >> 0x08) & 0xff;
+-	par |= 0x2000; //H/L
+-
+-	for (i = 15, cnt = 0; cnt < 16; i--, cnt++) {
+-		if (par & (0x01 << i))
+-			gpio_direction_output(LCD_MOSI, 1);
++	unsigned int i;
++	st7701s_spi_sdi_1;
++	st7701s_spi_scl_0;
++	sunxi_lcd_delay_us(10);
++	st7701s_spi_scl_1;
++	for (i = 0; i < 8; i++) {
++		sunxi_lcd_delay_us(10);
++		if (value & 0x80)
++			st7701s_spi_sdi_1;
+ 		else
+-			gpio_direction_output(LCD_MOSI, 0);
+-		gpio_direction_output(LCD_CLK, 1);
+-		delay = DELAYBIT;
+-		while (delay--)
+-			;
+-		gpio_direction_output(LCD_CLK, 0);
+-		delay = DELAYBIT;
+-		while (delay--)
+-			;
+-	}
+-	delay = DELAYBIT;
+-	while (delay--)
+-		;
+-	par = cmd & 0xff;
+-	for (i = 15, cnt = 0; cnt < 16; i--, cnt++) {
+-		if (par & (0x01 << i))
+-			gpio_direction_output(LCD_MOSI, 1);
+-		else
+-			gpio_direction_output(LCD_MOSI, 0);
+-		gpio_direction_output(LCD_CLK, 1);
+-		delay = DELAYBIT;
+-		while (delay--)
+-			;
+-		gpio_direction_output(LCD_CLK, 0);
+-		delay = DELAYBIT;
+-		while (delay--)
+-			;
++			st7701s_spi_sdi_0;
++		value <<= 1;
++		sunxi_lcd_delay_us(10);
++		st7701s_spi_scl_0;
++		st7701s_spi_scl_1;
+ 	}
++	sunxi_lcd_delay_us(10);
+ }
+ 
+-void LCD_WRITE_DATA(unsigned int dat)
++void LCD_WRITE_COMMAND(unsigned int value)
+ {
+-	int i, cnt, delay;
+-	int par = dat & 0xff;
+-
+-	par |= 0x4000; //C/D bit
+-
+-	for (i = 15, cnt = 0; cnt < 16; i--, cnt++) {
+-		if (par & (0x01 << i))
+-			gpio_direction_output(LCD_MOSI, 1);
++	unsigned int i;
++	st7701s_spi_sdi_0;
++	st7701s_spi_scl_0;
++	sunxi_lcd_delay_us(10);
++	st7701s_spi_scl_1;
++	for (i = 0; i < 8; i++) {
++		sunxi_lcd_delay_us(10);
++		if (value & 0x80)
++			st7701s_spi_sdi_1;
+ 		else
+-			gpio_direction_output(LCD_MOSI, 0);
+-		gpio_direction_output(LCD_CLK, 1);
+-		delay = DELAYBIT;
+-		while (delay--)
+-			;
+-		gpio_direction_output(LCD_CLK, 0);
+-		delay = DELAYBIT;
+-		while (delay--)
+-			;
++			st7701s_spi_sdi_0;
++		st7701s_spi_scl_0;
++		sunxi_lcd_delay_us(10);
++		st7701s_spi_scl_1;
++		value <<= 1;
+ 	}
++	sunxi_lcd_delay_us(10);
+ }
+ 
+ void LCD_Init(void)
+ {
+ 	YS_DBG("LCD Panel ST7701s init\n");
+-    SPI_Init();
++	SPI_Init();
++
++	lcd_delay_ms(1000);
+ 
+ 	gpio_direction_output(LCD_RST, 0);
+ 	lcd_delay_ms(120);
++
+ 	gpio_direction_output(LCD_RST, 1);
+ 	lcd_delay_ms(120);
+ 
+@@ -383,7 +382,7 @@ void LCD_Init(void)
+ 	lcd_delay_ms(120);
+ 
+ 	LCD_WRITE_COMMAND(0x29);
+-	lcd_delay_ms(20);
++	lcd_delay_ms(120);
+ }
+ 
+ #endif // _LCD_PANEL_INIT_H_
+\ No newline at end of file
+-- 
+2.17.1
+
