@@ -1,0 +1,111 @@
+From 5a33c4ffcce5a793732eeb19adb1465793483daf Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Tue, 10 May 2022 18:01:52 +0800
+Subject: [PATCH] reassign pins for v3x
+
+---
+ board/sunxi/lcd_panel_init.h | 42 +++++++++++++++++++-----------------
+ 1 file changed, 22 insertions(+), 20 deletions(-)
+
+diff --git a/board/sunxi/lcd_panel_init.h b/board/sunxi/lcd_panel_init.h
+index 6efdfd14..97722b39 100644
+--- a/board/sunxi/lcd_panel_init.h
++++ b/board/sunxi/lcd_panel_init.h
+@@ -18,10 +18,10 @@
+ #define st7701s_spi_scl_0 gpio_direction_output(LCD_CLK, 0)
+ #define st7701s_spi_scl_1 gpio_direction_output(LCD_CLK, 1)
+ 
+-int LCD_RST; // PG10
+-int LCD_MOSI; // PG11
+-int LCD_CLK; // PG12
+-int LCD_BL; // PG12
++int LCD_RST; // PD10
++int LCD_MOSI; // PD11
++int LCD_CLK; // PD12
++int LCD_BL; // PD12
+ 
+ void lcd_delay_ms(int ms)
+ {
+@@ -41,53 +41,53 @@ int SPI_Init(void)
+ {
+ 	int ret;
+ 
+-	LCD_RST = sunxi_name_to_gpio("PG10");
++	LCD_RST = sunxi_name_to_gpio("PD17");
+ 	if (LCD_RST < 0) {
+-		YS_DBG("Error invalid LCD RST pin: PG, err %d\n", LCD_RST);
++		YS_DBG("Error invalid LCD RST pin: PD, err %d\n", LCD_RST);
+ 		return LCD_RST;
+ 	}
+ 	ret = gpio_request(LCD_RST, "LCD_RST");
+ 	if (ret) {
+-		YS_DBG("Error invalid LCD_RST pin: PG, err %d\n", LCD_RST);
++		YS_DBG("Error invalid LCD_RST pin: PD, err %d\n", LCD_RST);
+ 		return ret;
+ 	}
+-	YS_DBG("PG10 --> LCD_RST request OK\n");
++	YS_DBG("PD17 --> LCD_RST request OK\n");
+ 
+-	LCD_MOSI = sunxi_name_to_gpio("PG11");
++	LCD_MOSI = sunxi_name_to_gpio("PD16");
+ 	if (LCD_MOSI < 0) {
+-		YS_DBG("Error invalid LCD_MOSI pin: PG, err %d\n", LCD_MOSI);
++		YS_DBG("Error invalid LCD_MOSI pin: PD, err %d\n", LCD_MOSI);
+ 		return LCD_MOSI;
+ 	}
+ 	ret = gpio_request(LCD_MOSI, "LCD_MOSI");
+ 	if (ret) {
+-		YS_DBG("Error invalid LCD_MOSI pin: PG, err %d\n", LCD_MOSI);
++		YS_DBG("Error invalid LCD_MOSI pin: PD, err %d\n", LCD_MOSI);
+ 		return ret;
+ 	}
+-	YS_DBG("PG11 --> LCD_MOSI request OK\n");
++	YS_DBG("PD16 --> LCD_MOSI request OK\n");
+ 
+-	LCD_CLK = sunxi_name_to_gpio("PG12");
++	LCD_CLK = sunxi_name_to_gpio("PD19");
+ 	if (LCD_CLK < 0) {
+-		YS_DBG("Error invalid LCD_CLK pin: PG, err %d\n", LCD_CLK);
++		YS_DBG("Error invalid LCD_CLK pin: PD, err %d\n", LCD_CLK);
+ 		return LCD_CLK;
+ 	}
+ 	ret = gpio_request(LCD_CLK, "LCD_CLK");
+ 	if (ret) {
+-		YS_DBG("Error invalid LCD_CLK pin: PG, err %d\n", LCD_CLK);
++		YS_DBG("Error invalid LCD_CLK pin: PD, err %d\n", LCD_CLK);
+ 		return ret;
+ 	}
+-	YS_DBG("PG12 --> LCD_CLK request OK\n");
++	YS_DBG("PD19 --> LCD_CLK request OK\n");
+ 
+-	LCD_BL = sunxi_name_to_gpio("PB4");
++	LCD_BL = sunxi_name_to_gpio("PD21");
+ 	if (LCD_BL < 0) {
+-		YS_DBG("Error invalid LCD_CLK pin: PG, err %d\n", LCD_BL);
++		YS_DBG("Error invalid LCD_CLK pin: PD, err %d\n", LCD_BL);
+ 		return LCD_BL;
+ 	}
+ 	ret = gpio_request(LCD_BL, "LCD_BL");
+ 	if (ret) {
+-		YS_DBG("Error invalid LCD_BL pin: PG, err %d\n", LCD_BL);
++		YS_DBG("Error invalid LCD_BL pin: PD, err %d\n", LCD_BL);
+ 		return ret;
+ 	}
+-	YS_DBG("PB4 --> LCD_BL request OK\n");
++	YS_DBG("PD21 --> LCD_BL request OK\n");
+ 
+ 	gpio_direction_output(LCD_RST, 1);
+ 	gpio_direction_output(LCD_MOSI, 1);
+@@ -383,6 +383,8 @@ void LCD_Init(void)
+ 
+ 	LCD_WRITE_COMMAND(0x29);
+ 	lcd_delay_ms(120);
++
++	gpio_direction_output(LCD_BL, 1);
+ }
+ 
+ #endif // _LCD_PANEL_INIT_H_
+\ No newline at end of file
+-- 
+2.17.1
+

@@ -1,0 +1,431 @@
+From 2f00bac7eecf1abe13c36d3e2a89149e71758947 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 8 May 2022 01:53:23 +0800
+Subject: [PATCH] add st7701s init code to uboot
+
+---
+ board/sunxi/board.c          |   3 +
+ board/sunxi/lcd_panel_init.h | 389 +++++++++++++++++++++++++++++++++++
+ 2 files changed, 392 insertions(+)
+ create mode 100644 board/sunxi/lcd_panel_init.h
+
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index fa87556a..f16a8f6f 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -46,6 +46,7 @@
+ #include <sy8106a.h>
+ #include <asm/setup.h>
+ #include <status_led.h>
++#include "lcd_panel_init.h"
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+@@ -271,6 +272,8 @@ int board_init(void)
+ #endif
+ #endif	/* CONFIG_DM_MMC */
+ 
++	LCD_Init();
++
+ 	return 0;
+ }
+ 
+diff --git a/board/sunxi/lcd_panel_init.h b/board/sunxi/lcd_panel_init.h
+new file mode 100644
+index 00000000..32d2dc2d
+--- /dev/null
++++ b/board/sunxi/lcd_panel_init.h
+@@ -0,0 +1,389 @@
++#ifndef _LCD_PANEL_INIT_H_
++#define _LCD_PANEL_INIT_H_
++
++#include <asm/gpio.h>
++#include <asm/arch/gpio.h>
++
++#define DELAYBIT 10
++
++#define YS_LOG(fmt, arg...)                                                                                                        \
++	do {                                                                                                                       \
++		printf(fmt, ##arg);                                                                                                \
++	} while (0)
++
++#define YS_DBG(fmt, arg...) YS_LOG("[Yuzuki LCD sSPI] " fmt, ##arg)
++
++int LCD_RST; // PG10
++int LCD_MOSI; // PG11
++int LCD_CLK; // PG12
++int LCD_BL; // PG12
++
++void lcd_delay_ms(int ms)
++{
++	int delay = ms * 1000 * 20;
++	while (delay--)
++		;
++}
++
++int SPI_Init(void)
++{
++	int ret;
++
++	LCD_RST = sunxi_name_to_gpio("PG10");
++	if (LCD_RST < 0) {
++		YS_DBG("Error invalid LCD RST pin: PG, err %d\n", LCD_RST);
++		return LCD_RST;
++	}
++	ret = gpio_request(LCD_RST, "LCD_RST");
++	if (ret) {
++		YS_DBG("Error invalid LCD_RST pin: PG, err %d\n", LCD_RST);
++		return ret;
++	}
++	YS_DBG("PG10 --> LCD_RST request OK\n");
++
++	LCD_MOSI = sunxi_name_to_gpio("PG11");
++	if (LCD_MOSI < 0) {
++		YS_DBG("Error invalid LCD_MOSI pin: PG, err %d\n", LCD_MOSI);
++		return LCD_MOSI;
++	}
++	ret = gpio_request(LCD_MOSI, "LCD_MOSI");
++	if (ret) {
++		YS_DBG("Error invalid LCD_MOSI pin: PG, err %d\n", LCD_MOSI);
++		return ret;
++	}
++	YS_DBG("PG11 --> LCD_MOSI request OK\n");
++
++	LCD_CLK = sunxi_name_to_gpio("PG12");
++	if (LCD_CLK < 0) {
++		YS_DBG("Error invalid LCD_CLK pin: PG, err %d\n", LCD_CLK);
++		return LCD_CLK;
++	}
++	ret = gpio_request(LCD_CLK, "LCD_CLK");
++	if (ret) {
++		YS_DBG("Error invalid LCD_CLK pin: PG, err %d\n", LCD_CLK);
++		return ret;
++	}
++	YS_DBG("PG12 --> LCD_CLK request OK\n");
++
++	LCD_BL = sunxi_name_to_gpio("PB4");
++	if (LCD_BL < 0) {
++		YS_DBG("Error invalid LCD_CLK pin: PG, err %d\n", LCD_BL);
++		return LCD_BL;
++	}
++	ret = gpio_request(LCD_BL, "LCD_BL");
++	if (ret) {
++		YS_DBG("Error invalid LCD_BL pin: PG, err %d\n", LCD_BL);
++		return ret;
++	}
++	YS_DBG("PB4 --> LCD_BL request OK\n");
++	return 0;
++}
++
++void LCD_WRITE_COMMAND(unsigned int cmd)
++{
++	int i, cnt, delay;
++	int par = (cmd >> 0x08) & 0xff;
++	par |= 0x2000; //H/L
++
++	for (i = 15, cnt = 0; cnt < 16; i--, cnt++) {
++		if (par & (0x01 << i))
++			gpio_direction_output(LCD_MOSI, 1);
++		else
++			gpio_direction_output(LCD_MOSI, 0);
++		gpio_direction_output(LCD_CLK, 1);
++		delay = DELAYBIT;
++		while (delay--)
++			;
++		gpio_direction_output(LCD_CLK, 0);
++		delay = DELAYBIT;
++		while (delay--)
++			;
++	}
++	delay = DELAYBIT;
++	while (delay--)
++		;
++	par = cmd & 0xff;
++	for (i = 15, cnt = 0; cnt < 16; i--, cnt++) {
++		if (par & (0x01 << i))
++			gpio_direction_output(LCD_MOSI, 1);
++		else
++			gpio_direction_output(LCD_MOSI, 0);
++		gpio_direction_output(LCD_CLK, 1);
++		delay = DELAYBIT;
++		while (delay--)
++			;
++		gpio_direction_output(LCD_CLK, 0);
++		delay = DELAYBIT;
++		while (delay--)
++			;
++	}
++}
++
++void LCD_WRITE_DATA(unsigned int dat)
++{
++	int i, cnt, delay;
++	int par = dat & 0xff;
++
++	par |= 0x4000; //C/D bit
++
++	for (i = 15, cnt = 0; cnt < 16; i--, cnt++) {
++		if (par & (0x01 << i))
++			gpio_direction_output(LCD_MOSI, 1);
++		else
++			gpio_direction_output(LCD_MOSI, 0);
++		gpio_direction_output(LCD_CLK, 1);
++		delay = DELAYBIT;
++		while (delay--)
++			;
++		gpio_direction_output(LCD_CLK, 0);
++		delay = DELAYBIT;
++		while (delay--)
++			;
++	}
++}
++
++void LCD_Init(void)
++{
++	YS_DBG("LCD Panel ST7701s init\n");
++    SPI_Init();
++
++	gpio_direction_output(LCD_RST, 0);
++	lcd_delay_ms(120);
++	gpio_direction_output(LCD_RST, 1);
++	lcd_delay_ms(120);
++
++	LCD_WRITE_COMMAND(0xFF);
++	LCD_WRITE_DATA(0x77);
++	LCD_WRITE_DATA(0x01);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x10);
++
++	LCD_WRITE_COMMAND(0xC0);
++	LCD_WRITE_DATA(0x3B);
++	LCD_WRITE_DATA(0x00);
++
++	LCD_WRITE_COMMAND(0xC1);
++	LCD_WRITE_DATA(0x0D);
++	LCD_WRITE_DATA(0x02);
++
++	LCD_WRITE_COMMAND(0xC2);
++	LCD_WRITE_DATA(0x21);
++	LCD_WRITE_DATA(0x08);
++
++	LCD_WRITE_COMMAND(0xCD);
++	LCD_WRITE_DATA(0x18); //0F 08-OK  D0-D18
++
++	LCD_WRITE_COMMAND(0xB0);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x11);
++	LCD_WRITE_DATA(0x18);
++	LCD_WRITE_DATA(0x0E);
++	LCD_WRITE_DATA(0x11);
++	LCD_WRITE_DATA(0x06);
++	LCD_WRITE_DATA(0x07);
++	LCD_WRITE_DATA(0x08);
++	LCD_WRITE_DATA(0x07);
++	LCD_WRITE_DATA(0x22);
++	LCD_WRITE_DATA(0x04);
++	LCD_WRITE_DATA(0x12);
++	LCD_WRITE_DATA(0x0F);
++	LCD_WRITE_DATA(0xAA);
++	LCD_WRITE_DATA(0x31);
++	LCD_WRITE_DATA(0x18);
++
++	LCD_WRITE_COMMAND(0xB1);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x11);
++	LCD_WRITE_DATA(0x19);
++	LCD_WRITE_DATA(0x0E);
++	LCD_WRITE_DATA(0x12);
++	LCD_WRITE_DATA(0x07);
++	LCD_WRITE_DATA(0x08);
++	LCD_WRITE_DATA(0x08);
++	LCD_WRITE_DATA(0x08);
++	LCD_WRITE_DATA(0x22);
++	LCD_WRITE_DATA(0x04);
++	LCD_WRITE_DATA(0x11);
++	LCD_WRITE_DATA(0x11);
++	LCD_WRITE_DATA(0xA9);
++	LCD_WRITE_DATA(0x32);
++	LCD_WRITE_DATA(0x18);
++
++	LCD_WRITE_COMMAND(0xFF);
++	LCD_WRITE_DATA(0x77);
++	LCD_WRITE_DATA(0x01);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x11);
++
++	LCD_WRITE_COMMAND(0xB0);
++	LCD_WRITE_DATA(0x60);
++
++	LCD_WRITE_COMMAND(0xB1);
++	LCD_WRITE_DATA(0x30);
++
++	LCD_WRITE_COMMAND(0xB2);
++	LCD_WRITE_DATA(0x87);
++
++	LCD_WRITE_COMMAND(0xB3);
++	LCD_WRITE_DATA(0x80);
++
++	LCD_WRITE_COMMAND(0xB5);
++	LCD_WRITE_DATA(0x49);
++
++	LCD_WRITE_COMMAND(0xB7);
++	LCD_WRITE_DATA(0x85);
++
++	LCD_WRITE_COMMAND(0xB8);
++	LCD_WRITE_DATA(0x21);
++
++	LCD_WRITE_COMMAND(0xC1);
++	LCD_WRITE_DATA(0x78);
++
++	LCD_WRITE_COMMAND(0xC2);
++	LCD_WRITE_DATA(0x78);
++	lcd_delay_ms(20);
++
++	LCD_WRITE_COMMAND(0xE0);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x1B);
++	LCD_WRITE_DATA(0x02);
++
++	LCD_WRITE_COMMAND(0xE1);
++	LCD_WRITE_DATA(0x08);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x07);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x44);
++	LCD_WRITE_DATA(0x44);
++
++	LCD_WRITE_COMMAND(0xE2);
++	LCD_WRITE_DATA(0x11);
++	LCD_WRITE_DATA(0x11);
++	LCD_WRITE_DATA(0x44);
++	LCD_WRITE_DATA(0x44);
++	LCD_WRITE_DATA(0xED);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0xEC);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++
++	LCD_WRITE_COMMAND(0xE3);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x11);
++	LCD_WRITE_DATA(0x11);
++
++	LCD_WRITE_COMMAND(0xE4);
++	LCD_WRITE_DATA(0x44);
++	LCD_WRITE_DATA(0x44);
++
++	LCD_WRITE_COMMAND(0xE5);
++	LCD_WRITE_DATA(0x0A);
++	LCD_WRITE_DATA(0xE9);
++	LCD_WRITE_DATA(0xD8);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x0C);
++	LCD_WRITE_DATA(0xEB);
++	LCD_WRITE_DATA(0xD8);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x0E);
++	LCD_WRITE_DATA(0xED);
++	LCD_WRITE_DATA(0xD8);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x10);
++	LCD_WRITE_DATA(0xEF);
++	LCD_WRITE_DATA(0xD8);
++	LCD_WRITE_DATA(0xA0);
++
++	LCD_WRITE_COMMAND(0xE6);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x11);
++	LCD_WRITE_DATA(0x11);
++
++	LCD_WRITE_COMMAND(0xE7);
++	LCD_WRITE_DATA(0x44);
++	LCD_WRITE_DATA(0x44);
++
++	LCD_WRITE_COMMAND(0xE8);
++	LCD_WRITE_DATA(0x09);
++	LCD_WRITE_DATA(0xE8);
++	LCD_WRITE_DATA(0xD8);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x0B);
++	LCD_WRITE_DATA(0xEA);
++	LCD_WRITE_DATA(0xD8);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x0D);
++	LCD_WRITE_DATA(0xEC);
++	LCD_WRITE_DATA(0xD8);
++	LCD_WRITE_DATA(0xA0);
++	LCD_WRITE_DATA(0x0F);
++	LCD_WRITE_DATA(0xEE);
++	LCD_WRITE_DATA(0xD8);
++	LCD_WRITE_DATA(0xA0);
++
++	LCD_WRITE_COMMAND(0xEB);
++	LCD_WRITE_DATA(0x02);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0xE4);
++	LCD_WRITE_DATA(0xE4);
++	LCD_WRITE_DATA(0x88);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x40);
++
++	LCD_WRITE_COMMAND(0xEC);
++	LCD_WRITE_DATA(0x3C);
++	LCD_WRITE_DATA(0x00);
++
++	LCD_WRITE_COMMAND(0xED);
++	LCD_WRITE_DATA(0xAB);
++	LCD_WRITE_DATA(0x89);
++	LCD_WRITE_DATA(0x76);
++	LCD_WRITE_DATA(0x54);
++	LCD_WRITE_DATA(0x02);
++	LCD_WRITE_DATA(0xFF);
++	LCD_WRITE_DATA(0xFF);
++	LCD_WRITE_DATA(0xFF);
++	LCD_WRITE_DATA(0xFF);
++	LCD_WRITE_DATA(0xFF);
++	LCD_WRITE_DATA(0xFF);
++	LCD_WRITE_DATA(0x20);
++	LCD_WRITE_DATA(0x45);
++	LCD_WRITE_DATA(0x67);
++	LCD_WRITE_DATA(0x98);
++	LCD_WRITE_DATA(0xBA);
++
++	LCD_WRITE_COMMAND(0xFF);
++	LCD_WRITE_DATA(0x77);
++	LCD_WRITE_DATA(0x01);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++	LCD_WRITE_DATA(0x00);
++
++	LCD_WRITE_COMMAND(0x3A);
++	LCD_WRITE_DATA(0x66);
++
++	LCD_WRITE_COMMAND(0x36);
++	LCD_WRITE_DATA(0x00);
++
++	LCD_WRITE_COMMAND(0x21);
++
++	LCD_WRITE_COMMAND(0x11);
++	lcd_delay_ms(120);
++
++	LCD_WRITE_COMMAND(0x29);
++	lcd_delay_ms(20);
++}
++
++#endif // _LCD_PANEL_INIT_H_
+\ No newline at end of file
+-- 
+2.17.1
+

@@ -1,0 +1,48 @@
+From cfdb9f421b70dafe03e4d7c205d34fff5e114a26 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Tue, 10 May 2022 13:02:28 +0800
+Subject: [PATCH] add drm support for ST7701s 86 Panel
+
+---
+ drivers/gpu/drm/panel/panel-simple.c | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/gpu/drm/panel/panel-simple.c b/drivers/gpu/drm/panel/panel-simple.c
+index f0ea782df..e4c1557d2 100644
+--- a/drivers/gpu/drm/panel/panel-simple.c
++++ b/drivers/gpu/drm/panel/panel-simple.c
+@@ -2442,15 +2442,15 @@ static const struct panel_desc pda_91_00156_a0  = {
+ 
+ 
+ static const struct drm_display_mode qd43003c0_40_mode = {
+-	.clock = 9000,
++	.clock = 13000,
+ 	.hdisplay = 480,
+ 	.hsync_start = 480 + 8,
+ 	.hsync_end = 480 + 8 + 4,
+ 	.htotal = 480 + 8 + 4 + 39,
+-	.vdisplay = 272,
+-	.vsync_start = 272 + 4,
+-	.vsync_end = 272 + 4 + 10,
+-	.vtotal = 272 + 4 + 10 + 2,
++	.vdisplay = 480,
++	.vsync_start = 480 + 8,
++	.vsync_end = 480 + 8 + 4,
++	.vtotal = 480 + 8 + 4 + 39,
+ 	.vrefresh = 60,
+ };
+ 
+@@ -2459,8 +2459,8 @@ static const struct panel_desc qd43003c0_40 = {
+ 	.num_modes = 1,
+ 	.bpc = 8,
+ 	.size = {
+-		.width = 95,
+-		.height = 53,
++		.width = 70,
++		.height = 70,
+ 	},
+ 	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
+ };
+-- 
+2.17.1
+
