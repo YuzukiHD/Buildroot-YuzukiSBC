@@ -376,7 +376,8 @@ post-build.sh -c xxxx.cfg      <platform> <target dtb>
 In config
 
 ```
-BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/awol/nezha-d1s/script/genimage.cfg sun20i-d1s sun20i-d1s-nezha-linux.dtb"
+BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/awol/nezha-d1s/script/genimage.cfg   sun20i-d1s         sun20i-d1s-nezha-linux.dtb"
+                             ^for pack image                               ^target chip name  ^device tree
 ```
 
 ## XFEL Driver install
