@@ -3,7 +3,7 @@
 
 # Support Lists
 
-✅: Supported — ❌: Not Supported Yet — ⚠️: Not Fully Supported Yet
+✅: Supported — ❌: NOT support and will NOT support — ⚠️: Not Fully Supported Yet
 
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig | SPI NOR | SPI NAND | SD CARD | EMMC | Support |
 | -------- | ----------- | ------- | ------- | ------- | --------- | --------- | --------- | --------- | --------- | --------- |
