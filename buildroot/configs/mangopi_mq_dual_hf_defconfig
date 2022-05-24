@@ -1,14 +1,14 @@
 BR2_arm=y
 BR2_cortex_a7=y
-BR2_ARM_EABI=y
+BR2_ARM_FPU_VFPV4=y
 BR2_SVN="svn"
 BR2_JLEVEL=16
 BR2_RELRO_NONE=y
 BR2_TOOLCHAIN_EXTERNAL=y
 BR2_TOOLCHAIN_EXTERNAL_CUSTOM=y
 BR2_TOOLCHAIN_EXTERNAL_DOWNLOAD=y
-BR2_TOOLCHAIN_EXTERNAL_URL="https://github.com/YuzukiHD/YuzukiSBC-Toolchains/releases/download/linaro-7.2.1/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabi.tar.xz"
-BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX="$(ARCH)-linux-gnueabi"
+BR2_TOOLCHAIN_EXTERNAL_URL="http://releases.linaro.org/components/toolchain/binaries/7.2-2017.11/arm-linux-gnueabihf/gcc-linaro-7.2.1-2017.11-x86_64_arm-linux-gnueabihf.tar.xz"
+BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX="$(ARCH)-linux-gnueabihf"
 BR2_TOOLCHAIN_EXTERNAL_GCC_7=y
 BR2_TOOLCHAIN_EXTERNAL_HEADERS_4_10=y
 BR2_TOOLCHAIN_EXTERNAL_CUSTOM_GLIBC=y
