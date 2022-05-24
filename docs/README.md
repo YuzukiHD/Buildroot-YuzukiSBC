@@ -3,7 +3,7 @@
 
 # Support Lists
 
-✅: Supported — ❌: Not Supported Yet — ⚠️: Not Fully Supported Yet
+✅: Supported — ❌: NOT support and will NOT support — ⚠️: Not Fully Supported Yet
 
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig | SPI NOR | SPI NAND | SD CARD | EMMC | Support |
 | -------- | ----------- | ------- | ------- | ------- | --------- | --------- | --------- | --------- | --------- | --------- |
@@ -13,11 +13,11 @@
 | YuzukiHD | R11 86 Panel | R11 | 2022.01 | 5.4.180 | yuzukihd_r11_86panel_defconfig | ✅ | ✅ | ❌ | ❌ | ✅ |
 | Sipeed   | lichee nano | F1C100s | 2020.07 | 5.4.180 | sipeed_lichee_nano_defconfig | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Sipeed   | lichee zero | V3s | 2020.07 | 5.4.180 | sipeed_lichee_zero_defconfig | ❌ | ❌ | ✅ | ⚠️ | ✅ |
-| awol   | nezha | D1-H | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 2018](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | awol_nezha_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
-| awol   | nezha-d1s | D1s | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 2018](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | awol_nezha_d1s_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
-| mangopi   | mq | D1s | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 2018](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | mangopi_mq_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
-| mangopi   | mq dual | T113 | [longan,uboot 2018](https://github.com/Tina-Linux/longan-t113-u-boot-2018) | [longan,linux 2018](https://github.com/Tina-Linux/longan-t113-linux-5.4) | mangopi_mq_dual_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
-| mangopi   | MQ Pro | D1-H | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 2018](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | mangopi_mq_pro_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
+| awol   | nezha | D1-H | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | awol_nezha_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
+| awol   | nezha-d1s | D1s | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | awol_nezha_d1s_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
+| mangopi   | MQ | D1s | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | mangopi_mq_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
+| mangopi   | MQ Dual | T113 | [longan,uboot 2018](https://github.com/Tina-Linux/longan-t113-u-boot-2018) | [longan,linux 5.4.61](https://github.com/Tina-Linux/longan-t113-linux-5.4) | mangopi_mq_dual_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
+| mangopi   | MQ Pro | D1-H | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | mangopi_mq_pro_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
 
 # Install BSP
 
@@ -376,7 +376,8 @@ post-build.sh -c xxxx.cfg      <platform> <target dtb>
 In config
 
 ```
-BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/awol/nezha-d1s/script/genimage.cfg sun20i-d1s sun20i-d1s-nezha-linux.dtb"
+BR2_ROOTFS_POST_SCRIPT_ARGS="-c board/awol/nezha-d1s/script/genimage.cfg   sun20i-d1s         sun20i-d1s-nezha-linux.dtb"
+                             ^for pack image                               ^target platform name  ^device tree
 ```
 
 ## XFEL Driver install
