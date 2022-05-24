@@ -29,8 +29,8 @@ null::sysinit:/bin/ln -sf /proc/self/fd/2 /dev/stderr
 ::sysinit:/etc/init.d/rcS
 
 # Put a getty on the serial port
-ttyS0::respawn:/sbin/getty -L  ttyS0 115200 vt100 # GENERIC_SERIAL
-tty0::respawn:/sbin/getty -L  tty0
+ttyS0::respawn:/sbin/getty -L ttyS0 115200 vt100 # GENERIC_SERIAL
+tty0::respawn:/sbin/getty -L tty0 38400 
 
 # Stuff to do for the 3-finger salute
 #::ctrlaltdel:/sbin/reboot
