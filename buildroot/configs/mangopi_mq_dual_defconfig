@@ -1,6 +1,6 @@
 BR2_arm=y
 BR2_cortex_a7=y
-BR2_ARM_EABI=y
+BR2_ARM_FPU_VFPV4=y
 BR2_SVN="svn"
 BR2_JLEVEL=16
 BR2_RELRO_NONE=y
