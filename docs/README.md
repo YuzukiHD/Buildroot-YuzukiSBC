@@ -16,7 +16,7 @@
 | awol   | nezha | D1-H | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | awol_nezha_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
 | awol   | nezha-d1s | D1s | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | awol_nezha_d1s_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
 | mangopi   | MQ | D1s | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | mangopi_mq_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
-| mangopi   | MQ Dual | T113 | [longan,uboot 2018](https://github.com/Tina-Linux/longan-t113-u-boot-2018) | [longan,linux 5.4.61](https://github.com/Tina-Linux/longan-t113-linux-5.4) | mangopi_mq_dual_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
+| mangopi   | MQ Dual | T113 | [tina,uboot 2018](https://github.com/Tina-Linux/tina-t113-u-boot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-t113-linux-5.4) | mangopi_mq_dual_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
 | mangopi   | MQ Pro | D1-H | [tina,uboot 2018](https://github.com/Tina-Linux/tina-d1x-u-boot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | mangopi_mq_pro_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
 
 # Install BSP
