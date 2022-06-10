@@ -34,7 +34,7 @@
 *Awol*     | *Nezha* | `D1-H` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `awol_nezha_defconfig` |
 *Awol*     | *Nezha-D1s* | `D1s` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `awol_nezha_d1s_defconfig` |
 *MangoPi*  | *MQ* | `D1s` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `mangopi_mq_defconfig` |
-*MangoPi*  | *MQ Dual* | `T113` | `longan` `UBoot 2018` | `longan` `Linux 5.4.61` | `mangopi_mq_dual_defconfig` |
+*MangoPi*  | *MQ Dual* | `T113` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `mangopi_mq_dual_defconfig` |
 *MangoPi*  | *MQ Pro* | `D1-H` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `mangopi_mq_pro_defconfig` |
 
 <br>
