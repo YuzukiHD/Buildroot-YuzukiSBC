@@ -8,6 +8,7 @@ echo "Target binary dir $BOARD_DIR"
 cp $BOARD_DIR/bin/* -rfvd  $BINARIES_DIR
 cp $BOARD_DIR/../sunxi-generic/bin/* -rfvd  $BINARIES_DIR
 
+
 cd $BINARIES_DIR
 echo "item=dtb, $5" >> boot_package.cfg
 

@@ -1,14 +1,14 @@
-From eb9a30f1d2001e9d1f0684547d04ac94d0d16d54 Mon Sep 17 00:00:00 2001
+From b2ce0e279813f6d0472582048b3db971f7df515e Mon Sep 17 00:00:00 2001
 From: YuzukiTsuru <gloomyghost@gloomyghost.com>
-Date: Tue, 12 Apr 2022 10:19:21 +0800
-Subject: [PATCH 3/3] modify sunxi build tool for br2
+Date: Fri, 10 Jun 2022 21:48:00 +0800
+Subject: [PATCH] modify-sunxi-build-tool-for-br2
 
 ---
- Makefile | 76 ++++----------------------------------------------------
- 1 file changed, 5 insertions(+), 71 deletions(-)
+ Makefile | 70 ++++----------------------------------------------------
+ 1 file changed, 4 insertions(+), 66 deletions(-)
 
 diff --git a/Makefile b/Makefile
-index 1216e1e..a341b70 100644
+index 0313221..c6c4f29 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -83,18 +83,7 @@ else
@@ -69,24 +69,7 @@ index 1216e1e..a341b70 100644
  #######################################################################
  # set default to nothing for native builds
  ifeq ($(HOSTARCH),$(ARCH))
-@@ -969,15 +938,11 @@ cmd_cfgcheck = $(srctree)/scripts/check-config.sh $2 \
- 		$(srctree)/scripts/config_whitelist.txt $(srctree)
- 
- BOARD_DTS_EXIST=$(shell if [ -f $(DTS_PATH)/$(LICHEE_IC)-$(LICHEE_BOARD)-board.dts ]; then echo yes; else echo no; fi;)
--DEVICE_BOARD_DTS_EXIST=$(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/sun8i-mangopi-mq-dual-uboot.dts ]; then echo yes; else echo no; fi;)
-+DEVICE_BOARD_DTS_EXIST=$(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/uboot-board.dts ]; then echo yes; else echo no; fi;)
- DTS_WARNNING_SKIP :=	-W no-unit_address_vs_reg \
- 			-W no-unit_address_format \
- 			-W no-simple_bus_reg \
- 			-W no-pwms_property
--ifeq (x$(DEVICE_BOARD_DTS_EXIST), xyes)
--# add depend on external dts, make sure dts in uboot up to date
--dts/dt.dtb: $(LICHEE_BOARD_CONFIG_DIR)/sun8i-mangopi-mq-dual-uboot.dts
--endif
- 
- all:		$(ALL-y) cfg
- ifeq ($(CONFIG_DM_I2C_COMPAT)$(CONFIG_SANDBOX),y)
-@@ -996,15 +961,7 @@ PHONY += dtbs
+@@ -992,15 +961,7 @@ PHONY += dtbs
  dtbs: dts/dt.dtb
  	@:
  dts/dt.dtb: u-boot
@@ -103,7 +86,7 @@ index 1216e1e..a341b70 100644
  	$(Q)$(MAKE) $(build)=dts dtbs
  	$(DTC) $(DTS_WARNNING_SKIP) -I dtb -O dts  $(DTS_PATH)/$(CONFIG_DEFAULT_DEVICE_TREE).dtb > u-boot-dtb.dts
  
-@@ -1041,29 +998,6 @@ TARGET_BIN_DIR ?= device/config/chips/$(TARGET_PLATFORM)/bin
+@@ -1037,29 +998,6 @@ TARGET_BIN_DIR ?= device/config/chips/$(TARGET_PLATFORM)/bin
  
  u-boot-$(CONFIG_SYS_CONFIG_NAME).bin:   u-boot.bin
  	@cp -v $<    $@
