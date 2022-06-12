@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-GIT_VERSION = 2.31.1
+GIT_VERSION = 2.31.2
 GIT_SOURCE = git-$(GIT_VERSION).tar.xz
 GIT_SITE = $(BR2_KERNEL_MIRROR)/software/scm/git
 GIT_LICENSE = GPL-2.0, LGPL-2.1+
@@ -49,7 +49,8 @@ endif
 ifeq ($(BR2_PACKAGE_LIBICONV),y)
 GIT_DEPENDENCIES += libiconv
 GIT_CONF_ENV_LIBS += -liconv
-GIT_CONF_OPTS += --with-iconv=/usr/lib
+GIT_CONF_OPTS += --with-iconv=$(STAGING_DIR)/usr
+GIT_CONF_ENV += ac_cv_iconv_omits_bom=no
 else
 GIT_CONF_OPTS += --without-iconv
 endif

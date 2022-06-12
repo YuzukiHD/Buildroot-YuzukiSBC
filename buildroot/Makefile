@@ -92,9 +92,9 @@ all:
 .PHONY: all
 
 # Set and export the version string
-export BR2_VERSION := 2022.02
+export BR2_VERSION := 2022.02.2
 # Actual time the release is cut (for reproducible builds)
-BR2_VERSION_EPOCH = 1646777000
+BR2_VERSION_EPOCH = 1653852000
 
 # Save running make version since it's clobbered by the make package
 RUNNING_MAKE_VERSION := $(MAKE_VERSION)
@@ -873,6 +873,9 @@ graph-build: $(O)/build/build-time.log
 				   --type=pie-$(t) --input=$(<) \
 				   --output=$(GRAPHS_DIR)/build.pie-$(t).$(BR_GRAPH_OUT) \
 				   $(if $(BR2_GRAPH_ALT),--alternate-colors)$(sep))
+	./support/scripts/graph-build-time --type=timeline --input=$(<) \
+		--output=$(GRAPHS_DIR)/build.timeline.$(BR_GRAPH_OUT) \
+		$(if $(BR2_GRAPH_ALT),--alternate-colors)
 
 .PHONY: graph-depends-requirements
 graph-depends-requirements:
