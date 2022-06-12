@@ -62,9 +62,6 @@ domainseparator = $(if $(1),$(1),/)
 # github(user,package,version): returns site of GitHub repository
 github = https://github.com/$(1)/$(2)/archive/$(3)
 
-# gitee(user,package,version): returns site of Gitee repository
-gitee = https://gitee.com/$(1)/$(2)/releases/$(3)
-
 # gitlab(user,package,version): returns site of Gitlab-generated tarball
 gitlab = https://gitlab.com/$(1)/$(2)/-/archive/$(3)
 
