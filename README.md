@@ -27,6 +27,7 @@
 :------: | :---------: | :-----: | :-----: | :-----: | :-------: |
 *YuzukiHD* | *YuzukiRuler* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukiruler_defconfig`
 *YuzukiHD* | *YuzukiCore F1* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukicore_f1_defconfig` |
+*YuzukiHD* | *Yuzuki Mavericks* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukimavericks_defconfig` |
 *YuzukiHD* | *YuzukiCK1N* | `V3x` | `2022.01` | `5.4.180` | `yuzukihd_yuzukick1n_defconfig` |
 *YuzukiHD* | *R11 86 Panel* | `R11` | `2022.01` | `5.4.180` | `yuzukihd_r11_86panel_defconfig` |
 *Sipeed*   | *Lichee Nano* | `F1C100s` | `2020.07` | `5.4.180` | `sipeed_lichee_nano_defconfig` |

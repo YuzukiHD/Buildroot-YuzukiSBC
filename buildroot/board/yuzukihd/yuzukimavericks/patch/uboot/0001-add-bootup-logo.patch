@@ -1,0 +1,1068 @@
+From e36e85a98d5a2be19fecb197ce007b88ad288077 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sat, 23 Apr 2022 12:56:37 +0800
+Subject: [PATCH] add boot up logo
+
+After looking around, I didn't seem to find any way to drive the spi screen before uboot, so I made a driver myself
+I also accidentally formatted it...
+
+
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index e389e4df..dea719b4 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -55,34 +55,33 @@ static int soft_i2c_board_init(void)
+ 
+ 	soft_i2c_gpio_sda = sunxi_name_to_gpio(CONFIG_VIDEO_LCD_PANEL_I2C_SDA);
+ 	if (soft_i2c_gpio_sda < 0) {
+-		printf("Error invalid soft i2c sda pin: '%s', err %d\n",
+-		       CONFIG_VIDEO_LCD_PANEL_I2C_SDA, soft_i2c_gpio_sda);
++		printf("Error invalid soft i2c sda pin: '%s', err %d\n", CONFIG_VIDEO_LCD_PANEL_I2C_SDA, soft_i2c_gpio_sda);
+ 		return soft_i2c_gpio_sda;
+ 	}
+ 	ret = gpio_request(soft_i2c_gpio_sda, "soft-i2c-sda");
+ 	if (ret) {
+-		printf("Error requesting soft i2c sda pin: '%s', err %d\n",
+-		       CONFIG_VIDEO_LCD_PANEL_I2C_SDA, ret);
++		printf("Error requesting soft i2c sda pin: '%s', err %d\n", CONFIG_VIDEO_LCD_PANEL_I2C_SDA, ret);
+ 		return ret;
+ 	}
+ 
+ 	soft_i2c_gpio_scl = sunxi_name_to_gpio(CONFIG_VIDEO_LCD_PANEL_I2C_SCL);
+ 	if (soft_i2c_gpio_scl < 0) {
+-		printf("Error invalid soft i2c scl pin: '%s', err %d\n",
+-		       CONFIG_VIDEO_LCD_PANEL_I2C_SCL, soft_i2c_gpio_scl);
++		printf("Error invalid soft i2c scl pin: '%s', err %d\n", CONFIG_VIDEO_LCD_PANEL_I2C_SCL, soft_i2c_gpio_scl);
+ 		return soft_i2c_gpio_scl;
+ 	}
+ 	ret = gpio_request(soft_i2c_gpio_scl, "soft-i2c-scl");
+ 	if (ret) {
+-		printf("Error requesting soft i2c scl pin: '%s', err %d\n",
+-		       CONFIG_VIDEO_LCD_PANEL_I2C_SCL, ret);
++		printf("Error requesting soft i2c scl pin: '%s', err %d\n", CONFIG_VIDEO_LCD_PANEL_I2C_SCL, ret);
+ 		return ret;
+ 	}
+ 
+ 	return 0;
+ }
+ #else
+-static int soft_i2c_board_init(void) { return 0; }
++static int soft_i2c_board_init(void)
++{
++	return 0;
++}
+ #endif
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+@@ -90,10 +89,7 @@ DECLARE_GLOBAL_DATA_PTR;
+ void i2c_init_board(void)
+ {
+ #ifdef CONFIG_I2C0_ENABLE
+-#if defined(CONFIG_MACH_SUN4I) || \
+-    defined(CONFIG_MACH_SUN5I) || \
+-    defined(CONFIG_MACH_SUN7I) || \
+-    defined(CONFIG_MACH_SUN8I_R40)
++#if defined(CONFIG_MACH_SUN4I) || defined(CONFIG_MACH_SUN5I) || defined(CONFIG_MACH_SUN7I) || defined(CONFIG_MACH_SUN8I_R40)
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(0), SUN4I_GPB_TWI0);
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(1), SUN4I_GPB_TWI0);
+ 	clock_twi_onoff(0, 1);
+@@ -113,9 +109,7 @@ void i2c_init_board(void)
+ #endif
+ 
+ #ifdef CONFIG_I2C1_ENABLE
+-#if defined(CONFIG_MACH_SUN4I) || \
+-    defined(CONFIG_MACH_SUN7I) || \
+-    defined(CONFIG_MACH_SUN8I_R40)
++#if defined(CONFIG_MACH_SUN4I) || defined(CONFIG_MACH_SUN7I) || defined(CONFIG_MACH_SUN8I_R40)
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(18), SUN4I_GPB_TWI1);
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(19), SUN4I_GPB_TWI1);
+ 	clock_twi_onoff(1, 1);
+@@ -139,9 +133,7 @@ void i2c_init_board(void)
+ #endif
+ 
+ #ifdef CONFIG_I2C2_ENABLE
+-#if defined(CONFIG_MACH_SUN4I) || \
+-    defined(CONFIG_MACH_SUN7I) || \
+-    defined(CONFIG_MACH_SUN8I_R40)
++#if defined(CONFIG_MACH_SUN4I) || defined(CONFIG_MACH_SUN7I) || defined(CONFIG_MACH_SUN8I_R40)
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(20), SUN4I_GPB_TWI2);
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(21), SUN4I_GPB_TWI2);
+ 	clock_twi_onoff(2, 1);
+@@ -169,8 +161,7 @@ void i2c_init_board(void)
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPG(10), SUN6I_GPG_TWI3);
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPG(11), SUN6I_GPG_TWI3);
+ 	clock_twi_onoff(3, 1);
+-#elif defined(CONFIG_MACH_SUN7I) || \
+-      defined(CONFIG_MACH_SUN8I_R40)
++#elif defined(CONFIG_MACH_SUN7I) || defined(CONFIG_MACH_SUN8I_R40)
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPI(0), SUN7I_GPI_TWI3);
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPI(1), SUN7I_GPI_TWI3);
+ 	clock_twi_onoff(3, 1);
+@@ -178,8 +169,7 @@ void i2c_init_board(void)
+ #endif
+ 
+ #ifdef CONFIG_I2C4_ENABLE
+-#if defined(CONFIG_MACH_SUN7I) || \
+-    defined(CONFIG_MACH_SUN8I_R40)
++#if defined(CONFIG_MACH_SUN7I) || defined(CONFIG_MACH_SUN8I_R40)
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPI(2), SUN7I_GPI_TWI4);
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPI(3), SUN7I_GPI_TWI4);
+ 	clock_twi_onoff(4, 1);
+@@ -219,6 +209,8 @@ enum env_location env_get_location(enum env_operation op, int prio)
+ static void mmc_pinmux_setup(int sdc);
+ #endif
+ 
++#include "spi_logo.h"
++
+ /* add board specific code here */
+ int board_init(void)
+ {
+@@ -243,13 +235,11 @@ int board_init(void)
+ 		 */
+ 		asm volatile("mrc p15, 0, %0, c14, c0, 0" : "=r"(freq));
+ 		if (freq != COUNTER_FREQUENCY) {
+-			debug("arch timer frequency is %d Hz, should be %d, fixing ...\n",
+-			      freq, COUNTER_FREQUENCY);
++			debug("arch timer frequency is %d Hz, should be %d, fixing ...\n", freq, COUNTER_FREQUENCY);
+ #ifdef CONFIG_NON_SECURE
+ 			printf("arch timer frequency is wrong, but cannot adjust it\n");
+ #else
+-			asm volatile("mcr p15, 0, %0, c14, c0, 0"
+-				     : : "r"(COUNTER_FREQUENCY));
++			asm volatile("mcr p15, 0, %0, c14, c0, 0" : : "r"(COUNTER_FREQUENCY));
+ #endif
+ 		}
+ 	}
+@@ -289,7 +279,11 @@ int board_init(void)
+ #if CONFIG_MMC_SUNXI_SLOT_EXTRA != -1
+ 	mmc_pinmux_setup(CONFIG_MMC_SUNXI_SLOT_EXTRA);
+ #endif
+-#endif	/* CONFIG_DM_MMC */
++#endif /* CONFIG_DM_MMC */
++	
++    // SPI INIT 
++	LCD_ShowLogo();
++
+ 
+ 	/* Uses dm gpio code so do this here and not in i2c_init_board() */
+ 	return soft_i2c_board_init();
+@@ -301,7 +295,7 @@ int board_init(void)
+  */
+ #define INVALID_SPL_HEADER ((void *)~0UL)
+ 
+-static struct boot_file_head * get_spl_header(uint8_t req_version)
++static struct boot_file_head *get_spl_header(uint8_t req_version)
+ {
+ 	struct boot_file_head *spl = (void *)(ulong)SPL_ADDR;
+ 	uint8_t spl_header_version = spl->spl_signature[3];
+@@ -311,8 +305,7 @@ static struct boot_file_head * get_spl_header(uint8_t req_version)
+ 		return INVALID_SPL_HEADER;
+ 
+ 	if (spl_header_version < req_version) {
+-		printf("sunxi SPL version mismatch: expected %u, got %u\n",
+-		       req_version, spl_header_version);
++		printf("sunxi SPL version mismatch: expected %u, got %u\n", req_version, spl_header_version);
+ 		return INVALID_SPL_HEADER;
+ 	}
+ 
+@@ -324,8 +317,7 @@ int dram_init(void)
+ 	struct boot_file_head *spl = get_spl_header(SPL_DRAM_HEADER_VERSION);
+ 
+ 	if (spl == INVALID_SPL_HEADER)
+-		gd->ram_size = get_ram_size((long *)PHYS_SDRAM_0,
+-					    PHYS_SDRAM_0_SIZE);
++		gd->ram_size = get_ram_size((long *)PHYS_SDRAM_0, PHYS_SDRAM_0_SIZE);
+ 	else
+ 		gd->ram_size = (phys_addr_t)spl->dram_size << 20;
+ 
+@@ -347,7 +339,7 @@ static void nand_pinmux_setup(void)
+ 	for (pin = SUNXI_GPC(20); pin <= SUNXI_GPC(22); pin++)
+ 		sunxi_gpio_set_cfgpin(pin, SUNXI_GPC_NAND);
+ #endif
+-	/* sun4i / sun7i do have a PC23, but it is not used for nand,
++		/* sun4i / sun7i do have a PC23, but it is not used for nand,
+ 	 * only sun7i has a PC24 */
+ #ifdef CONFIG_MACH_SUN7I
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPC(24), SUNXI_GPC_NAND);
+@@ -356,12 +348,10 @@ static void nand_pinmux_setup(void)
+ 
+ static void nand_clock_setup(void)
+ {
+-	struct sunxi_ccm_reg *const ccm =
+-		(struct sunxi_ccm_reg *)SUNXI_CCM_BASE;
++	struct sunxi_ccm_reg *const ccm = (struct sunxi_ccm_reg *)SUNXI_CCM_BASE;
+ 
+ 	setbits_le32(&ccm->ahb_gate0, (CLK_GATE_OPEN << AHB_GATE_OFFSET_NAND0));
+-#if defined CONFIG_MACH_SUN6I || defined CONFIG_MACH_SUN8I || \
+-    defined CONFIG_MACH_SUN9I || defined CONFIG_MACH_SUN50I
++#if defined CONFIG_MACH_SUN6I || defined CONFIG_MACH_SUN8I || defined CONFIG_MACH_SUN9I || defined CONFIG_MACH_SUN50I
+ 	setbits_le32(&ccm->ahb_reset0_cfg, (1 << AHB_GATE_OFFSET_NAND0));
+ #endif
+ 	setbits_le32(&ccm->nand0_clk_cfg, CCM_NAND_CTRL_ENABLE | AHB_DIV_1);
+@@ -405,8 +395,7 @@ static void mmc_pinmux_setup(int sdc)
+ 			sunxi_gpio_set_drv(pin, 2);
+ 		}
+ #endif
+-#if defined(CONFIG_MACH_SUN4I) || defined(CONFIG_MACH_SUN7I) || \
+-    defined(CONFIG_MACH_SUN8I_R40)
++#if defined(CONFIG_MACH_SUN4I) || defined(CONFIG_MACH_SUN7I) || defined(CONFIG_MACH_SUN8I_R40)
+ 		if (pins == SUNXI_GPIO_H) {
+ 			/* SDC1: PH22-PH-27 */
+ 			for (pin = SUNXI_GPH(22); pin <= SUNXI_GPH(27); pin++) {
+@@ -545,8 +534,7 @@ static void mmc_pinmux_setup(int sdc)
+ 	case 3:
+ 		pins = sunxi_name_to_gpio_bank(CONFIG_MMC3_PINS);
+ 
+-#if defined(CONFIG_MACH_SUN4I) || defined(CONFIG_MACH_SUN7I) || \
+-    defined(CONFIG_MACH_SUN8I_R40)
++#if defined(CONFIG_MACH_SUN4I) || defined(CONFIG_MACH_SUN7I) || defined(CONFIG_MACH_SUN8I_R40)
+ 		/* SDC3: PI4-PI9 */
+ 		for (pin = SUNXI_GPI(4); pin <= SUNXI_GPI(9); pin++) {
+ 			sunxi_gpio_set_cfgpin(pin, SUNXI_GPI_SDC3);
+@@ -626,13 +614,11 @@ void sunxi_board_init(void)
+ 	power_failed = sy8106a_set_vout1(CONFIG_SY8106A_VOUT1_VOLT);
+ #endif
+ 
+-#if defined CONFIG_AXP152_POWER || defined CONFIG_AXP209_POWER || \
+-	defined CONFIG_AXP221_POWER || defined CONFIG_AXP809_POWER || \
++#if defined CONFIG_AXP152_POWER || defined CONFIG_AXP209_POWER || defined CONFIG_AXP221_POWER || defined CONFIG_AXP809_POWER ||    \
+ 	defined CONFIG_AXP818_POWER
+ 	power_failed = axp_init();
+ 
+-#if defined CONFIG_AXP221_POWER || defined CONFIG_AXP809_POWER || \
+-	defined CONFIG_AXP818_POWER
++#if defined CONFIG_AXP221_POWER || defined CONFIG_AXP809_POWER || defined CONFIG_AXP818_POWER
+ 	power_failed |= axp_set_dcdc1(CONFIG_AXP_DCDC1_VOLT);
+ #endif
+ 	power_failed |= axp_set_dcdc2(CONFIG_AXP_DCDC2_VOLT);
+@@ -640,13 +626,11 @@ void sunxi_board_init(void)
+ #if !defined(CONFIG_AXP209_POWER) && !defined(CONFIG_AXP818_POWER)
+ 	power_failed |= axp_set_dcdc4(CONFIG_AXP_DCDC4_VOLT);
+ #endif
+-#if defined CONFIG_AXP221_POWER || defined CONFIG_AXP809_POWER || \
+-	defined CONFIG_AXP818_POWER
++#if defined CONFIG_AXP221_POWER || defined CONFIG_AXP809_POWER || defined CONFIG_AXP818_POWER
+ 	power_failed |= axp_set_dcdc5(CONFIG_AXP_DCDC5_VOLT);
+ #endif
+ 
+-#if defined CONFIG_AXP221_POWER || defined CONFIG_AXP809_POWER || \
+-	defined CONFIG_AXP818_POWER
++#if defined CONFIG_AXP221_POWER || defined CONFIG_AXP809_POWER || defined CONFIG_AXP818_POWER
+ 	power_failed |= axp_set_aldo1(CONFIG_AXP_ALDO1_VOLT);
+ #endif
+ 	power_failed |= axp_set_aldo2(CONFIG_AXP_ALDO2_VOLT);
+@@ -657,8 +641,7 @@ void sunxi_board_init(void)
+ 	power_failed |= axp_set_aldo4(CONFIG_AXP_ALDO4_VOLT);
+ #endif
+ 
+-#if defined(CONFIG_AXP221_POWER) || defined(CONFIG_AXP809_POWER) || \
+-	defined(CONFIG_AXP818_POWER)
++#if defined(CONFIG_AXP221_POWER) || defined(CONFIG_AXP809_POWER) || defined(CONFIG_AXP818_POWER)
+ 	power_failed |= axp_set_dldo(1, CONFIG_AXP_DLDO1_VOLT);
+ 	power_failed |= axp_set_dldo(2, CONFIG_AXP_DLDO2_VOLT);
+ #if !defined CONFIG_AXP809_POWER
+@@ -745,8 +728,8 @@ void get_board_serial(struct tag_serialnr *serialnr)
+ 	if (serial_string) {
+ 		serial = simple_strtoull(serial_string, NULL, 16);
+ 
+-		serialnr->high = (unsigned int) (serial >> 32);
+-		serialnr->low = (unsigned int) (serial & 0xffffffff);
++		serialnr->high = (unsigned int)(serial >> 32);
++		serialnr->low = (unsigned int)(serial & 0xffffffff);
+ 	} else {
+ 		serialnr->high = 0;
+ 		serialnr->low = 0;
+@@ -774,8 +757,7 @@ static void parse_spl_header(const uint32_t spl_addr)
+ 		 * data is expected in uEnv.txt compatible format, so "env
+ 		 * import -t" the string(s) at fel_script_address right away.
+ 		 */
+-		himport_r(&env_htab, (char *)(uintptr_t)spl->fel_script_address,
+-			  spl->fel_uEnv_length, '\n', H_NOCLEAR, 0, 0, NULL);
++		himport_r(&env_htab, (char *)(uintptr_t)spl->fel_script_address, spl->fel_uEnv_length, '\n', H_NOCLEAR, 0, 0, NULL);
+ 		return;
+ 	}
+ 	/* otherwise assume .scr format (mkimage-type script) */
+@@ -807,9 +789,8 @@ static void setup_environment(const void *fdt)
+ 		 * long time and changing a fixed mac-address with an
+ 		 * u-boot update is not good.
+ 		 */
+-#if !defined(CONFIG_MACH_SUN4I) && !defined(CONFIG_MACH_SUN5I) && \
+-    !defined(CONFIG_MACH_SUN6I) && !defined(CONFIG_MACH_SUN7I) && \
+-    !defined(CONFIG_MACH_SUN8I_A23) && !defined(CONFIG_MACH_SUN8I_A33)
++#if !defined(CONFIG_MACH_SUN4I) && !defined(CONFIG_MACH_SUN5I) && !defined(CONFIG_MACH_SUN6I) && !defined(CONFIG_MACH_SUN7I) &&    \
++	!defined(CONFIG_MACH_SUN8I_A23) && !defined(CONFIG_MACH_SUN8I_A33)
+ 		sid[3] = crc32(0, (unsigned char *)&sid[1], 12);
+ #endif
+ 
+@@ -832,18 +813,17 @@ static void setup_environment(const void *fdt)
+ 
+ 			/* Non OUI / registered MAC address */
+ 			mac_addr[0] = (i << 4) | 0x02;
+-			mac_addr[1] = (sid[0] >>  0) & 0xff;
++			mac_addr[1] = (sid[0] >> 0) & 0xff;
+ 			mac_addr[2] = (sid[3] >> 24) & 0xff;
+ 			mac_addr[3] = (sid[3] >> 16) & 0xff;
+-			mac_addr[4] = (sid[3] >>  8) & 0xff;
+-			mac_addr[5] = (sid[3] >>  0) & 0xff;
++			mac_addr[4] = (sid[3] >> 8) & 0xff;
++			mac_addr[5] = (sid[3] >> 0) & 0xff;
+ 
+ 			eth_env_set_enetaddr(ethaddr, mac_addr);
+ 		}
+ 
+ 		if (!env_get("serial#")) {
+-			snprintf(serial_string, sizeof(serial_string),
+-				"%08x%08x", sid[0], sid[3]);
++			snprintf(serial_string, sizeof(serial_string), "%08x%08x", sid[0], sid[3]);
+ 
+ 			env_set("serial#", serial_string);
+ 		}
+@@ -874,7 +854,7 @@ int misc_init_r(void)
+ 	if (boot == BOOT_DEVICE_BOARD) {
+ 		env_set("fel_booted", "1");
+ 		parse_spl_header(SPL_ADDR);
+-	/* or if we booted from MMC, and which one */
++		/* or if we booted from MMC, and which one */
+ 	} else if (boot == BOOT_DEVICE_MMC1) {
+ 		env_set("mmc_bootdev", "0");
+ 	} else if (boot == BOOT_DEVICE_MMC2) {
+@@ -882,18 +862,18 @@ int misc_init_r(void)
+ 	}
+ 
+ 	switch (boot) {
+-		case BOOT_DEVICE_MMC1:
+-			env_set("boot_device", "mmc0");
+-			break;
+-		case BOOT_DEVICE_MMC2:
+-			env_set("boot_device", "mmc1");
+-			break;
+-		case BOOT_DEVICE_SPI:
+-			env_set("boot_device", "spi");
+-			break;
+-		default:
+-			env_set("boot_device", "fel");
+-			break;
++	case BOOT_DEVICE_MMC1:
++		env_set("boot_device", "mmc0");
++		break;
++	case BOOT_DEVICE_MMC2:
++		env_set("boot_device", "mmc1");
++		break;
++	case BOOT_DEVICE_SPI:
++		env_set("boot_device", "spi");
++		break;
++	default:
++		env_set("boot_device", "fel");
++		break;
+ 	}
+ 
+ 	setup_environment(gd->fdt_blob);
+@@ -906,7 +886,7 @@ int misc_init_r(void)
+ 	usb_gadget_init();
+ #endif
+ 
+-	if(env_get("bootcmd") == NULL){
++	if (env_get("bootcmd") == NULL) {
+ 		env_set("bootcmd", CONFIG_BOOTCOMMAND);
+ 	}
+ 
+@@ -949,7 +929,7 @@ int board_fit_config_name_match(const char *name)
+ 	};
+ 
+ #ifdef CONFIG_PINE64_DT_SELECTION
+-/* Differentiate the two Pine64 board DTs by their DRAM size. */
++	/* Differentiate the two Pine64 board DTs by their DRAM size. */
+ 	if (strstr(name, "-pine64") && strstr(cmp_str, "-pine64")) {
+ 		if ((gd->ram_size > 512 * 1024 * 1024))
+ 			return !strstr(name, "plus");
+diff --git a/board/sunxi/logo.h b/board/sunxi/logo.h
+new file mode 100644
+index 00000000..b6537050
+--- /dev/null
++++ b/board/sunxi/logo.h
+@@ -0,0 +1,366 @@
++const unsigned char image[7250] = {
++	/* 0X00,0X10,0X91,0X00,0X19,0X00,0X01,0X1B, */
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0X4D, 0X6B, 0X6D, 0X6B,
++	0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B,
++	0X4D, 0X6B, 0X6D, 0X6B, 0XCB, 0X5A, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X45, 0X29, 0X2C, 0X63, 0X4D, 0X6B,
++	0X6D, 0X6B, 0X45, 0X29, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X24, 0X21, 0X6D, 0X6B, 0X6D, 0X6B, 0X4D, 0X6B, 0X24, 0X21, 0X00, 0X00, 0X00, 0X00, 0XE7, 0X39, 0X4D, 0X6B,
++	0X6D, 0X6B, 0X4D, 0X6B, 0X6D, 0X6B, 0X2C, 0X63, 0X6D, 0X6B, 0X4D, 0X6B, 0X6D, 0X6B, 0XCB, 0X5A, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X24, 0X21, 0X6D, 0X6B, 0X4D, 0X6B, 0X6D, 0X6B, 0X24, 0X21, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X51, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X51, 0X8C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X14, 0XA5, 0X00, 0X00, 0X00, 0X00,
++	0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X14, 0XA5, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X38, 0XC6, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X6D, 0X6B,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XDF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFB, 0XDE, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X5D, 0XEF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XBE, 0XF7, 0X04, 0X21, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X2C, 0X63, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X2C, 0X63, 0X00, 0X00, 0X00, 0X00, 0XB2, 0X94, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XDF, 0XFF, 0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X2C, 0X63, 0X00, 0X00, 0X00, 0X00,
++	0X20, 0X00, 0X00, 0X00, 0X71, 0X8C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD3, 0X9C, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD7, 0XBD, 0XD3, 0X9C, 0XF3, 0X9C,
++	0XF3, 0X9C, 0XD3, 0X9C, 0XFB, 0XDE, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X24, 0X21, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XBA, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X5D, 0XEF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X9E, 0XF7, 0X24, 0X21, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X24, 0X21, 0X5D, 0XEF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XEF, 0X7B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X79, 0XCE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00,
++	0X00, 0X00, 0X71, 0X8C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X34, 0XA5, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B,
++	0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0X59, 0XCE, 0X00, 0X00, 0X00, 0X00, 0X5D, 0XEF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9E, 0XF7,
++	0X24, 0X21, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X71, 0X8C, 0X9A, 0XD6, 0X79, 0XCE, 0X9A, 0XD6, 0XAA, 0X52, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0XCB, 0X5A, 0X79, 0XCE, 0X9A, 0XD6, 0X9A, 0XD6, 0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X55, 0XAD,
++	0XBA, 0XD6, 0X59, 0XCE, 0X79, 0XCE, 0XBA, 0XD6, 0X9A, 0XD6, 0X79, 0XCE, 0X9A, 0XD6, 0X9A, 0XD6, 0X79, 0XCE, 0X92, 0X94,
++	0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0XBA, 0XD6, 0X9A, 0XD6, 0X55, 0XAD, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00,
++	0X55, 0XAD, 0X79, 0XCE, 0X9A, 0XD6, 0X9A, 0XD6, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X24, 0X21, 0XBA, 0XD6, 0X9A, 0XD6, 0X9A, 0XD6, 0X18, 0XC6, 0X45, 0X29,
++	0X00, 0X00, 0XCB, 0X5A, 0X9A, 0XD6, 0X9A, 0XD6, 0X79, 0XCE, 0XAA, 0X52, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XB6, 0XB5, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0X79, 0XCE, 0X9A, 0XD6, 0X55, 0XAD, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X55, 0XAD, 0X59, 0XCE, 0X9A, 0XD6, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0XE7, 0X39,
++	0XB6, 0XB5, 0X5D, 0XEF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDB, 0XDE, 0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X9A, 0XD6, 0X9A, 0XD6, 0X9A, 0XD6, 0X55, 0XAD, 0X00, 0X00, 0X6D, 0X6B, 0X96, 0XB5, 0X71, 0X8C, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X08, 0X42,
++	0X71, 0X8C, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X2C, 0X63, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XEF, 0X7B, 0X00, 0X00, 0X20, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XD3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0XAA, 0X52, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X5D, 0XEF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B,
++	0X00, 0X00, 0X41, 0X08, 0X00, 0X00, 0X71, 0X8C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XDF, 0XFF, 0XF7, 0XBD, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X79, 0XCE,
++	0XD7, 0XBD, 0XFF, 0XFF, 0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD7, 0XBD, 0X3C, 0XE7, 0XFF, 0XFF, 0XFF, 0XFF, 0XBE, 0XF7, 0X24, 0X21,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XD3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X6D, 0X6B, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X55, 0XAD,
++	0X9A, 0XD6, 0X9A, 0XD6, 0X9A, 0XD6, 0X79, 0XCE, 0X9A, 0XD6, 0X5D, 0XEF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C,
++	0X20, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X79, 0XCE, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X6D, 0X6B, 0X20, 0X00, 0X75, 0XAD, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X2C, 0X63, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XB6, 0XB5, 0XD3, 0X9C, 0XD3, 0X9C, 0XD3, 0X9C, 0X55, 0XAD, 0XBE, 0XF7, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XBE, 0XF7, 0XAA, 0X52, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X79, 0XCE, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XE7, 0X39, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X9A, 0XD6, 0XF3, 0X9C, 0X96, 0XB5, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XBA, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XCB, 0X5A,
++	0XBE, 0XF7, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XEF, 0X7B, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X6D, 0X6B, 0XEF, 0X7B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X59, 0XCE, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X6D, 0X6B, 0X20, 0X00, 0X00, 0X00, 0XD3, 0X9C, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X7D, 0XEF, 0XF3, 0X9C, 0X24, 0X21, 0X00, 0X00, 0X41, 0X08, 0X00, 0X00, 0X00, 0X00,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XBA, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XBA, 0XD6, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B,
++	0X00, 0X00, 0X00, 0X00, 0XD7, 0XBD, 0XFF, 0XFF, 0XFF, 0XFF, 0X79, 0XCE, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XD3, 0X9C,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XBE, 0XF7, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF,
++	0XFF, 0XFF, 0X1C, 0XE7, 0XF3, 0X9C, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X5D, 0XEF, 0X00, 0X00, 0X00, 0X00,
++	0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XE7, 0X39, 0XBE, 0XF7, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0X92, 0X94, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00,
++	0X59, 0XCE, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X71, 0X8C, 0XBE, 0XF7, 0XFF, 0XFF, 0XFF, 0XFF, 0XFB, 0XDE, 0X04, 0X21, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XD3, 0X9C, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDB, 0XDE,
++	0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X20, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X28, 0X42, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XCF, 0X7B, 0X00, 0X00,
++	0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X79, 0XCE, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X51, 0X8C, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C,
++	0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X45, 0X29, 0XFB, 0XDE, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XBA, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XBA, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00,
++	0X20, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XEB, 0X5A, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X2C, 0X63, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD7, 0XBD, 0XF3, 0X9C, 0XF3, 0X9C,
++	0XD3, 0X9C, 0X55, 0XAD, 0X9E, 0XF7, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XCF, 0X7B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X79, 0XCE, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B,
++	0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X14, 0XA5, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDB, 0XDE,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X41, 0X08, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X08, 0X42, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X7D, 0XEF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XD3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X24, 0X21, 0XFB, 0XDE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X79, 0XCE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X18, 0XC6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XD3, 0X9C, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XD7, 0XBD, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00,
++	0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XBA, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0XD3, 0X9C,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X24, 0X21, 0XFB, 0XDE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X79, 0XCE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X5D, 0XEF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X9E, 0XF7, 0X45, 0X29, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X4D, 0X6B, 0X00, 0X00, 0X20, 0X00, 0XD3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X20, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFB, 0XDE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFB, 0XDE, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X9A, 0XD6, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B,
++	0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD7, 0XBD, 0XD3, 0X9C, 0XF3, 0X9C, 0XF3, 0X9C, 0XF3, 0X9C,
++	0XB2, 0X94, 0XF3, 0X9C, 0XF3, 0X9C, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X14, 0XA5, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X38, 0XC6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XB6, 0XB5, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X79, 0XCE, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0XBA, 0XD6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X4D, 0X6B, 0XEF, 0X7B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X18, 0XC6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X6D, 0X6B, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X75, 0XAD, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X9A, 0XD6, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X79, 0XCE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X6D, 0X6B, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X51, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X79, 0XCE, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0XD3, 0X9C,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X55, 0XAD, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0XD7, 0XBD, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XB6, 0XB5, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF,
++	0X9E, 0XF7, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X45, 0X29, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X79, 0XCE, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF,
++	0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0XD3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0XCB, 0X5A, 0X00, 0X00, 0X00, 0X00,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XBE, 0XF7, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X24, 0X21, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B,
++	0X00, 0X00, 0X04, 0X21, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X45, 0X29,
++	0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0X51, 0X8C, 0X00, 0X00, 0X20, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X79, 0XCE,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XAA, 0X52, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XBE, 0XF7, 0XCF, 0X7B,
++	0X8E, 0X73, 0XD3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF,
++	0XDF, 0XFF, 0XFF, 0XFF, 0XBE, 0XF7, 0XD3, 0X9C, 0XF3, 0X9C, 0XF3, 0X9C, 0XF3, 0X9C, 0XD3, 0X9C, 0X14, 0XA5, 0X6D, 0X6B,
++	0X00, 0X00, 0X00, 0X00, 0X59, 0XCE, 0XFF, 0XFF, 0XDF, 0XFF, 0XFF, 0XFF, 0XD7, 0XBD, 0X2C, 0X63, 0XEF, 0X7B, 0XFB, 0XDE,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X8E, 0X73, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X3C, 0XE7, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X8E, 0X73, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XD3, 0X9C, 0XFF, 0XFF,
++	0XDF, 0XFF, 0XFF, 0XFF, 0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X38, 0XC6, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XB6, 0XB5,
++	0X4D, 0X6B, 0X10, 0X84, 0XDB, 0XDE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X6D, 0X6B, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XD7, 0XBD, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XD3, 0X9C, 0X28, 0X42, 0XCB, 0X5A, 0XB6, 0XB5, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X24, 0X21, 0X00, 0X00,
++	0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X79, 0XCE, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00,
++	0X18, 0XC6, 0XDF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X1C, 0XE7, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X00, 0X00, 0XAA, 0X52, 0XDF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFB, 0XDE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XD7, 0XBD,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X20, 0X00, 0X4D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X14, 0XA5, 0X20, 0X00, 0X00, 0X00,
++	0XCB, 0X5A, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XDB, 0XDE, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XDF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X2C, 0X63, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B,
++	0X00, 0X00, 0X00, 0X00, 0X24, 0X21, 0XFB, 0XDE, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X71, 0X8C, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X79, 0XCE,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XBA, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X04, 0X21, 0XF7, 0XBD, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X79, 0XCE, 0X24, 0X21, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XF3, 0X9C, 0X00, 0X00, 0X20, 0X00, 0XDF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XD3, 0X9C,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XEF, 0X7B, 0X5D, 0XEF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XBE, 0XF7, 0X71, 0X8C,
++	0XF3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XE7, 0X39, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X08, 0X42,
++	0X00, 0X00, 0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XDF, 0XFF, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0XF3, 0X9C, 0XFF, 0XFF,
++	0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XCB, 0X5A, 0XFF, 0XFF,
++	0XDF, 0XFF, 0XFF, 0XFF, 0X9A, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XEF, 0X7B, 0X5D, 0XEF, 0XFF, 0XFF, 0XFF, 0XFF,
++	0XFF, 0XFF, 0X9E, 0XF7, 0X71, 0X8C, 0XF3, 0X9C, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X6D, 0X6B, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X4D, 0X6B, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X45, 0X29, 0XB6, 0XB5,
++	0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0X5D, 0XEF, 0X10, 0X84, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XFF, 0XBA, 0XD6, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X24, 0X21, 0X4D, 0X6B, 0X2C, 0X63, 0X28, 0X42, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0X4D, 0X6B,
++	0X2C, 0X63, 0X08, 0X42, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0XCB, 0X5A, 0X4D, 0X6B, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X28, 0X42, 0X4D, 0X6B, 0X6D, 0X6B, 0X4D, 0X6B, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0XCB, 0X5A, 0X6D, 0X6B, 0X4D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X28, 0X42, 0X4D, 0X6B,
++	0X2C, 0X63, 0X6D, 0X6B, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X6D, 0X6B, 0X4D, 0X6B, 0X6D, 0X6B, 0XE7, 0X39,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X20, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++	0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00, 0X00,
++};
+diff --git a/board/sunxi/spi_logo.h b/board/sunxi/spi_logo.h
+new file mode 100644
+index 00000000..2fb3c9ca
+--- /dev/null
++++ b/board/sunxi/spi_logo.h
+@@ -0,0 +1,309 @@
++#ifndef _SPI_LOGO_H_
++#define _SPI_LOGO_H_
++
++#include <asm/gpio.h>
++#include <asm/arch/gpio.h>
++
++#include "logo.h"
++
++#define DELAYBIT 10
++
++#define YS_LOG(fmt, arg...)                                                                                                        \
++	do {                                                                                                                       \
++		printf(fmt, ##arg);                                                                                                \
++	} while (0)
++
++#define YS_DBG(fmt, arg...) YS_LOG("[Yuzuki sSPI] " fmt, ##arg)
++
++#define SPI_SCLK_Clr() gpio_direction_output(SPI_clk, 0) //SCL
++#define SPI_SCLK_Set() gpio_direction_output(SPI_clk, 1)
++
++#define SPI_SDIN_Clr() gpio_direction_output(SPI_mosi, 0)
++#define SPI_SDIN_Set() gpio_direction_output(SPI_mosi, 1)
++
++#define SPI_RST_Clr() gpio_direction_output(SPI_rst, 0) //RES
++#define SPI_RST_Set() gpio_direction_output(SPI_rst, 1)
++
++#define SPI_DC_Clr() gpio_direction_output(SPI_dc, 0) //DC
++#define SPI_DC_Set() gpio_direction_output(SPI_dc, 1)
++
++#define USE_HORIZONTAL 3
++
++#if USE_HORIZONTAL == 0 || USE_HORIZONTAL == 1
++#define LCD_W 135
++#define LCD_H 240
++
++#else
++#define LCD_W 240
++#define LCD_H 135
++#endif
++
++#define WHITE 0xFFFF
++#define BLACK 0x0000
++
++int SPI_rst;
++int SPI_clk;
++int SPI_dc;
++int SPI_mosi;
++
++void delay(int ms)
++{
++	int delay = ms * 1000 * 20;
++	while (delay--)
++		;
++}
++
++int SPI_Init(void)
++{
++	int ret;
++
++	SPI_rst = sunxi_name_to_gpio("PE7");
++	if (SPI_rst < 0) {
++		YS_DBG("Error invalid SPI_rst pin: PE, err %d\n", SPI_rst);
++		return SPI_rst;
++	}
++	ret = gpio_request(SPI_rst, "spi_rst");
++	if (ret) {
++		YS_DBG("Error invalid SPI_rst pin: PE, err %d\n", SPI_rst);
++		return ret;
++	}
++	YS_DBG("PE7 --> SPI_rst request OK\n");
++
++	SPI_dc = sunxi_name_to_gpio("PE10");
++	if (SPI_dc < 0) {
++		YS_DBG("Error invalid SPI_dc pin: PE, err %d\n", SPI_dc);
++		return SPI_dc;
++	}
++	ret = gpio_request(SPI_dc, "spi_dc");
++	if (ret) {
++		YS_DBG("Error invalid SPI_rst pin: PE, err %d\n", SPI_dc);
++		return ret;
++	}
++	YS_DBG("PE10 --> SPI_dc request OK\n");
++
++	SPI_mosi = sunxi_name_to_gpio("PA1");
++	if (SPI_mosi < 0) {
++		YS_DBG("Error invalid SPI_spics pin: PA, err %d\n", SPI_mosi);
++		return SPI_mosi;
++	}
++	ret = gpio_request(SPI_mosi, "spi_mosi");
++	if (ret) {
++		YS_DBG("Error invalid SPI_rst pin: PE, err %d\n", SPI_mosi);
++		return ret;
++	}
++	YS_DBG("PA1 --> SPI_mosi request OK\n");
++
++	SPI_clk = sunxi_name_to_gpio("PA2");
++	if (SPI_clk < 0) {
++		YS_DBG("Error invalid SPI_spics pin: PA, err %d\n", SPI_clk);
++		return SPI_clk;
++	}
++	ret = gpio_request(SPI_clk, "spi_clk");
++	if (ret) {
++		YS_DBG("Error invalid SPI_rst pin: PE, err %d\n", SPI_clk);
++		return ret;
++	}
++	YS_DBG("PA2 --> SPI_rst request OK\n");
++
++	return 0;
++}
++
++void SPI_Write_Bus(uint8_t dat)
++{
++	uint8_t i;
++	for (i = 0; i < 8; i++) {
++		SPI_SCLK_Clr();
++		if (dat & 0x80)
++			SPI_SDIN_Set();
++		else
++			SPI_SDIN_Clr();
++		SPI_SCLK_Set();
++		dat <<= 1;
++	}
++}
++
++void SPI_WR_DATA8(uint8_t dat)
++{
++	SPI_DC_Set();
++	SPI_Write_Bus(dat);
++}
++
++void SPI_WR_DATA(short int dat)
++{
++	SPI_DC_Set();
++	SPI_Write_Bus(dat >> 8);
++	SPI_Write_Bus(dat);
++}
++
++void SPI_WR_REG(uint8_t dat)
++{
++	SPI_DC_Clr();
++	SPI_Write_Bus(dat);
++}
++
++void LCD_Address_Set(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2)
++{
++	YS_DBG("Setting Address for ST7789V\n");
++	if (USE_HORIZONTAL == 0) {
++		SPI_WR_REG(0x2a);
++		SPI_WR_DATA(x1 + 52);
++		SPI_WR_DATA(x2 + 52);
++		SPI_WR_REG(0x2b);
++		SPI_WR_DATA(y1 + 40);
++		SPI_WR_DATA(y2 + 40);
++		SPI_WR_REG(0x2c);
++	} else if (USE_HORIZONTAL == 1) {
++		SPI_WR_REG(0x2a);
++		SPI_WR_DATA(x1 + 53);
++		SPI_WR_DATA(x2 + 53);
++		SPI_WR_REG(0x2b);
++		SPI_WR_DATA(y1 + 40);
++		SPI_WR_DATA(y2 + 40);
++		SPI_WR_REG(0x2c);
++	} else if (USE_HORIZONTAL == 2) {
++		SPI_WR_REG(0x2a);
++		SPI_WR_DATA(x1 + 40);
++		SPI_WR_DATA(x2 + 40);
++		SPI_WR_REG(0x2b);
++		SPI_WR_DATA(y1 + 53);
++		SPI_WR_DATA(y2 + 53);
++		SPI_WR_REG(0x2c);
++	} else {
++		SPI_WR_REG(0x2a);
++		SPI_WR_DATA(x1 + 40);
++		SPI_WR_DATA(x2 + 40);
++		SPI_WR_REG(0x2b);
++		SPI_WR_DATA(y1 + 52);
++		SPI_WR_DATA(y2 + 52);
++		SPI_WR_REG(0x2c);
++	}
++}
++
++void LCD_Clear(short int Color)
++{
++	short int i, j;
++	LCD_Address_Set(0, 0, LCD_W - 1, LCD_H - 1);
++	for (i = 0; i < LCD_H; i++) {
++		for (j = 0; j < LCD_W; j++) {
++			SPI_WR_DATA(Color);
++		}
++	}
++}
++
++void LCD_Init(void)
++{
++	SPI_RST_Set();
++	delay(100);
++	SPI_RST_Clr();
++	delay(200);
++	SPI_RST_Set();
++	delay(100);
++	SPI_WR_REG(0x01); // Software Reset
++	SPI_WR_REG(0x11); // Sleep Out
++	delay(100);
++
++	//************* Start Initial Sequence **********//
++	SPI_WR_REG(0x36); // Memory data access control
++	if (USE_HORIZONTAL == 0)
++		SPI_WR_DATA8(0x00);
++	else if (USE_HORIZONTAL == 1)
++		SPI_WR_DATA8(0xC0);
++	else if (USE_HORIZONTAL == 2)
++		SPI_WR_DATA8(0x70);
++	else
++		SPI_WR_DATA8(0xA0);
++
++	SPI_WR_REG(0x3A); // Interface pixel format
++	SPI_WR_DATA8(0x05);
++
++	SPI_WR_REG(0xB2);
++	SPI_WR_DATA8(0x0C);
++	SPI_WR_DATA8(0x0C);
++	SPI_WR_DATA8(0x00);
++	SPI_WR_DATA8(0x33);
++	SPI_WR_DATA8(0x33);
++
++	SPI_WR_REG(0xB7);
++	SPI_WR_DATA8(0x35);
++
++	SPI_WR_REG(0xBB);
++	SPI_WR_DATA8(0x19);
++
++	SPI_WR_REG(0xC0);
++	SPI_WR_DATA8(0x2C);
++
++	SPI_WR_REG(0xC2);
++	SPI_WR_DATA8(0x01);
++
++	SPI_WR_REG(0xC3);
++	SPI_WR_DATA8(0x12);
++
++	SPI_WR_REG(0xC4);
++	SPI_WR_DATA8(0x20);
++
++	SPI_WR_REG(0xC6);
++	SPI_WR_DATA8(0x0F);
++
++	SPI_WR_REG(0xD0);
++	SPI_WR_DATA8(0xA4);
++	SPI_WR_DATA8(0xA1);
++
++	SPI_WR_REG(0xE0);
++	SPI_WR_DATA8(0xD0);
++	SPI_WR_DATA8(0x04);
++	SPI_WR_DATA8(0x0D);
++	SPI_WR_DATA8(0x11);
++	SPI_WR_DATA8(0x13);
++	SPI_WR_DATA8(0x2B);
++	SPI_WR_DATA8(0x3F);
++	SPI_WR_DATA8(0x54);
++	SPI_WR_DATA8(0x4C);
++	SPI_WR_DATA8(0x18);
++	SPI_WR_DATA8(0x0D);
++	SPI_WR_DATA8(0x0B);
++	SPI_WR_DATA8(0x1F);
++	SPI_WR_DATA8(0x23);
++
++	SPI_WR_REG(0xE1);
++	SPI_WR_DATA8(0xD0);
++	SPI_WR_DATA8(0x04);
++	SPI_WR_DATA8(0x0C);
++	SPI_WR_DATA8(0x11);
++	SPI_WR_DATA8(0x13);
++	SPI_WR_DATA8(0x2C);
++	SPI_WR_DATA8(0x3F);
++	SPI_WR_DATA8(0x44);
++	SPI_WR_DATA8(0x51);
++	SPI_WR_DATA8(0x2F);
++	SPI_WR_DATA8(0x1F);
++	SPI_WR_DATA8(0x1F);
++	SPI_WR_DATA8(0x20);
++	SPI_WR_DATA8(0x23);
++
++	SPI_WR_REG(0x21);
++
++	SPI_WR_REG(0x11);
++
++	LCD_Clear(BLACK);
++
++	SPI_WR_REG(0x29);
++}
++
++void LCD_ShowPicture(short int x1, short int y1, short int length, short int width)
++{
++	int i;
++	LCD_Address_Set(x1, y1, x1 + length - 1, y1 + width - 1);
++	for (i = 0; i < length * width; i++) {
++		SPI_WR_DATA8(image[i * 2 + 1]);
++		SPI_WR_DATA8(image[i * 2]);
++	}
++}
++
++void LCD_ShowLogo(void)
++{
++	SPI_Init();
++	LCD_Init();
++	LCD_ShowPicture(47, 55, 145, 25);
++}
++
++#endif //_SPI_LOGO_H_
+\ No newline at end of file
+-- 
+2.17.1
+
