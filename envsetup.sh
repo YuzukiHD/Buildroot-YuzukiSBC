@@ -37,6 +37,12 @@ then
     export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib"
 fi
 
+UpdateInfo(){
+    echo "************************************************************"
+    echo "* Update done! You may need to run sync_update after lunch.*"
+    echo "************************************************************"
+}
+
 FetchUpdate(){
     git fetch origin master:tmp
     if [ $(git diff tmp | grep -c "-") -gt 1 ];
@@ -46,6 +52,7 @@ FetchUpdate(){
             [yY][eE][sS]|[yY])
                 echo "Now try to merge upstream..."
                 git merge tmp
+                UpdateInfo
                 ;;
         
             [nN][oO]|[nN])
@@ -108,6 +115,7 @@ alias rebuild_uboot="make uboot-rebuild -j8 && make"
 alias wsl_path="export PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib\""
 alias sync_kernel="rm -rf output/build/linux* && rm -rf output/build/.linux* && make"
 alias sync_uboot="rm -rf output/build/uboot* && make"
+alias sync_update="rm -rf output/build/linux* && rm -rf output/build/.linux* && rm -rf output/build/uboot* && rm -rf dl/uboot* && rm -rf dl/linux*"
 
 alias mm="make"
 alias m="make"

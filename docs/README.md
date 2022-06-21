@@ -310,6 +310,10 @@ Modify the kernel-related patch or need to restore the original kernel, sync to 
 
 Modify the uboot-related patch or need to restore the original uboot, sync to original
 
+`sync_update`
+
+Sometimes when you upgrade Buildroot YuzukiSBC, you will find that the compilation does not pass, please use this command to delete the old files
+
 # Appendix
 
 ## board file trees and file path definition
