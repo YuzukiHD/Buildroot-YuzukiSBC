@@ -1,0 +1,43 @@
+From 132c4ad2bbd95cd2138465ea7f3fbb53bad141bb Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Sun, 27 Mar 2022 22:38:47 +0800
+Subject: [PATCH] add support for buildroot
+
+---
+ Makefile | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 4647e1a..f628988 100644
+--- a/Makefile
++++ b/Makefile
+@@ -980,7 +980,7 @@ endif
+ 
+ BOARD_DTS_EXIST = $(shell if [ -f $(DTS_PATH)/$(BOARD_DTS_NAME).dts ]; then echo yes; else echo no; fi;)
+ 
+-DEVICE_BOARD_DTS_EXIST = $(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/uboot-board.dts ]; then echo yes; else echo no; fi;)
++DEVICE_BOARD_DTS_EXIST = $(shell if [ -f $(LICHEE_BOARD_CONFIG_DIR)/sun20i-mangopi-mq-uboot.dts ]; then echo yes; else echo no; fi;)
+ 
+ DTS_WARNNING_SKIP :=	-W no-unit_address_vs_reg \
+ 			-W no-unit_address_format \
+@@ -988,7 +988,7 @@ DTS_WARNNING_SKIP :=	-W no-unit_address_vs_reg \
+ 			-W no-pwms_property
+ ifeq (x$(DEVICE_BOARD_DTS_EXIST), xyes)
+ # add depend on external dts, make sure dts in uboot up to date
+-dts/dt.dtb: $(LICHEE_BOARD_CONFIG_DIR)/uboot-board.dts
++dts/dt.dtb: $(LICHEE_BOARD_CONFIG_DIR)/sun20i-mangopi-mq-uboot.dts
+ endif
+ 
+ all:		$(ALL-y) cfg
+@@ -1010,7 +1010,7 @@ dtbs: dts/dt.dtb
+ dts/dt.dtb: u-boot
+ 
+ ifeq (x$(DEVICE_BOARD_DTS_EXIST), xyes)
+-	@-cp -v $(LICHEE_BOARD_CONFIG_DIR)/uboot-board.dts $(DTS_PATH)/.board-uboot.dts
++	@-cp -v $(LICHEE_BOARD_CONFIG_DIR)/sun20i-mangopi-mq-uboot.dts $(DTS_PATH)/.board-uboot.dts
+ else
+ ifeq (x$(BOARD_DTS_EXIST),xyes)
+ 	@-cp -v $(DTS_PATH)/$(BOARD_DTS_NAME).dts $(DTS_PATH)/.board-uboot.dts
+-- 
+2.17.1
+
