@@ -273,7 +273,7 @@ For further details, see README, generate the Buildroot manual, or consult
 it on-line at http://buildroot.org/docs.html
 ```
 
-# Built-in Script
+# Buildroot-YuzukiSBC Built-in Script
 
 ## For Environment
 
