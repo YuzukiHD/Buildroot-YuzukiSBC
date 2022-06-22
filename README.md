@@ -21,7 +21,19 @@
 </div>
 
 ## Supported Device Lists
-Please visit [Support Lists Page](https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/SupportList)
+Please visit [Support Lists Page]
+
+## Basic Start-up
+
+```
+git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC                   # Clone the code of Buildroot-YuzukiSBC
+cd Buildroot-YuzukiSBC                                                      # Change to the directory
+source envsetup.sh                                                          # Set the build environment
+lunch                                                                       # lunch the buildroot environment
+make yuzukihd_yuzukiruler_defconfig                                         # Select target board
+make                                                                        # Build and pack
+```
+For more details, please check [Documentation]
 
 ## About Buildroot
 
@@ -64,11 +76,9 @@ https://buildroot.org/manual.html#submitting-patches
 [Documentation]: https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/
 [Releases]: https://github.com/yuzukihd/Buildroot-YuzukiSBC/releases
 
+[Support Lists Page]: https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/SupportList
+
 [License]: LICENSE
 
 [Mirror]: https://gitee.com/GloomyGhost/Buildroot-YuzukiSBC 
 [CI]: https://ci.appveyor.com/project/GloomyGhost-MosquitoCoil/buildroot-yuzukisbc
-
-
-[MangoPi-R]: https://github.com/mangopi-sbc/buildroot-mangopi-r
-[Tiny200]: https://github.com/aodzip/buildroot-tiny200
