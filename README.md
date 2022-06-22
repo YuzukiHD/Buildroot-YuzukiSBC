@@ -18,57 +18,12 @@
 [![Badge Build]][CI]
 
 <br>
-
----
-
-<br>
-
- Vendor  | Device      | Chip    | U-Boot  | Linux   | Defconfig |
-:------: | :---------: | :-----: | :-----: | :-----: | :-------: |
-*YuzukiHD* | *YuzukiRuler* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukiruler_defconfig`
-*YuzukiHD* | *YuzukiCore F1* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukicore_f1_defconfig` |
-*YuzukiHD* | *Yuzuki Mavericks* | `F1C200s` | `2020.07` | `5.4.180` | `yuzukihd_yuzukimavericks_defconfig` |
-*YuzukiHD* | *YuzukiCK1N* | `V3x` | `2022.01` | `5.4.180` | `yuzukihd_yuzukick1n_defconfig` |
-*YuzukiHD* | *R11 86 Panel* | `R11` | `2022.01` | `5.4.180` | `yuzukihd_r11_86panel_defconfig` |
-*Sipeed*   | *Lichee Nano* | `F1C100s` | `2020.07` | `5.4.180` | `sipeed_lichee_nano_defconfig` |
-*Sipeed*   | *Lichee Zero* | `V3s` | `2020.07` | `5.4.180` | `sipeed_lichee_zero_defconfig` |
-*Awol*     | *Nezha* | `D1-H` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `awol_nezha_defconfig` |
-*Awol*     | *Nezha-D1s* | `D1s` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `awol_nezha_d1s_defconfig` |
-*MangoPi*  | *MQ* | `D1s` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `mangopi_mq_defconfig` |
-*MangoPi*  | *MQ Dual* | `T113` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `mangopi_mq_dual_defconfig` |
-*MangoPi*  | *MQ Dual HF* | `T113` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `mangopi_mq_dual_hf_defconfig` |
-*MangoPi*  | *MQ Pro* | `D1-H` | `Tina` `UBoot 2018` | `Tina` `Linux 5.4.61` | `mangopi_mq_pro_defconfig` |
-
-<br>
-
----
-
-<br>
-
-
-## Fork Tree
-
-<kbd align = left>
-<br>
-<br>
-  
-   **[Tiny200]**   <br><br>
-   ⤷ **[MangoPi-R]**   <br><br>
-    ⤷ **YuzukiSBC**   
-
-<br>
-</kbd>
-
-<br>
-
----
-
-<br>
-
-## About Buildroot
-
 </div>
 
+## Supported Device Lists
+Please visit [Support Lists Page](https://yuzukihd.gloomyghost.com/Buildroot-YuzukiSBC/#/SupportList)
+
+## About Buildroot
 
 ```
 Buildroot is a simple, efficient and easy-to-use tool to generate embedded
