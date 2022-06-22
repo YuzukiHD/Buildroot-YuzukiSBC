@@ -1,2 +1,2 @@
 * [HOME](/)
-* [SupportList](/SupportList/)
+* [SupportList](/SupportList)
