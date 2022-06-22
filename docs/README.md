@@ -2,7 +2,7 @@
 <p align="center">Open Source development package for for yuzukihd Boards and more boards</p>
 
 # Support Lists
-
+See [SupportList](/SupportList) Page.
 
 # Install BSP
 
