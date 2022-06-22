@@ -3,7 +3,7 @@
 
 # Support Lists
 
-✅: Supported — ❌: NOT support and will NOT support — ⚠️: Not Fully Supported Yet
+✅: Supported — ❌: NOT support and will NOT support — ⚠️: Not Fully Supported Yet - HF: Hardware Float Support
 
 |  Vender  | Device      | Chip    | U-Boot  | Linux   | Defconfig | SPI NOR | SPI NAND | SD CARD | EMMC | Support |
 | -------- | ----------- | ------- | ------- | ------- | --------- | --------- | --------- | --------- | --------- | --------- |
@@ -18,6 +18,7 @@
 | awol   | nezha-d1s | D1s | [tina,uboot 2018](https://github.com/Tina-Linux/uboot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | awol_nezha_d1s_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
 | mangopi   | MQ | D1s | [tina,uboot 2018](https://github.com/Tina-Linux/uboot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | mangopi_mq_defconfig | ❌ | ❌ | ✅ | ❌ | ✅ |
 | mangopi   | MQ Dual | T113 | [tina,uboot 2018](https://github.com/Tina-Linux/uboot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-t113-linux-5.4) | mangopi_mq_dual_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
+| mangopi   | MQ Dual HF | T113 | [tina,uboot 2018](https://github.com/Tina-Linux/uboot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-t113-linux-5.4) | mangopi_mq_dual_hf_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
 | mangopi   | MQ Pro | D1-H | [tina,uboot 2018](https://github.com/Tina-Linux/uboot-2018) | [tina,linux 5.4.61](https://github.com/Tina-Linux/tina-d1x-linux-5.4) | mangopi_mq_pro_defconfig | ❌ | ❌ | ✅ | ❌ | ⚠️ |
 
 # Install BSP
