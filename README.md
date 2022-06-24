@@ -23,15 +23,15 @@
 ## Supported Device Lists
 Please visit [Support Lists Page]
 
-## Basic Start-up
+## Quick Start-up
 
 ```
-git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC                   # Clone the code of Buildroot-YuzukiSBC
-cd Buildroot-YuzukiSBC                                                      # Change to the directory
-source envsetup.sh                                                          # Set the build environment
-lunch                                                                       # lunch the buildroot environment
-make yuzukihd_yuzukiruler_defconfig                                         # Select target board
-make                                                                        # Build and pack
+git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC # Clone the code of Buildroot-YuzukiSBC
+cd Buildroot-YuzukiSBC                                    # Change to the directory
+source envsetup.sh                                        # Set the build environment
+lunch                                                     # lunch the buildroot environment
+make yuzukihd_yuzukiruler_defconfig                       # Select target board
+make                                                      # Build and pack
 ```
 For more details, please check [Documentation]
 
