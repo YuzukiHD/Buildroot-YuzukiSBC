@@ -23,7 +23,7 @@
 ## Supported Device Lists
 Please visit [Support Lists Page]
 
-## Basic Start-up
+## Quick Start-up
 
 ```
 git clone https://github.com/yuzukihd/Buildroot-YuzukiSBC # Clone the code of Buildroot-YuzukiSBC
