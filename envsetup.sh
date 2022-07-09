@@ -17,7 +17,9 @@
 
 # Logo
 
-LOCAL_COMMIT_ID=$(git rev-parse --short HEAD)                
+LOCAL_COMMIT_ID=$(git rev-parse --short HEAD)          
+export SOURCE_PATH=$(pwd)
+export BR2_PATH=$SOURCE_PATH/buildroot
 
 echo " _____ _____ ___    __ __             _   _ _____ _____ _____ "
 echo "| __  | __  |_  |  |  |  |_ _ ___ _ _| |_|_|   __| __  |     |"
@@ -129,6 +131,12 @@ alias suboot="make uboot-update-defconfig"
 
 alias muboot="rebuild_uboot"
 alias ruboot="rebuild_uboot"
+
+# For develop
+alias croot="cd $BR2_PATH"
+alias cconfig="cd $BR2_PATH/configs"
+alias cout="cd $BR2_PATH/output"
+alias cplat="cd $BR2_PATH/board"
 
 LOCAL_COMMIT_ID=$(git rev-parse --short HEAD)
 
