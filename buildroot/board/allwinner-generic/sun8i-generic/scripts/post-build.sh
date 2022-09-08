@@ -1,12 +1,19 @@
 #!/bin/sh
 BOARD_COMMON_DIR="$(dirname $0)/../../$4"
+BOARD_DIR="$(dirname $0)/../../../$6"
 
 # For debug
 echo "Target binary dir $BOARD_COMMON_DIR"
+echo "Target Board $BOARD_DIR"
 
-# Copy Files to BINARY
+# Copy Platfrom Files to BINARY_DIR
 cp $BOARD_COMMON_DIR/bin/* -rfvd  $BINARIES_DIR
+
+# Copy common file to BINARY_DIR
 cp $BOARD_COMMON_DIR/../sunxi-generic/bin/* -rfvd  $BINARIES_DIR
+
+# overlay bin file to BINARY_DIR
+cp $BOARD_DIR/bin/* -rfvd  $BINARIES_DIR
 
 cd $BINARIES_DIR
 echo "item=dtb, $5" >> boot_package.cfg
