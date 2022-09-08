@@ -1,0 +1,330 @@
+/*
+ * Allwinner Technology CO., Ltd. sun20iw1p1 soc board.
+ *
+ * soc board support.
+ */
+/dts-v1/;
+
+#include "sun20iw1p1-soc-system.dtsi"
+
+&platform {
+	eraseflag   = <1>;
+	next_work   = <3>;
+	debug_mode  = <1>;
+};
+
+&target {
+	boot_clock = <720>;	/*CPU boot frequency, Unit: MHz*/
+	storage_type = <0xffffffff>; /*boot medium, 0-nand, 1-card0, 2-card2, -1(defualt)auto scan*/
+	burn_key = <0>;		/*1:support burn key; 0:not support burn key*/
+	dragonboard_test = <0>;	/*1:support card boot dragonboard; 0:not support card boot dragonboard*/
+};
+
+&charger0 {
+	pmu_safe_vol = <3500>;
+};
+
+&twi6 {
+	clock-frequency = <200000>;
+	pinctrl-0 = <&s_twi0_pins_a>;
+	no_suspend = <1>;
+	twi_drv_used = <1>;
+	status = "okay";
+};
+
+&pwm2_pin_a {
+	pins = "PD18";
+	function = "pwm2";
+	muxsel = <5>;
+	drive-strength = <10>;
+	bias-pull-up;
+};
+
+&pwm2_pin_b {
+	pins = "PD18";
+	muxsel = <0>;
+	function = "gpio_out";
+};
+
+&pwm2 {
+	pinctrl-names = "active", "sleep";
+	pinctrl-0 = <&pwm2_pin_a>;
+	pinctrl-1 = <&pwm2_pin_b>;
+	status = "okay";
+};
+
+&pwm7_pin_a {
+	pins = "PD22";
+	function = "pwm7";
+	muxsel = <5>;
+	drive-strength = <10>;
+	bias-pull-up;
+};
+
+&pwm7_pin_b {
+	pins = "PD22";
+	muxsel = <0>;
+	function = "gpio_in";
+};
+
+&pwm7 {
+	pinctrl-names = "active", "sleep";
+	pinctrl-0 = <&pwm7_pin_a>;
+	pinctrl-1 = <&pwm7_pin_b>;
+	status = "okay";
+};
+
+&sdc0_pins_a {
+	allwinner,pins = "PF0", "PF1", "PF2",
+			 "PF3", "PF4", "PF5";
+	allwinner,function = "sdc0";
+	allwinner,muxsel = <2>;
+	allwinner,drive = <3>;
+	allwinner,pull = <1>;
+	pins = "PF0", "PF1", "PF2",
+	       "PF3", "PF4", "PF5";
+	function = "sdc0";
+	drive-strength = <30>;
+	bias-pull-up;
+	power-source = <3300>;
+};
+
+&sdc0_pins_b {
+	pins = "PF0", "PF1", "PF2",
+	       "PF3", "PF4", "PF5";
+	function = "sdc0";
+	drive-strength = <30>;
+	bias-pull-up;
+	power-source = <1800>;
+};
+
+&sdc0_pins_c {
+	pins = "PF0", "PF1", "PF2",
+			"PF3", "PF4", "PF5";
+	function = "gpio_in";
+};
+
+&sdc2_pins_a {
+	allwinner,pins = "PC2", "PC3", "PC4",
+			 "PC5", "PC6", "PC7";
+	allwinner,function = "sdc2";
+	allwinner,muxsel = <3>;
+	allwinner,drive = <3>;
+	allwinner,pull = <1>;
+	pins = "PC2", "PC3", "PC4",
+		"PC5", "PC6", "PC7";
+	function = "sdc2";
+	drive-strength = <30>;
+	bias-pull-up;
+};
+
+&sdc2_pins_b {
+	pins = "PC2", "PC3", "PC4",
+	       "PC5", "PC6", "PC7";
+	function = "gpio_in";
+};
+
+&nand0_pins_a {
+	allwinner,pins = "PC0", "PC1", "PC2", "PC5",
+			 "PC8", "PC9", "PC10", "PC11",
+			 "PC12", "PC13", "PC14", "PC15",
+			 "PC16";
+	allwinner,pname= "nand0_we", "nand0_ale","nand0_cle", "nand0_nre",
+			 "nand0_d0", "nand0_d1", "nand0_d2", "nand0_d3",
+			 "nand0_d4", "nand0_d5", "nand0_d6", "nand0_d7",
+			 "nand0_ndqs";
+	allwinner,function = "nand0";
+	allwinner,muxsel = <2>;
+	allwinner,drive = <1>;
+	allwinner,pull = <0>;
+};
+
+&nand0_pins_b {
+	allwinner,pins = "PC4", "PC6", "PC03", "PC07";
+	allwinner,pname= "nand0_ce0", "nand0_rb0", "nand0_ce1", "nand0_rb1";
+	allwinner,function = "nand0";
+	allwinner,muxsel = <2>;
+	allwinner,drive = <1>;
+	allwinner,pull = <1>;	/* only RB&CE should be pulled up */
+};
+
+&nand0_pins_c {
+	allwinner,pins = "PC0", "PC1", "PC2", "PC3",
+			 "PC4", "PC5", "PC6", "PC7",
+			 "PC8", "PC9", "PC10", "PC11",
+			 "PC12", "PC13", "PC14", "PC15",
+			 "PC16";
+	allwinner,function = "io_disabled";
+	allwinner,muxsel = <7>;
+	allwinner,drive = <1>;
+	allwinner,pull = <0>;
+};
+
+&card0_boot_para {  /* Avoid dtc compiling warnings. @TODO: Developer should modify this to the actual value */
+	/* reg = <0x0 0x2 0x0 0x0>;  [> Avoid dtc compiling warnings. @TODO: Developer should modify this to the actual value <] */
+	device_type = "card0_boot_para";
+	card_ctrl = <0x0>;
+	card_high_speed = <0x1>;
+	card_line = <0x4>;
+	pinctrl-0 = <&sdc0_pins_a>;
+};
+
+&card2_boot_para {  /* Avoid dtc compiling warnings. @TODO: Developer should modify this to the actual value */
+	/* reg = <0x0 0x3 0x0 0x0>;  [> Avoid dtc compiling warnings. @TODO: Developer should modify this to the actual value <] */
+	device_type = "card2_boot_para";
+	card_ctrl = <0x2>;
+	card_high_speed = <0x1>;
+	card_line = <0x4>;
+	pinctrl-0 = <&sdc2_pins_a>;
+	sdc_ex_dly_used = <0x2>;
+	sdc_tm4_hs200_max_freq = <150>;
+	sdc_tm4_hs400_max_freq = <100>;
+};
+
+&gpio_bias {  /* Avoid dtc compiling warnings. @TODO: Developer should modify this to the actual value */
+	device_type = "gpio_bias";
+};
+
+&nand0 {
+	compatible = "allwinner,sun20iw1-nand";
+	device_type = "nand0";
+	//reg = <0x0 0x04011000 0x0 0x1000>;/* nand0 */
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&nand0_pins_a &nand0_pins_b>;
+	pinctrl-1 = <&nand0_pins_c>;
+	nand0_regulator1 = "vcc-nand";
+	nand0_regulator2 = "none";
+	nand0_cache_level = <0x55aaaa55>;
+	nand0_flush_cache_num = <0x55aaaa55>;
+	nand0_capacity_level = <0x55aaaa55>;
+	nand0_id_number_ctl = <0x55aaaa55>;
+	nand0_print_level = <0x55aaaa55>;
+	nand0_p0 = <0x55aaaa55>;
+	nand0_p1 = <0x55aaaa55>;
+	nand0_p2 = <0x55aaaa55>;
+	nand0_p3 = <0x55aaaa55>;
+	chip_code = "sun20iw1";
+	status = "disabled";
+};
+
+&disp {
+	disp_init_enable         = <1>;
+	disp_mode                = <0>;
+
+	screen0_output_type      = <1>;
+	screen0_output_mode      = <4>;
+
+	screen1_output_type      = <3>;
+	screen1_output_mode      = <10>;
+
+	screen1_output_format    = <0>;
+	screen1_output_bits      = <0>;
+	screen1_output_eotf      = <4>;
+	screen1_output_cs        = <257>;
+	screen1_output_dvi_hdmi  = <2>;
+	screen1_output_range     = <2>;
+	screen1_output_scan      = <0>;
+	screen1_output_aspect_ratio = <8>;
+
+	dev0_output_type         = <1>;
+	dev0_output_mode         = <4>;
+	dev0_screen_id           = <0>;
+	dev0_do_hpd              = <0>;
+
+	dev1_output_type         = <4>;
+	dev1_output_mode         = <10>;
+	dev1_screen_id           = <1>;
+	dev1_do_hpd              = <1>;
+
+	def_output_dev           = <0>;
+	hdmi_mode_check          = <1>;
+
+	fb0_format               = <0>;
+	fb0_width                = <0>;
+	fb0_height               = <0>;
+
+	fb1_format               = <0>;
+	fb1_width                = <0>;
+	fb1_height               = <0>;
+	chn_cfg_mode             = <1>;
+
+	disp_para_zone           = <1>;
+	/*VCC-LCD*/
+/*	dc1sw-supply = <&reg_dc1sw>;*/
+	/*VCC-DSI*/
+/*	eldo3-supply = <&reg_eldo3>;*/
+	/*VCC-PD*/
+/*	dcdc1-supply = <&reg_dcdc1>;*/
+};
+
+&lcd0 {
+	lcd_used            = <1>;
+
+	lcd_driver_name     = "default_lcd";
+	lcd_backlight       = <100>;
+	lcd_if              = <0>;
+
+	lcd_x               = <480>;
+	lcd_y               = <272>;
+	lcd_width           = <150>;
+	lcd_height          = <94>;
+	lcd_dclk_freq       = <25>;
+	lcd_hv_clk_phase    = <0>;
+	lcd_hv_sync_polarity= <3>;
+
+	lcd_pwm_used        = <1>;
+	lcd_pwm_ch          = <7>;
+	lcd_pwm_freq        = <500>;
+	lcd_pwm_pol         = <0>;
+
+	lcd_hbp             = <46>;
+	lcd_ht              = <1055>;
+	lcd_hspw            = <0>;
+	lcd_vbp             = <23>;
+	lcd_vt              = <525>;
+	lcd_vspw            = <0>;
+
+	lcd_lvds_if         = <0>;
+	lcd_lvds_colordepth = <1>;
+	lcd_lvds_mode       = <0>;
+	lcd_frm             = <1>;
+	lcd_io_phase        = <0x0000>;
+	lcd_gamma_en        = <0>;
+	lcd_bright_curve_en = <0>;
+	lcd_cmap_en         = <0>;
+
+	pinctrl-0 = <&rgb18_pins_a>;
+	pinctrl-1 = <&rgb18_pins_b>;
+};
+
+&hdmi {
+	hdmi_used = <1>;
+	hdmi_power_cnt = <0>;
+	hdmi_hdcp_enable = <1>;
+	hdmi_hdcp22_enable = <0>;
+	hdmi_cec_support = <1>;
+	hdmi_cec_super_standby = <0>;
+
+	ddc_en_io_ctrl = <0>;
+	power_io_ctrl = <0>;
+};
+
+&aliases {
+	nand0 = &nand0;
+	twi6 = &twi6;
+	pwm = &pwm;
+	pwm0 = &pwm0;
+	pwm1 = &pwm1;
+	pwm2 = &pwm2;
+	pwm3 = &pwm3;
+	pwm4 = &pwm4;
+	pwm5 = &pwm5;
+	pwm6 = &pwm6;
+	pwm7 = &pwm7;
+	disp = &disp;
+	hdmi = &hdmi;
+	lcd0 = &lcd0;
+	lcd1 = &lcd1;
+	eink = &eink;
+	spi0 = &spi0;
+};

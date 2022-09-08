@@ -1,0 +1,20 @@
+From 12a0850cae90d18ddc36b15f0f63031f0e9de8b3 Mon Sep 17 00:00:00 2001
+From: YuzukiTsuru <gloomyghost@gloomyghost.com>
+Date: Mon, 28 Mar 2022 00:14:09 +0800
+Subject: [PATCH] rename linux dtb build file
+
+---
+ arch/riscv/boot/dts/sunxi/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/riscv/boot/dts/sunxi/Makefile b/arch/riscv/boot/dts/sunxi/Makefile
+index 7a7c38bb7..96061de15 100644
+--- a/arch/riscv/boot/dts/sunxi/Makefile
++++ b/arch/riscv/boot/dts/sunxi/Makefile
+@@ -1,2 +1,2 @@
+ # SPDX-License-Identifier: GPL-2.0
+-dtb-$(CONFIG_ARCH_SUNXI) += board.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += ../sun20i-d1s-nezha-linux.dtb
+-- 
+2.17.1
+
