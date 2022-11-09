@@ -15,7 +15,6 @@
 # General Public License for more details.
 #
 
-# Logo
 
 LOCAL_COMMIT_ID=$(git rev-parse --short HEAD)          
 export SOURCE_PATH=$(pwd)
@@ -26,15 +25,15 @@ echo "| __  | __  |_  |  |  |  |_ _ ___ _ _| |_|_|   __| __  |     |"
 echo "| __ -|    -|  _|  |_   _| | |- _| | | '_| |__   | __ -|   --|"
 echo "|_____|__|__|___|    |_| |___|___|___|_,_|_|_____|_____|_____|"
 echo -e "Commit:      $LOCAL_COMMIT_ID\n"
-                                                              
-# WSL SUpport 
+
+# WSL SUpport
 if [ $(uname -r | grep -c "WSL1") -eq 1 ];
-then 
+then
     # Not support WSL 1
     echo "#### Buildroot-YuzukiSBC Not Support WSL 1 ####"
     exit 1
 elif [ $(uname -r | grep -c "WSL2") -eq 1 ];
-then 
+then
     echo "Buildroot-YuzukiSBC Now running on WSL2, setting PATH..."
     export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib"
 fi
