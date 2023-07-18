@@ -1,0 +1,681 @@
+diff --git a/arch/arm/dts/Makefile b/arch/arm/dts/Makefile
+index 72d6696c..6126a060 100644
+--- a/arch/arm/dts/Makefile
++++ b/arch/arm/dts/Makefile
+@@ -655,7 +655,8 @@ dtb-$(CONFIG_MACH_SUN50I_H6) += \
+ 	sun50i-h6-pine-h64-model-b.dtb \
+ 	sun50i-h6-tanix-tx6.dtb
+ dtb-$(CONFIG_MACH_SUN50I_H616) += \
+-	sun50i-h616-orangepi-zero2.dtb
++	sun50i-h616-orangepi-zero2.dtb \
++	sun50i-h616-mangopi-mcore.dtb
+ dtb-$(CONFIG_MACH_SUN50I) += \
+ 	sun50i-a64-amarula-relic.dtb \
+ 	sun50i-a64-bananapi-m64.dtb \
+diff --git a/arch/arm/dts/sun50i-h616-mangopi-mcore.dts b/arch/arm/dts/sun50i-h616-mangopi-mcore.dts
+new file mode 100644
+index 00000000..177bcc74
+--- /dev/null
++++ b/arch/arm/dts/sun50i-h616-mangopi-mcore.dts
+@@ -0,0 +1,242 @@
++// SPDX-License-Identifier: (GPL-2.0+ or MIT)
++/*
++ * Copyright (C) 2020 Arm Ltd.
++ */
++
++/dts-v1/;
++
++#include "sun50i-h616.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++#include <dt-bindings/leds/common.h>
++
++/ {
++	model = "MangoPi Mcore";
++	compatible = "mgcc,mangopi-mcore", "allwinner,sun50i-h616";
++
++	aliases {
++		ethernet0 = &emac1;
++		serial0 = &uart0;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		led-0 {
++			function = LED_FUNCTION_POWER;
++			color = <LED_COLOR_ID_RED>;
++			gpios = <&pio 2 12 GPIO_ACTIVE_HIGH>; /* PC12 */
++			default-state = "on";
++		};
++
++		led-1 {
++			function = LED_FUNCTION_STATUS;
++			color = <LED_COLOR_ID_GREEN>;
++			gpios = <&pio 2 13 GPIO_ACTIVE_HIGH>; /* PC13 */
++		};
++	};
++
++	reg_vcc5v: vcc5v {
++		/* board wide 5V supply directly from the USB-C socket */
++		compatible = "regulator-fixed";
++		regulator-name = "vcc-5v";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		regulator-always-on;
++	};
++
++	reg_usb1_vbus: usb1-vbus {
++		compatible = "regulator-fixed";
++		regulator-name = "usb1-vbus";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		vin-supply = <&reg_vcc5v>;
++		enable-active-high;
++		gpio = <&pio 2 16 GPIO_ACTIVE_HIGH>; /* PC16 */
++		status = "okay";
++	};
++};
++
++&ehci0 {
++	status = "okay";
++};
++
++&ehci1 {
++	status = "okay";
++};
++
++/* USB 2 & 3 are on headers only. */
++
++&emac1 {
++        pinctrl-names = "default";
++	pinctrl-0 = <&rmii_pins>;
++	phy-mode = "rmii";
++	phy-handle = <&rmii_phy>;
++	phy-supply = <&reg_aldo1>;
++	allwinner,rx-delay-ps = <3100>;
++	allwinner,tx-delay-ps = <700>;
++	status = "okay";
++};
++
++&mdio1 {
++	rmii_phy: ethernet-phy@16 {
++		compatible = "ethernet-phy-ieee802.3-c22";
++		reg = <16>;
++	};
++};
++
++&mmc0 {
++	vmmc-supply = <&reg_dcdce>;
++	cd-gpios = <&pio 5 6 GPIO_ACTIVE_LOW>;	/* PF6 */
++	bus-width = <4>;
++	status = "okay";
++};
++
++&ohci0 {
++	status = "okay";
++};
++
++&ohci1 {
++	status = "okay";
++};
++
++&r_rsb {
++	status = "okay";
++
++	axp305: pmic@745 {
++		compatible = "x-powers,axp305", "x-powers,axp805",
++			     "x-powers,axp806";
++		interrupt-controller;
++		#interrupt-cells = <1>;
++		reg = <0x745>;
++
++		x-powers,self-working-mode;
++		vina-supply = <&reg_vcc5v>;
++		vinb-supply = <&reg_vcc5v>;
++		vinc-supply = <&reg_vcc5v>;
++		vind-supply = <&reg_vcc5v>;
++		vine-supply = <&reg_vcc5v>;
++		aldoin-supply = <&reg_vcc5v>;
++		bldoin-supply = <&reg_vcc5v>;
++		cldoin-supply = <&reg_vcc5v>;
++
++		regulators {
++			reg_aldo1: aldo1 {
++				regulator-always-on;
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-name = "vcc-sys";
++			};
++
++			reg_aldo2: aldo2 {	/* 3.3V on headers */
++				regulator-always-on;
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-name = "vcc3v3-ext";
++			};
++
++			reg_aldo3: aldo3 {	/* 3.3V on headers */
++				regulator-always-on;
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-name = "vcc3v3-ext2";
++			};
++
++			reg_bldo1: bldo1 {
++				regulator-always-on;
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-name = "vcc1v8";
++			};
++
++			bldo2 {
++				/* unused */
++			};
++
++			bldo3 {
++				/* unused */
++			};
++
++			bldo4 {
++				/* unused */
++			};
++
++			cldo1 {
++				/* reserved */
++			};
++
++			cldo2 {
++				/* unused */
++			};
++
++			cldo3 {
++				/* unused */
++			};
++
++			reg_dcdca: dcdca {
++				regulator-always-on;
++				regulator-min-microvolt = <810000>;
++				regulator-max-microvolt = <1080000>;
++				regulator-name = "vdd-cpu";
++			};
++
++			reg_dcdcc: dcdcc {
++				regulator-always-on;
++				regulator-min-microvolt = <810000>;
++				regulator-max-microvolt = <1080000>;
++				regulator-name = "vdd-gpu-sys";
++			};
++
++			reg_dcdcd: dcdcd {
++				regulator-always-on;
++				regulator-min-microvolt = <1500000>;
++				regulator-max-microvolt = <1500000>;
++				regulator-name = "vdd-dram";
++			};
++
++			reg_dcdce: dcdce {
++				regulator-boot-on;
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-name = "vcc-eth-mmc";
++			};
++
++			sw {
++				/* unused */
++			};
++		};
++	};
++};
++
++&spi0  {
++	status = "okay";
++
++	flash@0 {
++		#address-cells = <1>;
++		#size-cells = <1>;
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <40000000>;
++	};
++};
++
++&uart0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart0_ph_pins>;
++	status = "okay";
++};
++
++&usbotg {
++	dr_mode = "peripheral";
++	status = "okay";
++};
++
++&usbphy {
++	usb1_vbus-supply = <&reg_usb1_vbus>;
++	status = "okay";
++};
+diff --git a/arch/arm/dts/sun50i-h616.dtsi b/arch/arm/dts/sun50i-h616.dtsi
+index dd4d2f31..84b80156 100644
+--- a/arch/arm/dts/sun50i-h616.dtsi
++++ b/arch/arm/dts/sun50i-h616.dtsi
+@@ -152,6 +152,13 @@
+ 				drive-strength = <40>;
+ 			};
+ 
++			rmii_pins: rmii-pins {
++				pins = "PA0", "PA1", "PA2", "PA3", "PA4",
++				       "PA5", "PA6", "PA7", "PA8", "PA9";
++				function = "emac1";
++				drive-strength = <40>;
++			};
++
+ 			i2c0_pins: i2c0-pins {
+ 				pins = "PI6", "PI7";
+ 				function = "i2c0";
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index 14c0f3b6..05fed67e 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -776,7 +776,7 @@ config I2C2_ENABLE
+ 	---help---
+ 	See I2C0_ENABLE help text.
+ 
+-if MACH_SUN6I || MACH_SUN7I
++if MACH_SUN6I || MACH_SUN7I|| MACH_SUN50I_H616
+ config I2C3_ENABLE
+ 	bool "Enable I2C/TWI controller 3"
+ 	default n
+diff --git a/arch/arm/mach-sunxi/board.c b/arch/arm/mach-sunxi/board.c
+index c6ae5b66..5ab96049 100644
+--- a/arch/arm/mach-sunxi/board.c
++++ b/arch/arm/mach-sunxi/board.c
+@@ -348,6 +348,7 @@ void board_init_f(ulong dummy)
+ #ifdef CONFIG_SPL_I2C
+ 	/* Needed early by sunxi_board_init if PMU is enabled */
+ 	i2c_init(CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
++	i2c_set_bus_num(1);
+ #endif
+ 	sunxi_board_init();
+ }
+diff --git a/arch/arm/mach-sunxi/clock_sun50i_h6.c b/arch/arm/mach-sunxi/clock_sun50i_h6.c
+index b97a09c3..b70b9beb 100644
+--- a/arch/arm/mach-sunxi/clock_sun50i_h6.c
++++ b/arch/arm/mach-sunxi/clock_sun50i_h6.c
+@@ -35,6 +35,11 @@ void clock_init_safe(void)
+ 	 * DRAM initialization code.
+ 	 */
+ 	writel(MBUS_CLK_SRC_PLL6X2 | MBUS_CLK_M(3), &ccm->mbus_cfg);
++	/* add by rll for pwm ephy */
++	writel(0x10001, 0x030017ac);
++	writel(0x80004, 0x0300a104);
++	writel(0x50, 0x0300a028);
++	writel(0x20, 0x0300a040);
+ }
+ #endif
+ 
+diff --git a/arch/arm/mach-sunxi/dram_sun50i_h616.c b/arch/arm/mach-sunxi/dram_sun50i_h616.c
+index acdfb3ce..83e8abc2 100644
+--- a/arch/arm/mach-sunxi/dram_sun50i_h616.c
++++ b/arch/arm/mach-sunxi/dram_sun50i_h616.c
+@@ -360,7 +360,7 @@ static bool mctl_phy_read_calibration(struct dram_para *para)
+ 			}
+ 		}
+ 
+-		setbits_le32(SUNXI_DRAM_PHY0_BASE + 8, 1);
++		clrbits_le32(SUNXI_DRAM_PHY0_BASE + 8, 1);
+ 	}
+ 
+ 	clrbits_le32(SUNXI_DRAM_PHY0_BASE + 8, 0x30);
+@@ -720,7 +720,7 @@ static bool mctl_phy_init(struct dram_para *para)
+ 	writel(0x80, SUNXI_DRAM_PHY0_BASE + 0x3dc);
+ 	writel(0x80, SUNXI_DRAM_PHY0_BASE + 0x45c);
+ 
+-	if (IS_ENABLED(DRAM_ODT_EN))
++	if (IS_ENABLED(CONFIG_DRAM_ODT_EN))
+ 		mctl_phy_configure_odt();
+ 
+ 	clrsetbits_le32(SUNXI_DRAM_PHY0_BASE + 4, 7, 0xa);
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index c4f69966..38f9a6ba 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -43,6 +43,7 @@
+ #include <fdt_support.h>
+ #include <nand.h>
+ #include <net.h>
++#include <i2c.h>
+ #include <spl.h>
+ #include <sy8106a.h>
+ #include <asm/setup.h>
+@@ -181,6 +182,13 @@ void i2c_init_board(void)
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPI(0), SUN7I_GPI_TWI3);
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPI(1), SUN7I_GPI_TWI3);
+ 	clock_twi_onoff(3, 1);
++#elif defined(CONFIG_MACH_SUN50I_H616)
++	sunxi_gpio_set_cfgpin(SUNXI_GPA(10), 2);
++	sunxi_gpio_set_cfgpin(SUNXI_GPA(11), 2);
++	sunxi_gpio_set_cfgpin(SUNXI_GPA(12), 2);
++	sunxi_gpio_set_pull(SUNXI_GPA(10), SUNXI_GPIO_PULL_UP);
++	sunxi_gpio_set_pull(SUNXI_GPA(11), SUNXI_GPIO_PULL_UP);
++	clock_twi_onoff(3, 1);	
+ #endif
+ #endif
+ 
+@@ -677,9 +685,13 @@ static void sunxi_spl_store_dram_size(phys_addr_t dram_size)
+ 	spl->dram_size = dram_size >> 20;
+ }
+ 
++#define sunxi_ac300_key (1<<8)
++
+ void sunxi_board_init(void)
+ {
+ 	int power_failed = 0;
++        int val;
++        u8 data[2];
+ 
+ #ifdef CONFIG_MACH_SUN8I_H3
+ 	/* turn on power LED (PL10) on H3 boards */
+@@ -762,8 +774,31 @@ void sunxi_board_init(void)
+ 	 */
+ 	if (!power_failed)
+ 		clock_set_pll1(CONFIG_SYS_CLK_FREQ);
+-	else
+-		printf("Failed to set core voltage! Can't set CPU frequency\n");
++	else {
++		clock_set_pll1(792000000);
++		printf("Failed to set core voltage!   set CPU 792000000hz frequency\n");
++	}
++
++     val=readl(0x300622c);      
++     if((val&sunxi_ac300_key)==0)
++     {
++	i2c_set_bus_num(0);
++	data[0] = 0;
++	data[1] = 0;
++	i2c_write(0x10, 0xfe, 1, data, 2);
++	i2c_write(0x10, 2, 1, data, 2);
++	data[1] = 1;
++	i2c_write(0x10, 2, 1, data, 2);
++	data[1] = 0xf;
++	i2c_write(0x10, 0x16, 1, data, 2);
++	data[1] = 3;
++	i2c_write(0x10, 0x14, 1, data, 2);
++	data[1] = 0x60;
++	i2c_write(0x10, 0xfe, 1, data, 2);
++	data[0] = 0x08;
++	data[1] = 0x14;
++	i2c_write(0x10, 0, 1, data, 2);	
++    }
+ }
+ #endif
+ 
+diff --git a/configs/mangopi_mcore_defconfig b/configs/mangopi_mcore_defconfig
+new file mode 100644
+index 00000000..20cbdbb1
+--- /dev/null
++++ b/configs/mangopi_mcore_defconfig
+@@ -0,0 +1,16 @@
++CONFIG_ARM=y
++CONFIG_ARCH_SUNXI=y
++CONFIG_DEFAULT_DEVICE_TREE="sun50i-h616-mangopi-mcore"
++CONFIG_SPL=y
++CONFIG_DRAM_SUN50I_H616_WRITE_LEVELING=y
++CONFIG_DRAM_SUN50I_H616_READ_CALIBRATION=y
++CONFIG_DRAM_SUN50I_H616_READ_TRAINING=y
++CONFIG_DRAM_SUN50I_H616_WRITE_TRAINING=y
++CONFIG_MACH_SUN50I_H616=y
++CONFIG_MMC0_CD_PIN="PF6"
++CONFIG_R_I2C_ENABLE=y
++# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
++CONFIG_SPL_I2C=y
++CONFIG_PHY_REALTEK=y
++CONFIG_SUN8I_EMAC=y
++CONFIG_I2C3_ENABLE=y
+diff --git a/drivers/net/phy/phy.c b/drivers/net/phy/phy.c
+index 69acb694..218115b3 100644
+--- a/drivers/net/phy/phy.c
++++ b/drivers/net/phy/phy.c
+@@ -16,6 +16,7 @@
+ #include <command.h>
+ #include <miiphy.h>
+ #include <phy.h>
++#include <asm/io.h>
+ #include <errno.h>
+ #include <asm/global_data.h>
+ #include <dm/of_extra.h>
+@@ -384,10 +385,79 @@ int genphy_parse_link(struct phy_device *phydev)
+ 	return 0;
+ }
+ 
++static void disable_intelligent_ieee(struct phy_device *phydev)
++{
++	unsigned int value;
++
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0100);	/* switch to page 1 */
++	value = phy_read(phydev, MDIO_DEVAD_NONE, 0x17);		/* read address 0 0x17 register */
++	value &= ~(1 << 3);			/* reg 0x17 bit 3, set 0 to disable IEEE */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x17, value);
++	phy_write(phydev, MDIO_DEVAD_NONE,0x1f, 0x0000);	/* switch to page 0 */
++}
++
++static void disable_802_3az_ieee(struct phy_device *phydev)
++{
++	unsigned int value;
++
++	phy_write(phydev, MDIO_DEVAD_NONE, 0xd, 0x7);
++	phy_write(phydev, MDIO_DEVAD_NONE, 0xe, 0x3c);
++	phy_write(phydev, MDIO_DEVAD_NONE, 0xd, 0x1 << 14 | 0x7);
++	value = phy_read(phydev, MDIO_DEVAD_NONE, 0xe);
++	value &= ~(0x1 << 1);
++	phy_write(phydev, MDIO_DEVAD_NONE, 0xd, 0x7);
++	phy_write(phydev, MDIO_DEVAD_NONE, 0xe, 0x3c);
++	phy_write(phydev, MDIO_DEVAD_NONE, 0xd, 0x1 << 14 | 0x7);
++	phy_write(phydev, MDIO_DEVAD_NONE, 0xe, value);
++
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0200);	/* switch to page 2 */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x0000);
++}
++
++static void ephy_config_default(struct phy_device *phydev)
++{
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0100);	/* Switch to Page 1 */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x12, 0x4824);	/* Disable APS */
++
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0200);	/* Switch to Page 2 */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x0000);	/* PHYAFE TRX optimization */
++
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0600);	/* Switch to Page 6 */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x14, 0x708b);	/* PHYAFE TX optimization */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x13, 0xF000);	/* PHYAFE RX optimization */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x15, 0x1530);
++
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0800);	/* Switch to Page 6 */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x00bc);	/* PHYAFE TRX optimization */
++}
++
++static void __maybe_unused ephy_config_fixed(struct phy_device *phydev)
++{
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0100);	/*switch to Page 1 */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x12, 0x4824);	/*Disable APS */
++
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0200);	/*switch to Page 2 */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x0000);	/*PHYAFE TRX optimization */
++
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0600);	/*switch to Page 6 */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x14, 0x7809);	/*PHYAFE TX optimization */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x13, 0xf000);	/*PHYAFE RX optimization */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x10, 0x5523);
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x15, 0x3533);
++
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0800);	/*switch to Page 8 */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x1d, 0x0844);	/*disable auto offset */
++	phy_write(phydev, MDIO_DEVAD_NONE, 0x18, 0x00bc);	/*PHYAFE TRX optimization */
++
++}
++
++#define sunxi_ac300_key (1<<8)
++
+ int genphy_config(struct phy_device *phydev)
+ {
+ 	int val;
+ 	u32 features;
++        u16 sid_value;
+ 
+ 	features = (SUPPORTED_TP | SUPPORTED_MII
+ 			| SUPPORTED_AUI | SUPPORTED_FIBRE |
+@@ -431,7 +501,37 @@ int genphy_config(struct phy_device *phydev)
+ 	phydev->advertising &= features;
+ 
+ 	genphy_config_aneg(phydev);
+-
++	
++        val=readl(0x300622c);
++        sid_value=0xffff&val;
++        if(val&sunxi_ac300_key)
++        {
++	/*add by rll for h313/H616 emac1 ephy  bb version bug*/
++        phy_write(phydev, MDIO_DEVAD_NONE, 0, 0x1f83);
++        phy_write(phydev, MDIO_DEVAD_NONE, 0, 0x1fb7);
++        phy_write(phydev, MDIO_DEVAD_NONE, 5, 0xa81f);
++        phy_write(phydev, MDIO_DEVAD_NONE, 6, 0);
++        udelay(500000);
++
++        val=phy_read(phydev, MDIO_DEVAD_NONE, 6);
++        val&=~(0x0f<<12);
++       val|=(0x0f&(0x03+sid_value))<<12;
++        phy_write(phydev,MDIO_DEVAD_NONE, 6,val);
++        
++        if(sid_value&0x200)
++             ephy_config_fixed(phydev);
++        else   ephy_config_default(phydev);
++        
++        disable_intelligent_ieee(phydev);
++        
++        disable_802_3az_ieee(phydev);
++        phy_write(phydev, MDIO_DEVAD_NONE, 0x1f, 0x0000);
++        
++        val=phy_read(phydev, MDIO_DEVAD_NONE, 6);
++        val|=(0x1<<11);
++        phy_write(phydev,MDIO_DEVAD_NONE, 6,val);
++        /*add end*/
++        }
+ 	return 0;
+ }
+ 
+diff --git a/drivers/net/sun8i_emac.c b/drivers/net/sun8i_emac.c
+index d7553fe1..e90f9a74 100644
+--- a/drivers/net/sun8i_emac.c
++++ b/drivers/net/sun8i_emac.c
+@@ -340,7 +340,7 @@ static int sun8i_emac_set_syscon(struct sun8i_eth_pdata *pdata,
+ 		return 0;
+ 	}
+ 
+-	reg = readl(priv->sysctl_reg + 0x30);
++	reg = readl(priv->sysctl_reg + 0x34);
+ 
+ 	reg = sun8i_emac_set_syscon_ephy(priv, reg);
+ 
+@@ -381,7 +381,7 @@ static int sun8i_emac_set_syscon(struct sun8i_eth_pdata *pdata,
+ 		reg |= ((pdata->rx_delay_ps / 100) << SC_ERXDC_OFFSET)
+ 			 & SC_ERXDC_MASK;
+ 
+-	writel(reg, priv->sysctl_reg + 0x30);
++	writel(reg, priv->sysctl_reg + 0x34);
+ 
+ 	return 0;
+ }
+@@ -1013,6 +1013,8 @@ static const struct udevice_id sun8i_emac_eth_ids[] = {
+ 		.data = (uintptr_t)R40_GMAC },
+ 	{.compatible = "allwinner,sun50i-h6-emac",
+ 		.data = (uintptr_t)H6_EMAC },
++	{.compatible = "allwinner,sun50i-h616-emac",
++		.data = (uintptr_t)H6_EMAC },		
+ 	{ }
+ };
+ 
+diff --git a/drivers/power/axp305.c b/drivers/power/axp305.c
+index 0191e4d4..0668a346 100644
+--- a/drivers/power/axp305.c
++++ b/drivers/power/axp305.c
+@@ -31,7 +31,7 @@ int axp_set_dcdc4(unsigned int mvolt)
+ {
+ 	int ret;
+ 	u8 cfg;
+-
++#if 0
+ 	if (mvolt >= 1600)
+ 		cfg = AXP305_DCDC4_1600MV_OFFSET +
+ 			axp305_mvolt_to_cfg(mvolt, 1600, 3300, 100);
+@@ -48,8 +48,38 @@ int axp_set_dcdc4(unsigned int mvolt)
+ 
+ 	return pmic_bus_setbits(AXP305_OUTPUT_CTRL1,
+ 				AXP305_OUTPUT_CTRL1_DCDCD_EN);
++#endif
++	return 0;			
+ }
+ 
++#define AXP305_DCDC3_1200MV_OFFSET 71
++int axp_set_dcdc3(unsigned int mvolt)
++{
++	int ret;
++	u8 cfg;
++
++	if (mvolt >= 1220)
++		cfg = AXP305_DCDC3_1200MV_OFFSET +
++			axp305_mvolt_to_cfg(mvolt, 1220, 1840, 20);
++	else
++		cfg = axp305_mvolt_to_cfg(mvolt, 500, 1200, 10);
++
++	if (mvolt == 0)
++		return pmic_bus_clrbits(AXP305_OUTPUT_CTRL1,
++					AXP305_OUTPUT_CTRL1_DCDCD_EN);
++
++	ret = pmic_bus_write(AXP305_DCDCD_VOLTAGE, cfg);
++	if (ret)
++		return ret;
++		
++//	ret = pmic_bus_write(0x12, 0x7);
++//	if (ret)
++//		return ret;
++
++	return pmic_bus_setbits(AXP305_OUTPUT_CTRL1,
++				0x1f);
++ }
++ 
+ int axp_init(void)
+ {
+ 	u8 axp_chip_id;
+@@ -63,9 +93,13 @@ int axp_init(void)
+ 	if (ret)
+ 		return ret;
+ 
+-	if ((axp_chip_id & AXP305_CHIP_VERSION_MASK) != 0x40)
++	if ((axp_chip_id & AXP305_CHIP_VERSION_MASK) != 0x4b)
+ 		return -ENODEV;
+ 
++        printf("pmic id is 0x%x\n",axp_chip_id);
++       
++        axp_set_dcdc3(1500);
++ 
+ 	return ret;
+ }
+ 
+diff --git a/include/configs/sunxi-common.h b/include/configs/sunxi-common.h
+index c4f34dbf..16b25cc3 100644
+--- a/include/configs/sunxi-common.h
++++ b/include/configs/sunxi-common.h
+@@ -200,7 +200,7 @@
+ #define CONFIG_SYS_I2C_MVTWSI
+ #if !CONFIG_IS_ENABLED(DM_I2C)
+ #define CONFIG_SYS_I2C_LEGACY
+-#define CONFIG_SYS_I2C_SPEED		400000
++#define CONFIG_SYS_I2C_SPEED		100000
+ #define CONFIG_SYS_I2C_SLAVE		0x7f
+ #endif
+ #endif

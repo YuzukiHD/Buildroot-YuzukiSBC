@@ -1,0 +1,18 @@
+diff -urN linux-6.0-orig/drivers/clk/sunxi-ng/Kconfig linux-6.0/drivers/clk/sunxi-ng/Kconfig
+--- linux-6.0-orig/drivers/clk/sunxi-ng/Kconfig	2022-10-02 23:09:07.000000000 +0200
++++ linux-6.0/drivers/clk/sunxi-ng/Kconfig	2022-10-05 11:09:03.531852167 +0200
+@@ -15,12 +15,12 @@
+ config SUN20I_D1_CCU
+ 	tristate "Support for the Allwinner D1 CCU"
+ 	default RISCV && ARCH_SUNXI
+-	depends on (RISCV && ARCH_SUNXI) || COMPILE_TEST
++	depends on (ARCH_SUNXI) || COMPILE_TEST
+ 
+ config SUN20I_D1_R_CCU
+ 	tristate "Support for the Allwinner D1 PRCM CCU"
+ 	default RISCV && ARCH_SUNXI
+-	depends on (RISCV && ARCH_SUNXI) || COMPILE_TEST
++	depends on (ARCH_SUNXI) || COMPILE_TEST
+ 
+ config SUN50I_A64_CCU
+ 	tristate "Support for the Allwinner A64 CCU"

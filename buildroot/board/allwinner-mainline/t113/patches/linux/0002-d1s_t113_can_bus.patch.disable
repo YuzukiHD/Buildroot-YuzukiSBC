@@ -1,0 +1,208 @@
+diff -urN linux-6.0.2/drivers/clk/sunxi-ng/ccu-sun20i-d1.c linux-6.0.2-can/drivers/clk/sunxi-ng/ccu-sun20i-d1.c
+--- linux-6.0.2/drivers/clk/sunxi-ng/ccu-sun20i-d1.c	2022-10-15 08:02:59.000000000 +0200
++++ linux-6.0.2-can/drivers/clk/sunxi-ng/ccu-sun20i-d1.c	2022-11-07 11:26:24.590168202 +0100
+@@ -461,6 +461,11 @@
+ static SUNXI_CCU_GATE_HWS(bus_i2c3_clk, "bus-i2c3", apb1_hws,
+ 			  0x91c, BIT(3), 0);
+ 
++static SUNXI_CCU_GATE_HWS(bus_can0_clk, "bus-can0", apb1_hws, 
++			  0x92c, BIT(0), 0);
++static SUNXI_CCU_GATE_HWS(bus_can1_clk, "bus-can1", apb1_hws, 
++			  0x92c, BIT(1), 0);
++
+ static const struct clk_parent_data spi_parents[] = {
+ 	{ .fw_name = "hosc" },
+ 	{ .hw = &pll_periph0_clk.hw },
+@@ -1062,6 +1067,8 @@
+ 	&fanout0_clk.common,
+ 	&fanout1_clk.common,
+ 	&fanout2_clk.common,
++	&bus_can0_clk.common,
++	&bus_can1_clk.common,
+ };
+ 
+ static struct clk_hw_onecell_data sun20i_d1_hw_clks = {
+@@ -1212,6 +1219,8 @@
+ 		[CLK_FANOUT0]		= &fanout0_clk.common.hw,
+ 		[CLK_FANOUT1]		= &fanout1_clk.common.hw,
+ 		[CLK_FANOUT2]		= &fanout2_clk.common.hw,
++		[CLK_BUS_CAN0]		= &bus_can0_clk.common.hw,
++		[CLK_BUS_CAN1]		= &bus_can1_clk.common.hw,
+ 	},
+ };
+ 
+@@ -1282,6 +1291,8 @@
+ 	[RST_BUS_DSP_CFG]	= { 0xc7c, BIT(17) },
+ 	[RST_BUS_DSP_DBG]	= { 0xc7c, BIT(18) },
+ 	[RST_BUS_RISCV_CFG]	= { 0xd0c, BIT(16) },
++	[RST_BUS_CAN0]		= { 0x92c, BIT(16) },
++	[RST_BUS_CAN1]		= { 0x92c, BIT(17) },
+ };
+ 
+ static const struct sunxi_ccu_desc sun20i_d1_ccu_desc = {
+diff -urN linux-6.0.2/drivers/clk/sunxi-ng/ccu-sun20i-d1.h linux-6.0.2-can/drivers/clk/sunxi-ng/ccu-sun20i-d1.h
+--- linux-6.0.2/drivers/clk/sunxi-ng/ccu-sun20i-d1.h	2022-10-15 08:02:59.000000000 +0200
++++ linux-6.0.2-can/drivers/clk/sunxi-ng/ccu-sun20i-d1.h	2022-11-07 11:25:03.128177291 +0100
+@@ -10,6 +10,6 @@
+ #include <dt-bindings/clock/sun20i-d1-ccu.h>
+ #include <dt-bindings/reset/sun20i-d1-ccu.h>
+ 
+-#define CLK_NUMBER		(CLK_FANOUT2 + 1)
++#define CLK_NUMBER		(CLK_BUS_CAN1 + 1)
+ 
+ #endif /* _CCU_SUN20I_D1_H_ */
+diff -urN linux-6.0.2/drivers/net/can/sun4i_can.c linux-6.0.2-can/drivers/net/can/sun4i_can.c
+--- linux-6.0.2/drivers/net/can/sun4i_can.c	2022-10-15 08:02:59.000000000 +0200
++++ linux-6.0.2-can/drivers/net/can/sun4i_can.c	2022-11-07 11:28:13.455483512 +0100
+@@ -89,8 +89,6 @@
+ #define SUN4I_REG_BUF10_ADDR	0x0068	/* CAN Tx/Rx Buffer 10 */
+ #define SUN4I_REG_BUF11_ADDR	0x006c	/* CAN Tx/Rx Buffer 11 */
+ #define SUN4I_REG_BUF12_ADDR	0x0070	/* CAN Tx/Rx Buffer 12 */
+-#define SUN4I_REG_ACPC_ADDR	0x0040	/* CAN Acceptance Code 0 */
+-#define SUN4I_REG_ACPM_ADDR	0x0044	/* CAN Acceptance Mask 0 */
+ #define SUN4I_REG_RBUF_RBACK_START_ADDR	0x0180	/* CAN transmit buffer start */
+ #define SUN4I_REG_RBUF_RBACK_END_ADDR	0x01b0	/* CAN transmit buffer end */
+ 
+@@ -202,12 +200,22 @@
+ #define SUN4I_MODE_MAX_RETRIES	100
+ 
+ /**
++ * struct sun4ican_addresses - Different register addresses for some SoCs.
++ *
++ */
++struct sun4ican_addresses {
++	unsigned int can_acceptance_code;
++	unsigned int can_acceptance_mask;
++};
++
++/**
+  * struct sun4ican_quirks - Differences between SoC variants.
+  *
+  * @has_reset: SoC needs reset deasserted.
+  */
+ struct sun4ican_quirks {
+ 	bool has_reset;
++	struct sun4ican_addresses addresses;
+ };
+ 
+ struct sun4ican_priv {
+@@ -216,6 +224,7 @@
+ 	struct clk *clk;
+ 	struct reset_control *reset;
+ 	spinlock_t cmdreg_lock;	/* lock for concurrent cmd register writes */
++	struct sun4ican_addresses addresses;
+ };
+ 
+ static const struct can_bittiming_const sun4ican_bittiming_const = {
+@@ -338,8 +347,8 @@
+ 	}
+ 
+ 	/* set filters - we accept all */
+-	writel(0x00000000, priv->base + SUN4I_REG_ACPC_ADDR);
+-	writel(0xFFFFFFFF, priv->base + SUN4I_REG_ACPM_ADDR);
++	writel(0x00000000, priv->base + priv->addresses.can_acceptance_code);
++	writel(0xFFFFFFFF, priv->base + priv->addresses.can_acceptance_mask);
+ 
+ 	/* clear error counters and error code capture */
+ 	writel(0, priv->base + SUN4I_REG_ERRC_ADDR);
+@@ -767,11 +776,27 @@
+ };
+ 
+ static const struct sun4ican_quirks sun4ican_quirks_a10 = {
+-	.has_reset = false,
++	.addresses = {
++		.can_acceptance_code = 0x0040,
++		.can_acceptance_mask = 0x0044,
++	},
++	.has_reset = false
+ };
+ 
+ static const struct sun4ican_quirks sun4ican_quirks_r40 = {
+-	.has_reset = true,
++	.addresses = {
++		.can_acceptance_code = 0x0040,
++		.can_acceptance_mask = 0x0044,
++	},
++	.has_reset = true
++};
++
++static const struct sun4ican_quirks sun4ican_quirks_d1 = {
++	.addresses = {
++		.can_acceptance_code = 0x0028,
++		.can_acceptance_mask = 0x002c,
++	},
++	.has_reset = true
+ };
+ 
+ static const struct of_device_id sun4ican_of_match[] = {
+@@ -785,6 +810,9 @@
+ 		.compatible = "allwinner,sun8i-r40-can",
+ 		.data = &sun4ican_quirks_r40
+ 	}, {
++		.compatible = "allwinner,sun20i-d1-can",
++		.data = &sun4ican_quirks_d1
++	}, {
+ 		/* sentinel */
+ 	},
+ };
+@@ -872,6 +900,8 @@
+ 	priv->base = addr;
+ 	priv->clk = clk;
+ 	priv->reset = reset;
++	priv->addresses.can_acceptance_code = quirks->addresses.can_acceptance_code;
++	priv->addresses.can_acceptance_mask = quirks->addresses.can_acceptance_mask;
+ 	spin_lock_init(&priv->cmdreg_lock);
+ 
+ 	platform_set_drvdata(pdev, dev);
+@@ -909,4 +939,4 @@
+ MODULE_AUTHOR("Peter Chen <xingkongcp@gmail.com>");
+ MODULE_AUTHOR("Gerhard Bertelsmann <info@gerhard-bertelsmann.de>");
+ MODULE_LICENSE("Dual BSD/GPL");
+-MODULE_DESCRIPTION("CAN driver for Allwinner SoCs (A10/A20)");
++MODULE_DESCRIPTION("CAN driver for Allwinner SoCs (A10/A20/D1)");
+diff -urN linux-6.0.2/drivers/pinctrl/sunxi/pinctrl-sun20i-d1.c linux-6.0.2-can/drivers/pinctrl/sunxi/pinctrl-sun20i-d1.c
+--- linux-6.0.2/drivers/pinctrl/sunxi/pinctrl-sun20i-d1.c	2022-10-15 08:02:59.000000000 +0200
++++ linux-6.0.2-can/drivers/pinctrl/sunxi/pinctrl-sun20i-d1.c	2022-11-07 11:29:04.282230174 +0100
+@@ -47,6 +47,7 @@
+ 		SUNXI_FUNCTION(0x5, "i2s2_din"),	/* DIN2 */
+ 		SUNXI_FUNCTION(0x6, "lcd0"),		/* D18 */
+ 		SUNXI_FUNCTION(0x7, "uart4"),		/* TX */
++		SUNXI_FUNCTION(0x8, "can0"),		/* TX */
+ 		SUNXI_FUNCTION_IRQ_BANK(0xe, 0, 2)),
+ 	SUNXI_PIN(SUNXI_PINCTRL_PIN(B, 3),
+ 		SUNXI_FUNCTION(0x0, "gpio_in"),
+@@ -57,6 +58,7 @@
+ 		SUNXI_FUNCTION(0x5, "i2s2_din"),	/* DIN0 */
+ 		SUNXI_FUNCTION(0x6, "lcd0"),		/* D19 */
+ 		SUNXI_FUNCTION(0x7, "uart4"),		/* RX */
++		SUNXI_FUNCTION(0x8, "can0"),		/* RX */
+ 		SUNXI_FUNCTION_IRQ_BANK(0xe, 0, 3)),
+ 	SUNXI_PIN(SUNXI_PINCTRL_PIN(B, 4),
+ 		SUNXI_FUNCTION(0x0, "gpio_in"),
+@@ -67,6 +69,7 @@
+ 		SUNXI_FUNCTION(0x5, "i2s2_din"),	/* DIN1 */
+ 		SUNXI_FUNCTION(0x6, "lcd0"),		/* D20 */
+ 		SUNXI_FUNCTION(0x7, "uart5"),		/* TX */
++		SUNXI_FUNCTION(0x8, "can1"),		/* TX */
+ 		SUNXI_FUNCTION_IRQ_BANK(0xe, 0, 4)),
+ 	SUNXI_PIN(SUNXI_PINCTRL_PIN(B, 5),
+ 		SUNXI_FUNCTION(0x0, "gpio_in"),
+@@ -77,6 +80,7 @@
+ 		SUNXI_FUNCTION(0x5, "pwm0"),
+ 		SUNXI_FUNCTION(0x6, "lcd0"),		/* D21 */
+ 		SUNXI_FUNCTION(0x7, "uart5"),		/* RX */
++		SUNXI_FUNCTION(0x8, "can1"),		/* RX */
+ 		SUNXI_FUNCTION_IRQ_BANK(0xe, 0, 5)),
+ 	SUNXI_PIN(SUNXI_PINCTRL_PIN(B, 6),
+ 		SUNXI_FUNCTION(0x0, "gpio_in"),
+diff -urN linux-6.0.2/include/dt-bindings/clock/sun20i-d1-ccu.h linux-6.0.2-can/include/dt-bindings/clock/sun20i-d1-ccu.h
+--- linux-6.0.2/include/dt-bindings/clock/sun20i-d1-ccu.h	2022-10-15 08:02:59.000000000 +0200
++++ linux-6.0.2-can/include/dt-bindings/clock/sun20i-d1-ccu.h	2022-11-07 11:24:13.865392334 +0100
+@@ -152,5 +152,7 @@
+ #define CLK_FANOUT0		142
+ #define CLK_FANOUT1		143
+ #define CLK_FANOUT2		144
++#define CLK_BUS_CAN0		145
++#define CLK_BUS_CAN1		146
+ 
+ #endif /* _DT_BINDINGS_CLK_SUN20I_D1_CCU_H_ */

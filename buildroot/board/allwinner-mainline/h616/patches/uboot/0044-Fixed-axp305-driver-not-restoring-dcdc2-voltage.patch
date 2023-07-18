@@ -1,0 +1,105 @@
+From 89a8506284af274ccd376e8260efa86343ccd8d4 Mon Sep 17 00:00:00 2001
+From: Evlers <1425295900@qq.com>
+Date: Thu, 6 Apr 2023 10:39:10 +0800
+Subject: [PATCH 2/4] Fixed axp305 driver not restoring dcdc2 voltage
+
+---
+ drivers/power/axp305.c | 39 +++++++++++++++++++++++++++++----------
+ include/axp305.h       |  6 ++++--
+ 2 files changed, 33 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/power/axp305.c b/drivers/power/axp305.c
+index 0668a346fb..7376ebef21 100644
+--- a/drivers/power/axp305.c
++++ b/drivers/power/axp305.c
+@@ -29,9 +29,10 @@ static u8 axp305_mvolt_to_cfg(int mvolt, int min, int max, int div)
+ 
+ int axp_set_dcdc4(unsigned int mvolt)
+ {
++#if 0
+ 	int ret;
+ 	u8 cfg;
+-#if 0
++
+ 	if (mvolt >= 1600)
+ 		cfg = AXP305_DCDC4_1600MV_OFFSET +
+ 			axp305_mvolt_to_cfg(mvolt, 1600, 3300, 100);
+@@ -68,17 +69,36 @@ int axp_set_dcdc3(unsigned int mvolt)
+ 		return pmic_bus_clrbits(AXP305_OUTPUT_CTRL1,
+ 					AXP305_OUTPUT_CTRL1_DCDCD_EN);
+ 
+-	ret = pmic_bus_write(AXP305_DCDCD_VOLTAGE, cfg);
++	ret = pmic_bus_write(AXP305_DCDC3_VOLTAGE, cfg);
+ 	if (ret)
+ 		return ret;
+-		
+-//	ret = pmic_bus_write(0x12, 0x7);
+-//	if (ret)
+-//		return ret;
+ 
+ 	return pmic_bus_setbits(AXP305_OUTPUT_CTRL1,
+ 				0x1f);
+- }
++}
++
++#define AXP305_DCDC2_1200MV_OFFSET 			71
++
++int axp_set_dcdc2(unsigned int mvolt)
++{
++	int ret;
++	u8 cfg;
++
++	if (mvolt >= 1220)
++		cfg = AXP305_DCDC2_1200MV_OFFSET +
++			axp305_mvolt_to_cfg(mvolt, 1220, 1840, 20);
++	else
++		cfg = axp305_mvolt_to_cfg(mvolt, 500, 1200, 10);
++
++	if (mvolt == 0) // if close dcdc2
++		return pmic_bus_clrbits(AXP305_OUTPUT_CTRL1, AXP305_OUTPUT_CTRL1_DCDC2_EN); // close DCDC2
++
++	ret = pmic_bus_write(AXP305_DCDC2_VOLTAGE, cfg); // config dcdc2
++	if (ret)
++		return ret;
++
++	return pmic_bus_setbits(AXP305_OUTPUT_CTRL1, 0x1f); // open all
++}
+  
+ int axp_init(void)
+ {
+@@ -96,9 +116,8 @@ int axp_init(void)
+ 	if ((axp_chip_id & AXP305_CHIP_VERSION_MASK) != 0x4b)
+ 		return -ENODEV;
+ 
+-        printf("pmic id is 0x%x\n",axp_chip_id);
+-       
+-        axp_set_dcdc3(1500);
++	axp_set_dcdc3(1500); // The ddr3 memory requires 1.5v voltage
++	axp_set_dcdc2(900); // Fixed the voltage being set to a low value during reboot
+  
+ 	return ret;
+ }
+diff --git a/include/axp305.h b/include/axp305.h
+index 225c5040a3..39d4eac8f1 100644
+--- a/include/axp305.h
++++ b/include/axp305.h
+@@ -6,12 +6,14 @@
+ enum axp305_reg {
+ 	AXP305_CHIP_VERSION = 0x3,
+ 	AXP305_OUTPUT_CTRL1 = 0x10,
+-	AXP305_DCDCD_VOLTAGE = 0x15,
++	AXP305_DCDC2_VOLTAGE = 0x14,
++	AXP305_DCDC3_VOLTAGE = 0x15,
+ 	AXP305_SHUTDOWN = 0x32,
+ };
+ 
+ #define AXP305_CHIP_VERSION_MASK	0xcf
+ 
+-#define AXP305_OUTPUT_CTRL1_DCDCD_EN	(1 << 3)
++#define AXP305_OUTPUT_CTRL1_DCDCD_EN	(1 << 2)
++#define AXP305_OUTPUT_CTRL1_DCDC2_EN	(1 << 1)
+ 
+ #define AXP305_POWEROFF			(1 << 7)
+-- 
+2.34.1
+

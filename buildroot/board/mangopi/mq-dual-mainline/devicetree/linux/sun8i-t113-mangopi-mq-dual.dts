@@ -1,0 +1,412 @@
+// SPDX-License-Identifier: (GPL-2.0+ or MIT)
+// Copyright (C) 2022 Samuel Holland <samuel@sholland.org>
+
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/leds/common.h>
+#include "sun8i-t113.dtsi"
+
+/ {
+	model = "MangoPi MQ-Dual";
+	compatible = "allwinner,sun20i-d1", "allwinner,sun8i";
+
+	aliases {
+		ethernet0 = &rtl8189fs;
+		mmc0 = &mmc0;
+		serial0 = &uart0;
+		serial1 = &uart1;
+		serial3 = &uart3;
+		serial5 = &uart5;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		// bootargs = "mem=128M cma=72M root=/dev/mmcblk0p2 init=/sbin/init rootwait earlyprintk=sunxi-uart,0x02501400 console=tty0 console=ttyS5,115200";
+		// bootargs = "mem=128M cma=64M root=/dev/mmcblk0p2 init=/sbin/init rootwait console=ttyS5,115200 earlyprintk=sunxi-uart,0x02501400";
+	};
+
+	reg_vcc: vcc {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+	};
+
+	reg_usbvbus: usbvbus {
+		compatible = "regulator-fixed";
+		regulator-name = "usbvbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		vin-supply = <&reg_vcc>;
+	};
+
+	reg_vcc_3v3: vcc-3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc-3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&reg_vcc>;
+	};
+
+	reg_avdd2v8: avdd2v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "avdd2v8";
+		regulator-min-microvolt = <2800000>;
+		regulator-max-microvolt = <2800000>;
+		vin-supply = <&reg_vcc_3v3>;
+	};
+
+	reg_vdd_cpu: vdd-cpu {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd-cpu";
+		regulator-min-microvolt = <900000>;
+		regulator-max-microvolt = <900000>;
+		vin-supply = <&reg_vcc>;
+	};
+
+
+	dmic_codec: dmic-codec {
+		compatible = "dmic-codec";
+		num-channels = <2>;
+		#sound-dai-cells = <0>;
+	};
+
+	dmic-sound {
+		compatible = "simple-audio-card";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		simple-audio-card,dai-link@0 {
+			format = "pdm";
+			frame-master = <&link0_cpu>;
+			bitclock-master = <&link0_cpu>;
+
+			link0_cpu: cpu {
+				sound-dai = <&dmic>;
+			};
+
+			link0_codec: codec {
+				sound-dai = <&dmic_codec>;
+			};
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		status {
+			label = "led_blue";
+			linux,default-trigger = "heartbeat";
+			gpios = <&pio 3 22 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+		};
+	};
+
+	wifi_pwrseq: wifi-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		clocks = <&ccu CLK_FANOUT1>;
+		clock-names = "ext_clock";
+		reset-gpios = <&pio 6 12 GPIO_ACTIVE_LOW>; /* PG12 */
+		assigned-clocks = <&ccu CLK_FANOUT1>;
+		assigned-clock-rates = <32768>;
+		pinctrl-0 = <&clk_pg11_pin>;
+		pinctrl-names = "default";
+	};
+
+	panel {
+		compatible = "bananapi,s070wv20-ct16", "simple-panel";
+		port {
+			panel_input: endpoint {
+				remote-endpoint = <&tcon_lcd0_out_panel>;
+			};
+		};
+	};
+};
+
+&reg_aldo {
+	regulator-min-microvolt = <1800000>;
+	regulator-max-microvolt = <1800000>;
+	vdd33-supply = <&reg_vcc_3v3>;
+};
+
+&cpu0 {
+	cpu-supply = <&reg_vdd_cpu>;
+};
+
+&cpu1 {
+	cpu-supply = <&reg_vdd_cpu>;
+};
+
+&wdt {
+	status = "okay";
+};
+
+&de {
+	status = "okay";
+};
+
+&tcon_lcd0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd_rgb666_pins>;
+	status = "okay";
+};
+
+&tcon_lcd0_out {
+	tcon_lcd0_out_panel: endpoint@0 {
+		reg = <0>;
+		remote-endpoint = <&panel_input>;
+	};
+};
+
+// &dsi {
+// 	pinctrl-0 = <&dsi_4lane_pins>;
+// 	pinctrl-names = "default";
+// 	status = "disabled";
+
+// 	panel: panel@0 {
+// 		reg = <0>;
+// 		compatible = "lg,lh500wx1-sd03";
+// 		pinctrl-names = "default";
+// /*
+// 		pinctrl-0 = <&panel_pin>;
+
+// 		port {
+// 				panel_in: endpoint {
+// 						remote-endpoint = <&dsi0_out>;
+// 				};
+// 		};
+// */
+// 	};
+// };
+
+&pio {
+
+	vcc-pb-supply = <&reg_vcc_3v3>;
+	vcc-pc-supply = <&reg_vcc_3v3>;
+	vcc-pd-supply = <&reg_vcc_3v3>;
+	vcc-pe-supply = <&reg_avdd2v8>;
+	vcc-pf-supply = <&reg_vcc_3v3>;
+	vcc-pg-supply = <&reg_vcc_3v3>;
+
+	can0_pins_a: can0_pins@0 {
+		pins = "PB2", "PB3";
+		function = "can0";
+		drive-strength = <10>;
+		bias-pull-up;
+	};
+
+	can1_pins_a: can1_pins@0 {
+		pins = "PB4", "PB5";
+		function = "can1";
+		drive-strength = <10>;
+		bias-pull-up;
+	};		
+
+	uart5_pb4_pins: uart5-pb4-pins {
+	    pins = "PB4", "PB5";
+	    function = "uart5";
+	};
+
+	clk_pg11_pin: clk-pg11-pin {
+			pins = "PG11";
+			function = "clk";
+	};
+
+};
+
+&uart0 {
+	pinctrl-0 = <&uart0_pe2_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&uart1 {
+	uart-has-rtscts;
+	pinctrl-0 = <&uart1_pg6_pins>, <&uart1_pg8_rts_cts_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	bluetooth {
+		compatible = "realtek,rtl8723ds-bt";
+		device-wake-gpios = <&pio 6 13 GPIO_ACTIVE_HIGH>; /* PG13 */
+		enable-gpios = <&pio 6 15 GPIO_ACTIVE_HIGH>; /* PG15 */
+		host-wake-gpios = <&pio 6 14 GPIO_ACTIVE_HIGH>; /* PG14 */
+	};
+};
+
+&uart3 {
+	pinctrl-0 = <&uart3_pb_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&uart5 {
+	pinctrl-0 = <&uart5_pb4_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&i2c2 {
+	pinctrl-0 = <&i2c2_pe12_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	gt911@5d {
+		compatible = "goodix,gt911";
+		reg = <0x5d>;
+		interrupt-parent = <&pio>;
+		interrupts = <1 3 IRQ_TYPE_EDGE_FALLING>;
+
+		irq-gpios = <&pio 1 3 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&pio 1 2 GPIO_ACTIVE_HIGH>;
+
+		VDD-supply = <&reg_vcc_3v3>;
+	};
+};
+
+&spi0 {
+        pinctrl-0 = <&spi0_pins>;
+        pinctrl-names = "default";
+        status = "okay";
+
+        flash@0 {
+                compatible = "spi-nand";
+                reg = <0>;
+
+                partitions {
+                        compatible = "fixed-partitions";
+                        #address-cells = <1>;
+                        #size-cells = <1>;
+
+                        partition@0 {
+                                label = "awboot";
+                                reg = <0x00000000 0x00020000>;	/* 128K */
+                        };
+
+                        partition@20000 {
+                                label = "dtb";
+                                reg = <0x00020000 0x00020000>;  /* 128k */
+                        };
+
+                        partition@40000 {
+                                label = "kernel";
+                                reg = <0x00040000 0x00800000>;  /* 8MB */
+                        };
+
+                        partition@840000 {
+                                label = "filesystem";
+                                reg = <0x00840000 0x0f7c0000>;
+                        };
+                };
+        };
+};
+
+&mmc0 {
+	bus-width = <4>;
+	cd-gpios = <&pio 5 6 (GPIO_ACTIVE_LOW)>;
+	disable-wp;
+	vmmc-supply = <&reg_vcc_3v3>;
+	vqmmc-supply = <&reg_vcc_3v3>;
+	pinctrl-0 = <&mmc0_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&mmc1 {
+	bus-width = <4>;
+	mmc-pwrseq = <&wifi_pwrseq>;
+	non-removable;
+	vmmc-supply = <&reg_vcc_3v3>;
+	vqmmc-supply = <&reg_vcc_3v3>;
+	pinctrl-0 = <&mmc1_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+
+    rtl8189fs: sdio_wifi@1 {
+        reg = <1>;
+		interrupt-parent = <&pio>;
+		interrupts = <6 10 IRQ_TYPE_LEVEL_HIGH>; /* PG10 */
+		interrupt-names = "host-wake";
+    };
+};
+
+&codec {
+	routing = "Headphone Jack", "HPOUTL",
+		  "Headphone Jack", "HPOUTR",
+		  "Headset Microphone", "MICIN3"; 
+
+/*		  "LINEINL", "HPOUTL",
+		  "LINEINR", "HPOUTR";
+*/
+	widgets = "Microphone", "Headset Microphone",
+		  "Headphone", "Headphone Jack";
+	status = "disabled";
+};
+
+&usb_otg {
+	dr_mode = "otg";
+	status = "okay";
+};
+
+&ehci0 {
+	status = "disabled";
+};
+
+&dmic {
+	status = "okay";
+};
+
+&ehci1 {
+	status = "okay";
+};
+
+
+&ohci0 {
+	status = "disabled";
+};
+
+&ohci1 {
+	status = "okay";
+};
+
+
+&ths {
+	status = "okay";
+/*	vref-supply = <&reg_aldo>; */
+};
+
+&usbphy {
+	usb0_vbus-supply = <&reg_usbvbus>;
+	usb1_vbus-supply = <&reg_usbvbus>;
+	status = "okay";
+};
+
+&mdio {
+	ext_rgmii_phy: ethernet-phy@1 {
+		compatible = "ethernet-phy-ieee802.3-c22";
+		reg = <1>;
+	};
+};
+
+&emac {
+	pinctrl-0 = <&rgmii_pe_pins>;
+	pinctrl-names = "default";
+	phy-handle = <&ext_rgmii_phy>;
+	phy-mode = "rgmii-id";
+	phy-supply = <&reg_vcc_3v3>;
+	status = "disabled";
+};
+
+// &can0 {
+// 	pinctrl-names = "default";
+// 	pinctrl-0 = <&can0_pins>;
+// 	status = "okay";
+// };
+
+// &can1 {
+// 	pinctrl-names = "default";
+// 	pinctrl-0 = <&can1_pins>;
+// 	status = "disabled";
+// };
+

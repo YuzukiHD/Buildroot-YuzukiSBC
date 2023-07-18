@@ -1,0 +1,31 @@
+From 04a7a66f8cce160d9282afd946625ca7b84b2963 Mon Sep 17 00:00:00 2001
+From: Evlers <1425295900@qq.com>
+Date: Thu, 6 Apr 2023 10:48:22 +0800
+Subject: [PATCH 3/4] Add readme file
+
+---
+ README.md | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+ create mode 100644 README.md
+
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000000..5b378d9a45
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,11 @@
++## MangoPI MQ-Quad board u-boot base on Allwinner H616
++Using the u-boot-2021.10 to modify
++
++## Build
++```
++# bl32.bin is arm-trusted-firmware
++# Using `mangopi_mcore_defconfig` config files
++make CROSS_COMPILE=aarch64-linux-gnu- BL31=../arm-trusted-firmware/build/sun50i_h616/debug/bl31.bin mangopi_mcore_defconfig
++make CROSS_COMPILE=aarch64-linux-gnu- BL31=../arm-trusted-firmware/build/sun50i_h616/debug/bl31.bin
++# output file: u-boot-sunxi-with-spl.bin
++```
+\ No newline at end of file
+-- 
+2.34.1
+

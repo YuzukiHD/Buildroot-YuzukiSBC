@@ -1,0 +1,37 @@
+diff -urN linux-6.0-orig/arch/arm/mach-sunxi/platsmp.c linux-6.0/arch/arm/mach-sunxi/platsmp.c
+--- linux-6.0-orig/arch/arm/mach-sunxi/platsmp.c	2022-10-02 23:09:07.000000000 +0200
++++ linux-6.0/arch/arm/mach-sunxi/platsmp.c	2022-10-05 11:12:56.918122933 +0200
+@@ -192,3 +192,33 @@
+ 	.smp_boot_secondary	= sun8i_smp_boot_secondary,
+ };
+ CPU_METHOD_OF_DECLARE(sun8i_a23_smp, "allwinner,sun8i-a23", &sun8i_smp_ops);
++
++
++static int sun8i_t113_smp_boot_secondary(unsigned int cpu,
++				    struct task_struct *idle)
++{
++    u32 reg;
++    void __iomem *cpucfg_membase = ioremap(0x09010000, 0x10);
++    void __iomem *cpuexec_membase[] = {ioremap(0x070005C4, 0x10),ioremap(0x070005C8, 0x10)};
++
++	if (cpu != 1)
++	    return 0;
++
++	spin_lock(&cpu_lock);
++
++	/* Set CPU boot address */
++	writel(__pa_symbol(secondary_startup),	cpuexec_membase[cpu]);
++
++	/* Deassert the CPU core reset */
++	reg = readl(cpucfg_membase);
++	writel(reg | BIT(cpu), cpucfg_membase);
++
++	spin_unlock(&cpu_lock);
++
++	return 0;
++}
++
++static const struct smp_operations sun8i_t113_smp_ops __initconst = {
++	.smp_boot_secondary	= sun8i_t113_smp_boot_secondary,
++};
++CPU_METHOD_OF_DECLARE(sun8i_t113_smp, "allwinner,sun8iw20p1", &sun8i_t113_smp_ops);
