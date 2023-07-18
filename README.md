@@ -2,7 +2,7 @@
 <div align = center>
 
 # Buildroot YuzukiSBC
-*Buildroot Package Mainly for YuzukiHD Devices. Support Allwinner F1C100s/200s V3s V3x D1-H D1s T113*
+*Buildroot Package Mainly for YuzukiHD Devices. Support Allwinner F1C100s/200s V3s V3x D1-H D1s T113 H616*
 
 <br>
 
